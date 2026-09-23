@@ -21,122 +21,132 @@ octagonal board) as a C++ game in OpenSpiel, then build an AI for it.
 
 ## Phases
 
-### Phase 0 — Environment
+### Phase 0 — Environment — **done** 2026-09-22
 
-- [ ] Fork `google-deepmind/open_spiel` (via GitHub web UI)
-- [ ] Clone to `~/thud-openspiel` on the **WSL native filesystem**; create branch `thud`
-- [ ] Place `CLAUDE.md` (root) and `thud/` files; commit and push from Linux
-- [ ] `./install.sh`, venv, `pip install -r requirements.txt`
-- [ ] CMake build with clang, `make -j10`
-- [ ] Gate: `ctest -j10` passes and `./examples/example --game=tic_tac_toe` runs
+- [x] Fork `google-deepmind/open_spiel` (via GitHub web UI)
+- [x] Clone to `~/thud-openspiel` on the **WSL native filesystem**; create branch `thud`
+- [x] Place `CLAUDE.md` (root) and `thud/` files; commit and push from Linux
+- [x] `./install.sh`, venv, `pip install -r requirements.txt`
+- [x] CMake build with clang, `make -j10` (4m41s, 0 warnings, native ARM64 — no fallback needed)
+- [x] Gate: `ctest -j10` passes (284/284) and `./examples/example --game=tic_tac_toe` runs
 
 **Risk:** OpenSpiel's ARM64 Linux source build is far less exercised than x86_64. If abseil
 or another dependency fails, fall back to the `manylinux aarch64` wheel to keep Python-side
 work unblocked while debugging the C++ build separately. Keep
 `OPEN_SPIEL_BUILD_WITH_LIBTORCH=OFF`.
 
-### Phase 1 — Ruleset spec, before any code — **done**
+### Phase 1 — Ruleset spec, before any code — **done** 2026-09-22
 
-`thud/THUD_RULES.md` is written and sourced: board geometry, exact setup, all four move
-types, scoring, and termination.
+`thud/THUD_RULES.md` is the specification: board, setup, every move type as explicit
+allowed / not-allowed lists, end conditions, scoring and the action encoding (§8), with the
+reasoning in §9.
 
-What it settled: troll captures are **optional and a chosen subset**; a **shove must capture
-at least one dwarf**; dwarfs move first; a dwarf never captures by moving and a hurl may only
-land on a troll; setup is exact (32 dwarfs on all perimeter squares but the 4 in line with
-the Thudstone, 8 trolls ringing it).
+- [x] Draft the spec from the published rules as reproduced on BoardGameGeek and in the
+  Tabletop Simulator edition, cross-checked against three implementations: `dstu/thud`,
+  `THFlowers/Thud-CLI`, `hexparrot/thudgame` (session 1).
+- [x] Find the primary source: the official website's rules text, archived on the Wayback
+  Machine (session 2). It settles the lone-dwarf hurl outright.
+- [x] Re-verify the implementation evidence by reading every hurl and shove code path and
+  running hexparrot's engine (session 2). Session 1 had misread two of the three engines,
+  and two of its decisions rested on that; `PROGRESS.md`, session 2, has the corrected
+  evidence with line citations.
+- [x] Settle every open rule with the user (session 2) — list below.
+- [x] Rewrite the spec to be sharp and concise; verify the board indexing, the action ranges
+  and the starting position by script (the setup matches hexparrot's square for square).
+- [x] Choose the end-of-battle limits by measurement, on 1,000 random and 3,000 AI games.
 
-Section 8 of `THUD_RULES.md` records the four points the published rules leave undetermined,
-each cross-checked against three existing implementations (`dstu/thud`, `THFlowers/Thud-CLI`,
-`hexparrot/thudgame`). Two are now settled:
+Settled:
 
-- **Lone troll shove (`N = 1`) — settled: not allowed.** All three implementations agree.
-- **Termination — settled: no-progress cap plus a stalemate check**, following
-  `hexparrot/thudgame` (which annotates its 400-ply cutoff "self-play only"). `dstu/thud`
-  models the official agreement mechanism faithfully, but it does not survive self-play,
-  because the trailing player never accepts.
+- **Lone dwarf hurl — allowed**, as the official rules state explicitly.
+- **Troll captures — all or none, declining allowed.** No separate removal phase.
+- **Shoves travel 2..N squares and must capture** (official); a one-square shove equals a
+  capturing step, so it is dropped.
+- **End of battle** — no legal move, 200 turns without a capture, or 800 turns. The official
+  end by agreement does not survive self-play. The limits are to be re-evaluated once our
+  engine is strong (*Deferred decisions*).
+- **One battle per OpenSpiel game**, returns `±m / 32`.
 
-- **Lone dwarf hurl (`N = 1`) — settled: not allowed.** The official rules phrase hurl and
-  shove *identically* ("anywhere there is a straight line of adjacent trolls/dwarfs ... they
-  may shove/hurl"), so they must be read identically, and shove's `N >= 2` is unanimous.
-  `THFlowers/Thud-CLI` allows `N = 1` and is simply wrong here.
+Where a rule ever becomes contested again, prefer an **OpenSpiel game parameter** over a
+hard-coded choice, so it becomes an experiment rather than an argument.
 
-- **Troll captures — settled: a separate dwarf-removal phase.** Implementations were split
-  (`THFlowers` does it faithfully as a remove phase, `hexparrot` captures all, `dstu` unclear
-  on a first reading), so this was decided on the faithful reading. After a troll move or
-  shove resolves, the state enters a removal phase with the **same player** still to act:
-  legal actions are "remove the dwarf at square X" for each adjacent dwarf, plus "done".
-  "Done" is available immediately after a move (capturing is not compulsory) but only after
-  at least one removal following a shove (a shove must capture).
+### Phase 2 — Board and action encoding — **done** 2026-09-22 (design; built in Phase 3)
 
-**All four rules questions are now settled.** Where a rule ever becomes contested again,
-prefer an **OpenSpiel game parameter** over a hard-coded choice, so it becomes an experiment
-rather than an argument.
-
-### Phase 2 — Board and action encoding
-
-- **Board:** 15x15 with a 15-square triangle removed from each corner gives 165 squares, one
-  of which is the central Thudstone (never moved onto or through). Represent as a flat 15x15
-  array with an off-board sentinel — simpler and faster than a packed 165-entry list, and it
-  mirrors how `chess` does it.
-- **Actions — the central trade-off is shallow-and-wide versus deep-and-narrow.**
-  - *Shallow:* every Thud move is a `(from, to)` pair, so one action per move. 165x165 =
-    27,225 actions — tractable for MCTS (Go is 362, chess ~4,672) but a large policy head.
-  - *Deep:* decompose the turn into sequential single-square choices, as
-    `open_spiel/games/amazons/` does — select piece, then select destination, then (for
-    trolls) select captures. `NumDistinctActions` collapses to roughly **166**, which is far
-    friendlier for a policy network, at the cost of 2–3x tree depth per turn.
-
-  The deep encoding also makes the troll capture phase fall out naturally rather than being
-  bolted on, and it shares the state machine we need for captures anyway. **Leaning deep**,
-  but decide with Phase 5 throughput in mind, since depth is what MCTS pays for.
-
-  - **Disambiguation matters in the shallow encoding.** Dwarf *move* vs *hurl* separate
-    cleanly by target occupancy (a hurl lands on a troll, a move lands on an empty square).
-    Troll *move* vs *shove* at distance 1 do **not** — both land on an empty adjacent square
-    but differ in legality and effect. The shallow encoding therefore needs an explicit
-    move-type component or disjoint action ranges. The deep encoding sidesteps this by
-    selecting the move type as its own decision.
+- **Actions — decided with the user, specified in `THUD_RULES.md` §8:** one action per
+  turn, numbered from-square × direction × distance as in OpenSpiel's `chess` (18,480 IDs),
+  plus 1,320 "troll step capturing all" IDs, for 19,800 in total. Every turn is exactly one
+  action, so no multi-phase turn state machine is needed.
+- **Alternatives considered and rejected** (reasoning in `PROGRESS.md`, session 2):
+  - *Amazons-style "pick the piece, then the destination"* (~166 actions): a tiny policy
+    output, but an extra tree level every turn and mid-turn states that the observation
+    would have to represent. Session 1 had leaned this way.
+  - *A follow-up capture/decline decision after a troll step* (THFlowers' style): the same
+    outcomes, but it groups a strong capture with a usually-bad decline under one tree edge,
+    and it adds mid-turn states.
+  - *Raw from×to pairs* (27,225 IDs, 23% ever usable): the same moves as the chosen layout,
+    in more IDs; the only in-tree precedent is `nine_mens_morris`.
+  - No move-type component is needed in any of these: a one-square shove equals a capturing
+    step, so an adjacent destination is a step and 2+ squares is a shove.
+- **Board:** a 15x15 grid with 165 playable squares, one of them the Thudstone. Store it as
+  a flat 15x15 array with a sentinel value on the cut corners. `chess` also uses a flat
+  array (`std::array<Piece, k2dMaxBoardSize> board_`, 8×8, in `chess_board.h`), but bounds-checks with
+  `InBoardArea()` instead of a sentinel. Padding the array so that rays never need bounds
+  checks is a Phase 3 performance choice. The action index uses the packed 165-square
+  numbering (§8), so the two need a precomputed mapping.
 - **Utility:** dwarf = 1 point, troll = 4 points, giving 32 vs 32 — a naturally balanced
   game. Score-difference utility normalised to [-1, 1] gives a richer learning signal than
-  win/loss. Check this against the two-round swap-sides match structure before committing.
+  win/loss. Settled: one battle per game, returns `±m / 32` (`THUD_RULES.md` §7, §9.5).
 
 ### Phase 3 — Implement `thud.h` / `thud.cc`
 
-**Mirror `open_spiel/games/amazons/`, not `tic_tac_toe/`.** The developer guide points at
-tic-tac-toe, but that is a single-action-per-turn game. Amazons has a genuine multi-phase
-turn — move a piece, then shoot an arrow — implemented as
-`enum MoveState { amazon_select, destination_select, shot_select }` with `current_player_`
-flipped only in the last phase. Thud's turn structure (choose move type, move, then select
-captures) is the same shape, so Amazons is the closer template. Keep tic-tac-toe as the
-reference for the surrounding boilerplate only.
+**Performance and readability are both requirements.** Move generation is expected to be
+the training bottleneck, so the implementation must be **very fast** — but it must stay
+**readable**, because the rules are fiddly and correctness comes first. In practice: fast,
+simple data layouts (a flat padded board array, precomputed per-square ray tables, no
+allocation in the hot path) rather than clever tricks that obscure the rules; one small,
+clearly named function per move type that reads like its section of `THUD_RULES.md`; and
+optimise from Phase 5 measurements, not guesses. A speed-up that makes a rule hard to
+check against the spec is not worth it.
+
+**Template: `tic_tac_toe/` for the boilerplate, `chess/` for the action encoding.** With one
+action per turn (decided in Phase 2), Thud no longer needs Amazons' multi-phase turn state
+machine; `current_player_` simply flips after every action. `chess` is the in-tree example
+of a from-square × direction × distance action layout.
 
 - `ThudGame`: `NumDistinctActions`, `NumPlayers`, `Min/MaxUtility`, `ObservationTensorShape`,
-  `MaxGameLength`
+  `MaxGameLength`; game parameters `max_turns_without_capture` (default 200) and
+  `max_turns` (default 800) in `parameter_specification`
 - `ThudState`: `CurrentPlayer`, `LegalActions`, `DoApplyAction`, `IsTerminal`, `Returns`,
   `ObservationTensor`, `ObservationString`, `ToString`, `Clone`, `ActionToString`
+- **The observation must be Markov, including the end-of-battle limits:** besides the pieces
+  and the side to move, `ObservationTensor` must carry the no-capture counter and the turn
+  count (each scaled by its limit), because both limits change the outcome. OpenSpiel's
+  `chess` does the same for its 50-move counter (`AddScalarPlane(IrreversibleMoveCounter(),
+  0, 101, ...)`, `chess.cc`). Without them, a position looks identical one turn before and one
+  turn after the cap ends the game.
 
-Build move generation in the order **hurl, dwarf move, shove, troll move**, testing each
+Build move generation in the order **hurl, dwarf move, shove, troll step**, testing each
 before starting the next. Writing all four and then debugging them together is the obvious
 trap here.
 
 ### Phase 4 — Tests
 
 - **Unit-test every move type both ways: positive and negative.** For each of the five
-  decision types, assert that every *allowed* move is generated, and — equally important —
+  move types, assert that every *allowed* move is generated, and — equally important —
   that every *forbidden* move is absent from `LegalActions()`. A move generator that is
   merely permissive passes any positive-only test suite, so the negative cases are what
   actually pin the rules down. Derive them clause by clause from `THUD_RULES.md`:
 
-  | Decision | Positive | Negative — must NOT be legal |
+  | Move type | Positive | Negative — must NOT be legal |
   |---|---|---|
   | Dwarf move | 1..k squares, all 8 directions, to empty squares | through or onto any piece; through or onto the Thudstone; onto a troll (a dwarf never captures by moving) |
-  | Dwarf hurl | line of `N >= 2`, distance `1..N`, landing on a troll | lone dwarf (`N = 1`); distance `> N`; blocked path; landing on an empty square; landing on a dwarf; hurling the *rear* dwarf |
-  | Troll move | exactly 1 square, all 8 directions, to an empty square | more than 1 square; onto any piece; onto the Thudstone |
-  | Troll shove | line of `N >= 2`, distance `1..N`, lands empty, captures `>= 1` | lone troll (`N = 1`); distance `> N`; blocked path; landing on a piece; **landing where no dwarf is adjacent** |
-  | Dwarf removal | removing any dwarf adjacent to the destination; "done" | removing a non-adjacent dwarf; removing a troll; "done" immediately after a *shove* before any removal (a shove must capture) |
+  | Dwarf hurl | line of `N >= 1`, distance `1..N`, landing on a troll — including a **lone dwarf onto an adjacent troll** | lone dwarf at distance 2; distance `> N`; blocked path; landing on an empty square, a dwarf or the Thudstone; hurling the *rear* dwarf |
+  | Troll step, captures none | exactly 1 square, all 8 directions, to an empty square | more than 1 square; onto any piece; onto the Thudstone |
+  | Troll step, captures all | 1 square to an empty square with ≥ 1 adjacent dwarf; **every** adjacent dwarf removed | landing where no dwarf is adjacent; any dwarf left adjacent afterwards |
+  | Troll shove | line of `N >= 2`, distance `2..N`, lands empty, ≥ 1 adjacent dwarf, **all** adjacent dwarfs removed | distance 1 (that is a step); lone troll; distance `> N`; blocked path; landing on a piece; **landing where no dwarf is adjacent** |
 
   Cover the board geometry explicitly too: moves off the octagon's diagonal edges, lines that
-  run into a cut corner, and maximum-length lines along a full 15-square rank.
+  run into a cut corner, and maximum-length lines along a full 15-square rank. Test the
+  action encoding round trip (`THUD_RULES.md` §8) and the end conditions (§6) directly.
 
 - `thud_test.cc` with OpenSpiel's `RandomSimTest` for crash-freedom and invariant checking.
 - Register the short name in `open_spiel/python/tests/pyspiel_test.py`.
@@ -148,7 +158,9 @@ trap here.
 ### Phase 5 — Benchmark, then decide
 
 Measure legal-move generations/sec, random rollouts/sec, and MCTS simulations/sec. Record the
-numbers in `PROGRESS.md`. These unblock both deferred decisions below.
+numbers in `PROGRESS.md`. These unblock both deferred decisions below. Also record how long
+random rollouts run and how they end under the 200/800 limits, and compare with the
+hexparrot-based measurements in `PROGRESS.md`, session 2, to confirm that proxy held.
 
 ---
 
@@ -213,7 +225,7 @@ byte-identically.
 
 **7. Branch hygiene.** Rebase onto current upstream `master` and open the PR from a branch
 carrying only the upstreamable commits. This is the whole reason `master` stays clean and our
-diff inside `open_spiel/` stays to two registration lines.
+diff to existing files inside `open_spiel/` stays at the two registration points.
 
 **8. Expect a wait.** PRs are merged in batches, roughly every two weeks.
 
@@ -227,3 +239,4 @@ Recorded here so they are decided deliberately rather than by accident.
 | Local CPU training vs rented cloud GPU | Phase 5 benchmarks |
 | `OPEN_SPIEL_BUILD_WITH_LIBTORCH` on aarch64 (needed for C++ AlphaZero) | Only if we commit to C++ AlphaZero |
 | Whether to attempt upstreaming to OpenSpiel | Thud is commercially published; copyright question unresolved |
+| **End-of-battle limits** (`THUD_RULES.md` §6: no-capture cap and hard turn cap) — **re-evaluate once our engine plays strongly** | A strong engine of our own. The current defaults rest on proxies only (random play and hexparrot's heuristic AI; see `PROGRESS.md`, session 2), and strong play may stall in ways the proxies never do. Re-measure on our engine's self-play: how games end (rout, no legal move, no-capture cap, hard cap), the longest no-capture stretches, and the "dead tail" after the last capture. Lower the no-capture cap if games regularly sit out the whole cap; raise it if it cuts off real manoeuvring. Both are game parameters, so no code change is needed. |

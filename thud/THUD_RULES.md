@@ -4,31 +4,21 @@
 > REQUEST TO `google-deepmind/open_spiel`, OR IN ANY OTHER PUBLIC DISTRIBUTION.**
 >
 > Thud is commercially published by Trevor Truran / The Cunning Artificer. Game *mechanics*
-> are not copyrightable, but the *expression* of them is, and this file reproduces that
-> expression directly.
->
-> Anything upstream-facing — header comments, a `docs/games.md` entry — must be written from
-> scratch in our own words, never copied from here. See the pre-PR checklist in
-> `thud/PLAN.md`.
+> are not copyrightable, but the *expression* of them is, and this file quotes that
+> expression. Anything upstream-facing — header comments, a `docs/games.md` entry — must be
+> written from scratch in our own words. See the pre-PR checklist in `thud/PLAN.md`.
 
 # Thud — rules specification
 
-The exact ruleset we implement. Where the published rules are ambiguous, the ambiguity is
-recorded and a decision made explicitly. **Implement this file, not recollection of Thud.**
-
-Sources: the official rules as reproduced on BoardGameGeek and in the Tabletop Simulator
-workshop edition, cross-checked against `wiki.lspace.org/Thud` and `spaxegames.wordpress.com/thud`.
-The official PDF at `tesera.ru/images/items/1543265/THUD_RULES.pdf` returns HTTP 403; the
-lspace wiki's prose account is loose and wrong in at least one place (it implies trolls hurl).
+The exact ruleset and action encoding we implement. **Implement this file, not recollection
+of Thud.** Sections 1–8 are the specification; section 9 explains the non-obvious choices.
 
 ---
 
 ## 1. Board
 
-15x15 grid, rows and columns indexed `0..14`, with a 15-square triangle removed from each
-corner, giving an octagon of **165 squares**.
-
-Playable columns per row:
+A 15×15 grid of squares `(row, col)`, both `0..14`, row 0 at the top ("north"). A triangle
+of 15 squares is cut from each corner, leaving an octagon of **165 squares**:
 
 | Row | Cols | Row | Cols |
 |---|---|---|---|
@@ -41,232 +31,188 @@ Playable columns per row:
 | 6 | 0–14 | 14 | 5–9 |
 | 7 | 0–14 | | |
 
-`5+7+9+11+13 + 15x5 + 13+11+9+7+5 = 165`.
+The **Thudstone** stands on `(7,7)` for the whole game. It belongs to neither player, never
+moves, and no piece may land on it or pass over it.
 
-The **Thudstone** occupies the centre square `(7,7)` for the whole game. It is not a piece,
-belongs to neither player, and may never be moved onto or through.
+**Adjacent** means one of the up to 8 neighbouring squares, orthogonal or diagonal. Every
+move runs in a straight line along one of the 8 directions.
 
 ## 2. Setup
 
-**Trolls (8)** — the eight squares orthogonally and diagonally adjacent to the Thudstone:
+**Trolls (8):** the 8 squares adjacent to the Thudstone —
 `(6,6) (6,7) (6,8) (7,6) (7,8) (8,6) (8,7) (8,8)`.
 
-**Dwarfs (32)** — every square on the octagon's perimeter *except* the four in the same row
-or column as the Thudstone. The perimeter is 36 squares:
+**Dwarfs (32):** all 36 perimeter squares except the 4 in line with the Thudstone,
+`(0,7) (7,0) (7,14) (14,7)`:
 
 - straight edges: row 0 cols 5–9; row 14 cols 5–9; col 0 rows 5–9; col 14 rows 5–9 (20)
-- diagonal edges: `(1,4)(2,3)(3,2)(4,1)`, `(1,10)(2,11)(3,12)(4,13)`, `(10,1)(11,2)(12,3)(13,4)`, `(10,13)(11,12)(12,11)(13,10)` (16)
+- diagonal edges: `(1,4) (2,3) (3,2) (4,1)`, `(1,10) (2,11) (3,12) (4,13)`,
+  `(10,1) (11,2) (12,3) (13,4)`, `(10,13) (11,12) (12,11) (13,10)` (16)
 
-Excluded: `(0,7) (7,0) (7,14) (14,7)`. Hence `36 - 4 = 32`.
+## 3. Turns
 
-**Dwarfs move first.**
+Player 0 commands the dwarfs, player 1 the trolls. **Dwarfs move first**, then the players
+alternate. A turn is exactly one of the moves in sections 4–5; there is no passing. Pieces
+capture only as part of their own move.
 
-## 3. Directions
-
-Eight directions throughout: the four orthogonals and the four diagonals. "Line" always
-means a maximal run of same-type pieces on consecutive squares along one direction.
-
-## 4. Dwarf turn — exactly one of
+## 4. Dwarf moves
 
 ### 4a. Move
 
-Choose a dwarf and a direction; move it `1..k` squares. Every square traversed **and** the
-destination must be empty — not a piece, not the Thudstone. A dwarf never captures by moving.
+- **Allowed:** one dwarf moves 1 or more squares in one direction; every square it passes
+  over and its landing square are empty.
+- **Not allowed:** passing over or landing on any piece or the Thudstone. A move never
+  captures.
 
 ### 4b. Hurl
 
-Let a line of `N` dwarfs run in direction `d`. The **front** dwarf (the one furthest along
-`d`) is hurled along `d` onto a square occupied by a troll, provided:
+A dwarf on square `s` is hurled in direction `d`. `N` is the number of dwarfs in the
+unbroken line that starts at `s` and runs backwards (direction `−d`), counting the hurled
+dwarf itself.
 
-- every square strictly between the front dwarf and that troll is empty, and
-- the number of such intervening squares is **< N**.
+- **Allowed:** the dwarf travels `k` squares, `1 ≤ k ≤ N`; the `k − 1` squares it passes
+  over are empty, and its landing square holds a troll. That troll is captured and the dwarf
+  takes its square. **`N = 1` is allowed:** a lone dwarf may hurl onto an adjacent troll
+  (§9.2).
+- **Not allowed:** `k > N`; passing over any piece or the Thudstone; landing on an empty
+  square, a dwarf or the Thudstone. A hurl captures exactly one troll.
 
-Equivalently, the hurled dwarf travels `1..N` squares. The dwarf leaves its origin, lands on
-the troll's square, and that troll is captured. A hurl captures **exactly one** troll and may
-only land on a troll — never on an empty square.
+## 5. Troll moves
 
-## 5. Troll turn — exactly one of
+### 5a. Step
 
-### 5a. Move
-
-Choose a troll and a direction; move it **exactly one** square onto an empty square (not the
-Thudstone). Having moved, it **may** capture any subset of the dwarfs on the eight squares
-adjacent to its destination — including none. Capturing is not compulsory.
+- **Allowed:** one troll moves exactly 1 square to an empty square. If at least one dwarf
+  is adjacent to the landing square, the troll player chooses: **capture all** of those
+  dwarfs, or **capture none** (§9.1).
+- **Not allowed:** moving more than 1 square (except by shove); landing on any piece or the
+  Thudstone; capturing only some of the adjacent dwarfs; capturing without moving.
 
 ### 5b. Shove
 
-Let a line of `N` trolls run in direction `d`. The **endmost** troll (furthest along `d`) is
-shoved `1..N` squares along `d`, provided every square traversed and the destination is
-empty. Having landed, it captures any subset of the dwarfs adjacent to its destination.
+A troll on square `s` is shoved in direction `d`. `N` is the number of trolls in the
+unbroken line that starts at `s` and runs backwards (direction `−d`), counting the shoved
+troll itself. The other trolls in the line stay where they are.
 
-**A shove is legal only if it captures at least one dwarf.** A shove that would capture
-nothing is not a legal move. Confirmed by implementation: `dstu/thud` returns `None` when the
-capture count is zero (`if i == 0 { None }`), and `hexparrot/thudgame` returns no moves
-(`if not capturable: return []`).
+- **Allowed:** the troll travels `k` squares, `2 ≤ k ≤ N`; every square it passes over and
+  its landing square are empty; and **at least one dwarf is adjacent to the landing
+  square**. **All** dwarfs adjacent to the landing square are captured.
+- **Not allowed:** `k = 1` (that is a step, §9.3); `k > N`, so a lone troll never shoves;
+  passing over or landing on any piece or the Thudstone; a shove that captures nothing;
+  declining the captures.
 
 ## 6. End of the battle
 
-Officially: "when both players agree that no more captures can be made by continuing to play,
-or when one player has no more valid moves to make."
+The battle ends as soon as one of these holds:
+
+1. The player to move has no legal move. This includes a side with no pieces left.
+2. `max_turns_without_capture` consecutive turns (default **200**) have passed without a
+   capture by either side.
+3. `max_turns` turns (default **800**) have been played.
+
+Both limits are game parameters. The official ending, by agreement, cannot be implemented
+(§9.4). The defaults are to be re-evaluated once our engine plays strongly (`PLAN.md`,
+*Deferred decisions*).
 
 ## 7. Scoring
 
-Surviving dwarfs score **1 point each** for the dwarf player; surviving trolls score
-**4 points each** for the troll player. The result is the difference.
+The dwarf player scores 1 point per surviving dwarf, the troll player 4 points per surviving
+troll. The margin `m = dwarfs − 4 × trolls` lies in `[−32, 32]`. Returns are `m / 32` for
+player 0 (dwarfs) and `−m / 32` for player 1 (trolls). One OpenSpiel game is one battle
+(§9.5).
 
-Maxima are `32` and `8 x 4 = 32`, so the game is naturally balanced. A full match is **two
-battles with the sides swapped**; the higher two-battle total wins.
+## 8. Action encoding
+
+Every turn is exactly one action, so turns and actions coincide and `MaxGameLength` equals
+`max_turns`.
+
+- **Square `s`**, 0–164: the 165 squares in row-major order — row 0 cols 5–9 are 0–4, row 1
+  cols 4–10 are 5–11, and so on. The Thudstone has an index but never moves.
+- **Direction `d`**, 0–7: N `(−1,0)`, NE `(−1,+1)`, E `(0,+1)`, SE `(+1,+1)`, S `(+1,0)`,
+  SW `(+1,−1)`, W `(0,−1)`, NW `(−1,−1)`.
+- **Distance `k`**, 1–14.
+
+| Actions | Formula | Meaning |
+|---|---|---|
+| 0 – 18,479 | `(s × 8 + d) × 14 + (k − 1)` | the piece on `s` goes `k` squares in direction `d`: **dwarf move**, **dwarf hurl**, **troll step without capturing** (`k = 1`) or **troll shove** (`k ≥ 2`) |
+| 18,480 – 19,799 | `18,480 + s × 8 + d` | **troll step capturing all**: the troll on `s` steps 1 square in direction `d` and captures all adjacent dwarfs |
+
+`NumDistinctActions` is **19,800**. Actions whose path leaves the board are never legal. The
+kind of move follows from the mover, the action range and the landing square:
+
+| Mover | Action | Move |
+|---|---|---|
+| dwarf | first range, landing square empty | move (4a) |
+| dwarf | first range, landing square holds a troll | hurl (4b) |
+| troll | first range, `k = 1` | step, captures none (5a) |
+| troll | second range | step, captures all (5a); legal only if a dwarf is adjacent to the landing square |
+| troll | first range, `k ≥ 2` | shove, captures all (5b); legal only if a dwarf is adjacent to the landing square — a shove never captures nothing |
+
+This is the from-square × direction × distance layout of OpenSpiel's `chess`.
 
 ---
 
-## 8. Ambiguities and our decisions
+## 9. Why the rules read this way
 
-These are the points where the published rules do not determine behaviour. Each needs a
-decision before the action encoding is designed; **items 1 and 4 must be settled first**
-because they change the action space.
+**Sources, most authoritative first:**
 
-Each item records how three existing implementations resolved it, which settles two of the
-four outright:
+- **The official rules** from the official Thud website, "Rules for Classic Thud and Koom
+  Valley Thud" (© 2001/2005 Terry Pratchett, Trevor Truran and Bernard Pearson), archived:
+  page 1 `https://web.archive.org/web/20071113030431/http://shop.thudgame.com/rules`,
+  page 2 `https://web.archive.org/web/20071103213932/http://www.thudgame.com/rules2`.
+- The printed rulebook's wording, as reproduced on BoardGameGeek and in the Tabletop
+  Simulator workshop edition. Its PDF (`tesera.ru/images/items/1543265/THUD_RULES.pdf`)
+  returns HTTP 403 to us. `wiki.lspace.org/Thud` is unreliable (it implies trolls hurl).
+- Three implementations, read in full on 2026-09-22: `dstu/thud` (Rust, MCTS),
+  `THFlowers/Thud-CLI` (Java, MCTS) and `hexparrot/thudgame` (Python, heuristic AI). Code
+  citations are in `PROGRESS.md`, session 2.
 
-| Implementation | Language | Notes |
-|---|---|---|
-| [`dstu/thud`](https://github.com/dstu/thud) | Rust | Has MCTS; most carefully structured |
-| [`THFlowers/Thud-CLI`](https://github.com/THFlowers/Thud-CLI) | Java | Has MCTS |
-| [`hexparrot/thudgame`](https://github.com/hexparrot/thudgame) | Python | Has AI engine and self-play |
+### 9.1 Troll captures: all or none, declining allowed
 
-**Contested rules should be OpenSpiel game parameters**, declared in
-`parameter_specification` rather than hard-coded. That turns items 1–3 from arguments into
-experiments, and costs almost nothing to build in up front.
+The official text says only *"A troll captures one or more dwarfs by moving to a square next
+to it (them)"* and *"Capturing is not compulsory."* It says nothing about choosing among
+adjacent dwarfs; only the printed wording "any (all) … may be captured" hints at a subset.
+All three implementations' AIs use all or none, so we do too — it keeps one action per turn.
 
-### 1. Do trolls choose which dwarfs to capture? — affects action space
+Declining stays legal because the rules say so explicitly, although it is almost always a
+blunder: the declined dwarf is adjacent to the troll and can hurl it on the next turn (§9.2).
+dstu's and THFlowers' MCTS keep the option as well. A shove must capture, so it captures all.
 
-The rules say a troll "may" capture "any (all)" adjacent dwarfs and that "capturing is not
-compulsory". Read literally, the troll player chooses an arbitrary subset of up to 8 adjacent
-dwarfs: 256 possibilities per landing square.
+### 9.2 A lone dwarf may hurl
 
-Declining a capture is genuinely strategic in Thud (a dwarf left alive can shield the troll,
-and captures expose the capturing troll), so "capture all" is a real rule change, not a
-simplification of a dead option.
+Official: *"(Note: 1 lone dwarf can form a line of 1 by moving to a square adjacent to a
+troll then hurling himself and capture a troll in this way. He can't move and capture on
+the same move, though, but must wait for his next move assuming the troll hasn't captured
+him by then.)"* All three implementations agree.
 
-**Options:**
-- **(a) Faithful, as a second decision node.** Apply the move, then have the same player
-  choose captures — legal actions become "capture the dwarf at square X" plus "done". Reuses
-  the square encoding, keeps the action space small, and is exactly correct. Cost: roughly
-  doubles tree depth on capturing moves.
-- **(b) Capture all, mandatory.** Simplest and smallest tree; a documented deviation from the
-  rules.
+The distance rule is official too: *"4 dwarfs can attack a troll if there are 0, 1, 2, or 3
+empty squares between the front dwarf and the troll"*, i.e. `1 ≤ k ≤ N`. Because `N` only
+bounds the distance, counting the full line never loses a legal hurl.
 
-**Implementations are genuinely split, so this one stays a decision:**
-- `THFlowers/Thud-CLI` — **chosen subset**, and implemented exactly as option (a): after a
-  move or shove it sets `turn.setRemoveTurn(true)`, and `removePlay()` then takes the
-  player's explicitly listed positions via a separate `R` command.
-- `hexparrot/thudgame` — **capture all**: `capturable = self.tokens_adjacent(dest, 'dwarf')`
-  is captured wholesale.
-- `dstu/thud` — **unclear from a first reading.** `Action::Shove` carries a capture count and
-  a `[Coordinate; 7]` list, but generation appears to emit one action per `(start, end)` with
-  the captured set already computed, which reads more like capture-all than a choice. Needs a
-  closer look before being counted as evidence either way.
+### 9.3 Shoves travel 2 to N squares
 
-**Option (a) is idiomatic OpenSpiel, not a workaround.** `open_spiel/games/amazons/` is an
-in-tree precedent: Amazons has a three-phase turn (move a piece, then shoot an arrow) built
-as `enum MoveState { amazon_select, destination_select, shot_select }`, where
-`CurrentPlayer()` simply returns `current_player_` and `DoApplyAction` only flips it in the
-final phase:
+A one-square shove and its captures produce exactly the position of a one-square step that
+captures all, which 5a already allows. Leaving it out loses no position and keeps every
+action unambiguous. THFlowers' MCTS generates shoves the same way. The official description
+— *"the front troll is shoved in the back by the rest in the line"* — implies at least two
+trolls anyway.
 
-```cpp
-case shot_select: {
-  board_[shoot_] = CellState::kBlock;
-  current_player_ = 1 - current_player_;
-  state_ = amazon_select;
-}
-```
+### 9.4 Termination
 
-`LegalActions()` switches on `state_` to return the right actions per sub-phase. Nothing in
-OpenSpiel requires players to alternate — a multi-phase turn is a supported pattern with a
-working reference implementation to copy.
+Officially a battle ends when the players agree that no more captures can be made, or when
+a player cannot move. Agreement cannot be evaluated, and in self-play the trailing player
+never agrees. We follow `hexparrot/thudgame`: a no-progress cap (its 400-ply cutoff is
+annotated "self-play only") plus the official no-legal-move ending. `dstu/thud`'s
+propose/accept actions are faithful but stall the same way.
 
-**Settled: (a) — a separate dwarf-removal phase.** Faithful to the rules, idiomatic in
-OpenSpiel, and `THFlowers` shows it works in practice. Only tree depth suffers, not the
-action space. Revisit only if Phase 5 shows depth is the bottleneck.
+The defaults 200/800 were chosen by measurement (2026-09-22; details in `PROGRESS.md`,
+session 2). In 3,000 games of hexparrot's AI they never ended a game: the longest lasted 152
+turns and its longest stretch without a capture was 41 turns. In 1,000 random games — the
+regime of early training — they cut 1.5% of games short, against 16–57% for the shorter
+pairs tested, while playing only 3–16% more turns than those. Removing the limits altogether would add only 0.3%
+more turns, because random games end on their own.
 
-Concretely: after a troll move or shove resolves, if any dwarfs are adjacent to the
-destination, the state enters a removal phase with the **same player** still to act. Legal
-actions are "remove the dwarf at square X" for each adjacent dwarf, plus "done". After a
-*move* the "done" action is available immediately (capturing is not compulsory); after a
-*shove* at least one dwarf must be removed before "done" becomes legal, since a shove is only
-legal if it captures.
+### 9.5 One battle per game
 
-### 2. Can a single dwarf hurl itself? (`N = 1`)
-
-"Anywhere there is a line of adjacent dwarfs" suggests `N >= 2`. But with `N = 1` the
-condition "intervening squares < 1" permits a lone dwarf to capture an **adjacent** troll.
-Implementations differ.
-
-**Implementations lean toward requiring `N >= 2`, 2 to 1:**
-- `dstu/thud` — **requires `N >= 2`**. Hurl generation walks a ray forwards while walking the
-  reverse ray backwards, and bails immediately with `if !self[previous].is_dwarf() { return
-  None }` — so the square *behind* the dwarf must hold a dwarf, and a lone dwarf fails at the
-  first step.
-- `hexparrot/thudgame` — **requires `N >= 2`**.
-- `THFlowers/Thud-CLI` — **allows `N = 1`**, and deliberately: `distanceAttackCheck()` throws
-  `"Shove must be at least 2 trolls"` only when `numInLine == 1 && turn == TROLL`. The
-  troll-only guard shows the asymmetry was intentional, not an oversight.
-
-**Settled: require `N >= 2`.** The decisive argument is textual. The official rules phrase the
-two moves *identically* — "anywhere there is a straight (orthogonal or diagonal) line of
-adjacent **trolls/dwarfs** on the board, they may **shove/hurl**". Identical phrasing must be
-read identically, and the `N >= 2` requirement for shove is unanimous across implementations
-(item 3). So hurl requires `N >= 2` too, and `THFlowers` is simply wrong here.
-
-Supporting: allowing `N = 1` would let any dwarf take any adjacent troll, gutting the game's
-central asymmetry — trolls capture by contact, dwarfs must strike at range — and making rule
-4a's "a dwarf never captures by moving" nearly vacuous.
-
-### 3. Can a single troll shove? (`N = 1`)
-
-With `N = 1` a shove is a one-square move that captures — i.e. rule 5a. Treating it as a
-shove would duplicate 5a and make troll captures effectively mandatory.
-
-**Settled: require `N >= 2`.** All three implementations agree, one of them with an explicit
-error message to that effect (`"Shove must be at least 2 trolls"`), and `dstu/thud` enforces
-it structurally by requiring the square behind the shoved troll to hold a troll.
-
-### 4. Termination — the official condition is not implementable
-
-"Both players agree" cannot be evaluated, and dwarfs can shuffle indefinitely. Note that in a
-margin-scored game the player who is ahead wants to stop and the player behind does not, so
-mutual agreement is not a mechanism that survives contact with self-play.
-
-**The two implementations take opposite approaches, and one of them is a warning:**
-- `hexparrot/thudgame` — a **no-progress cap plus a stalemate check**:
-  `DEFAULT_MAX_PLIES = 400` produces a `'cutoff'` result, and `has_legal_move(...)` returning
-  false ends the game as a no-move stalemate. Tellingly, their cutoff is annotated
-  *"self-play only"* — i.e. added for exactly our use case.
-- `dstu/thud` — models the **agreement** faithfully: *"A Thud game traditionally ends when
-  both players agree that it should end. This is implemented as a proposal/counter-proposal
-  process"*, with a `Decision` enum of `Accept`/`Decline`. Faithful, but it adds actions to
-  the space and inherits the problem above: under self-play the trailing player simply never
-  accepts, so games would run to whatever cap exists anyway.
-
-**Implement `hexparrot`'s approach.** The battle ends when **either**
-
-- the current player has no legal move (this *is* an official condition), **or**
-- `K` consecutive plies have passed with no capture — start with `K = 50` and tune, **or**
-- a hard `MaxGameLength` cap is reached (required by OpenSpiel regardless). `hexparrot`'s
-  400 plies is a reasonable starting anchor.
-
-Terminal utility is the score difference, normalised to `[-1, 1]` by dividing by 32. This
-gives a richer learning signal than win/loss, and 32 is the exact maximum margin.
-
-### 5. Whether a hurl may use a sub-line
-
-If five dwarfs are in a line, may the player treat them as a line of three to hurl a shorter
-distance? Since `N` sets only an upper bound on distance (`1..N`), a shorter throw is already
-legal from the maximal line, so **use the maximal line** and the question is moot. Noted only
-so it is not rediscovered.
-
-### 6. Match structure
-
-We model **one battle** as one OpenSpiel game, not the two-battle match. Score-difference
-utility already captures the margin that the match structure aggregates, and side-swapping is
-an evaluation-harness concern, not a game-rules one.
+Officially a game is two battles with sides swapped, won on the combined margin. We model a
+single battle: its margin-based return already carries what the match adds up, and swapping
+sides is a job for the evaluation harness, not the rules.

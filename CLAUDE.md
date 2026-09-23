@@ -19,11 +19,11 @@ Before doing anything else, read:
 1. `thud/PROGRESS.md` — the `## Current status` block at the top says where we actually are
    and what the next step is.
 2. `thud/PLAN.md` — the roadmap and which phase we are in.
-3. `thud/THUD_RULES.md` — the authoritative ruleset. **Implement what this file says**, not
-   what you remember about Thud. The published rules are ambiguous in several places, and
-   its section 8 records which reading we chose and why. Several of those points are still
-   recommendations rather than settled decisions — check with the user before building on
-   them.
+3. `thud/THUD_RULES.md` — the authoritative ruleset and action encoding. **Implement what
+   this file says**, not what you remember about Thud. The published rules are ambiguous in
+   several places; its section 9 records which reading we chose and why. All of those
+   points were settled with the user on 2026-09-22 — if one ever needs changing, raise it
+   with the user rather than deviating in code.
 
 ## Session end
 
@@ -48,7 +48,9 @@ These facts were established by measurement and cost real time to work out. Do n
 re-derive them.
 
 - **Development happens in WSL2 / Ubuntu on ARM64.** The host is a Snapdragon X, 10 cores,
-  ~31.6 GB RAM.
+  ~31.6 GB RAM — but **WSL itself sees 15 GB RAM + 4 GB swap** (its default is half the
+  host). That is ample for the build: full `make -j10` takes ~4m40s with a 1.2 GB peak per
+  compiler process; full `ctest -j10` takes ~90 s.
 - **Do not develop on the Windows side.** The Windows Python is an x64 build running under
   emulation (its pip tags are `win_amd64`), and no `win_arm64` OpenSpiel wheels exist.
 - **Keep the repo on the WSL native filesystem** (`~/thud-openspiel`), never under
@@ -115,18 +117,22 @@ unexpected diff means a rule changed.
 ## Conventions
 
 **Stay out of upstream code.** Do not edit anything under `open_spiel/` except
-`open_spiel/games/thud/` and these two registration points:
+`open_spiel/games/thud/`, these two registration points:
 
 - `open_spiel/games/CMakeLists.txt` — add the Thud sources and test target
 - `open_spiel/python/tests/pyspiel_test.py` — add the `thud` short name
+
+and the generated playthrough baseline `open_spiel/integration_tests/playthroughs/thud.txt`
+(a new file, written only by `generate_new_playthrough.sh`, never by hand).
 
 Keeping the diff that small is what lets us rebase onto upstream without pain.
 
 **Branches.** Work on `thud`. Leave `master` tracking upstream so rebasing stays easy.
 
 **Style.** Follow the Google C++ style guide and match the surrounding OpenSpiel code. Mirror
-`open_spiel/games/amazons/` for the multi-phase turn structure, and
-`open_spiel/games/tic_tac_toe/` for the surrounding boilerplate.
+`open_spiel/games/tic_tac_toe/` for the surrounding boilerplate and `open_spiel/games/chess/`
+for the from-square × direction × distance action layout. The implementation must be very
+fast yet readable — see `thud/PLAN.md` Phase 3.
 
 **Decide from evidence, not preference.** When choosing between approaches — a layout, a
 convention, an encoding — check what the upstream project actually documents and what other
