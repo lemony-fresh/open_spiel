@@ -1,0 +1,161 @@
+# CLAUDE.md — Thud on OpenSpiel
+
+This is a **fork of `google-deepmind/open_spiel`**. Our purpose here is to implement the
+board game **Thud** as a C++ game inside OpenSpiel, and then build an AI for it.
+
+Our work lives in exactly two places:
+
+- `open_spiel/games/thud/` — the game implementation (`thud.h`, `thud.cc`, `thud_test.cc`)
+- `thud/` — our roadmap, session log, rules spec, and experiment scripts
+
+Everything else in this tree is upstream OpenSpiel code.
+
+---
+
+## Session start
+
+Before doing anything else, read:
+
+1. `thud/PROGRESS.md` — the `## Current status` block at the top says where we actually are
+   and what the next step is.
+2. `thud/PLAN.md` — the roadmap and which phase we are in.
+3. `thud/THUD_RULES.md` — the authoritative ruleset. **Implement what this file says**, not
+   what you remember about Thud. The published rules are ambiguous in several places, and
+   its section 8 records which reading we chose and why. Several of those points are still
+   recommendations rather than settled decisions — check with the user before building on
+   them.
+
+## Session end
+
+This project runs across many sessions, so the log is what keeps it coherent. At the end of
+each working session, without being asked:
+
+1. Append a dated entry to `thud/PROGRESS.md` under `## Session log` covering: what changed,
+   what decisions were made (and why), what is half-finished, and what the next step is.
+2. Overwrite the `## Current status` block at the top of `thud/PROGRESS.md` so it reflects
+   reality.
+3. If the roadmap itself changed — scope, phase order, a deferred decision now resolved —
+   update `thud/PLAN.md` too. Do not record roadmap changes only in the session log.
+
+Prefer concrete detail over summary. "Implemented hurl generation; blocked on whether a hurl
+onto an empty square is legal" is useful. "Worked on move generation" is not.
+
+---
+
+## Environment
+
+These facts were established by measurement and cost real time to work out. Do not
+re-derive them.
+
+- **Development happens in WSL2 / Ubuntu on ARM64.** The host is a Snapdragon X, 10 cores,
+  ~31.6 GB RAM.
+- **Do not develop on the Windows side.** The Windows Python is an x64 build running under
+  emulation (its pip tags are `win_amd64`), and no `win_arm64` OpenSpiel wheels exist.
+- **Keep the repo on the WSL native filesystem** (`~/thud-openspiel`), never under
+  `/mnt/c/...`. Cross-filesystem I/O is drastically slower and makes every build painful.
+- **There is no CUDA GPU.** The integrated GPU is a Qualcomm Adreno X1-85. There is also no
+  official prebuilt LibTorch for aarch64 Linux, so `OPEN_SPIEL_BUILD_WITH_LIBTORCH=ON`
+  (OpenSpiel's C++ AlphaZero) is high-risk on this machine and is currently **off**. Any
+  serious neural-network training will need either cloud compute or a reduced scale.
+- OpenSpiel does publish `manylinux_2_28_aarch64` wheels (cp311–cp314). If the C++ build
+  breaks, `pip install open_spiel` is a usable fallback to keep Python-side work moving.
+
+## Shell environment — one-time setup, then nothing per session
+
+**Claude Code's Bash tool does not persist shell state between commands.** The working
+directory carries over, but exported variables and `source venv/bin/activate` do not. So an
+activated venv cannot be relied on across tool calls.
+
+Put the environment in `~/.bashrc` instead, where every new shell inherits it:
+
+```bash
+export PYTHONPATH=$PYTHONPATH:$HOME/thud-openspiel
+export PYTHONPATH=$PYTHONPATH:$HOME/thud-openspiel/build/python
+source $HOME/thud-openspiel/venv/bin/activate
+```
+
+Do this once. Afterwards there is nothing to do at the start of a session. If a build command
+fails with a missing module or a missing `pyspiel`, check `~/.bashrc` first rather than
+prefixing activation onto the command.
+
+## Build and test
+
+From the repo root:
+
+```bash
+# one-time setup
+./install.sh
+python3 -m pip install --upgrade pip setuptools
+python3 -m pip install -r requirements.txt
+
+# build
+mkdir -p build && cd build
+CXX=clang++ cmake -DPython3_EXECUTABLE=$(which python3) \
+  -DCMAKE_CXX_COMPILER=clang++ ../open_spiel
+make -j10
+
+# test
+ctest -j10                 # everything
+ctest -R thud              # just ours
+./examples/example --game=thud
+```
+
+Playthrough regression baseline (our most valuable correctness tool — it catches accidental
+rule changes):
+
+```bash
+./open_spiel/scripts/generate_new_playthrough.sh thud
+```
+
+Regenerate and diff it after any change to move generation or the action encoding. An
+unexpected diff means a rule changed.
+
+---
+
+## Conventions
+
+**Stay out of upstream code.** Do not edit anything under `open_spiel/` except
+`open_spiel/games/thud/` and these two registration points:
+
+- `open_spiel/games/CMakeLists.txt` — add the Thud sources and test target
+- `open_spiel/python/tests/pyspiel_test.py` — add the `thud` short name
+
+Keeping the diff that small is what lets us rebase onto upstream without pain.
+
+**Branches.** Work on `thud`. Leave `master` tracking upstream so rebasing stays easy.
+
+**Style.** Follow the Google C++ style guide and match the surrounding OpenSpiel code. Mirror
+`open_spiel/games/amazons/` for the multi-phase turn structure, and
+`open_spiel/games/tic_tac_toe/` for the surrounding boilerplate.
+
+**Decide from evidence, not preference.** When choosing between approaches — a layout, a
+convention, an encoding — check what the upstream project actually documents and what other
+implementations actually do, and cite it. "The developer guide documents only this workflow"
+settles a question; an unsourced recommendation invites a round trip. This project has
+already been bitten the other way: the rules were pinned down by reading three existing Thud
+implementations, which overturned two conclusions reached by reasoning alone.
+
+## Licensing — these are obligations, not preferences
+
+OpenSpiel is Apache License 2.0, and we keep Apache 2.0 for our own files too.
+
+- **Every new file** we add carries an Apache 2.0 header with our own copyright line.
+- **Every upstream file we modify** must carry a prominent notice stating that we changed it.
+  Apache 2.0 section 4(b) requires this. Currently that means `open_spiel/games/CMakeLists.txt`
+  and `open_spiel/python/tests/pyspiel_test.py`.
+- **Never** remove or alter existing copyright notices, and never touch `LICENSE`.
+
+Note that Thud itself is a commercially published game. Upstreaming our implementation to
+OpenSpiel may not be possible — their contributing guide flags that copyrighted games can
+need legal approval. Assume this fork is the final home unless that question gets resolved.
+
+**`thud/THUD_RULES.md` quotes the official rules verbatim and must never be upstreamed.**
+Game mechanics are not copyrightable but their expression is, so anything that could go
+upstream — header comments, a `docs/games.md` entry — must be written from scratch in our own
+words. `thud/PLAN.md` has the full pre-PR checklist.
+
+Never upstream `CLAUDE.md` or anything under `thud/`. A `.githooks/pre-push` hook enforces
+this for pushes aimed at `deepmind/open_spiel`, but it only runs if this clone has been set
+up with `git config core.hooksPath .githooks`, and `--no-verify` bypasses it. **Do not reach
+for `--no-verify` if that hook fires** — it is telling you the branch is wrong, not that the
+hook is.

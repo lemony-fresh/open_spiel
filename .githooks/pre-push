@@ -1,0 +1,71 @@
+#!/bin/sh
+#
+# Copyright 2026 The Thud-on-OpenSpiel authors.
+# Licensed under the Apache License, Version 2.0.
+#
+# Refuses any push to the UPSTREAM OpenSpiel repository that would carry our
+# project-private files. Pushes to our own fork are unaffected.
+#
+# The file this primarily protects is thud/THUD_RULES.md, which quotes the
+# official Thud rules verbatim. Thud is commercially published, and while game
+# mechanics are not copyrightable, the expression of them is.
+#
+# Install (once per clone):
+#   git config core.hooksPath .githooks
+#   chmod +x .githooks/pre-push
+#
+# This is a backstop, not a guarantee: `git push --no-verify` bypasses it, and
+# it only runs where core.hooksPath is configured. The real protection is to
+# build any upstream PR branch from scratch so these files were never on it.
+
+remote_url="$2"
+zero='0000000000000000000000000000000000000000'
+
+# Only guard pushes aimed at upstream. Our own fork's URL also contains
+# "open_spiel", so match on the owner, not just the repo name.
+url_lc=$(printf '%s' "$remote_url" | tr '[:upper:]' '[:lower:]')
+case "$url_lc" in
+  *deepmind/open_spiel*) ;;
+  *) exit 0 ;;
+esac
+
+# Paths that must never leave our fork.
+protected='^(CLAUDE\.md$|thud/)'
+
+blocked=''
+while read -r _local_ref local_sha _remote_ref remote_sha; do
+  # Branch deletion: nothing to inspect.
+  [ "$local_sha" = "$zero" ] && continue
+
+  if [ "$remote_sha" = "$zero" ]; then
+    # New branch upstream: inspect the whole tree being introduced.
+    files=$(git ls-tree -r --name-only "$local_sha")
+  else
+    files=$(git diff --name-only "$remote_sha" "$local_sha")
+  fi
+
+  hits=$(printf '%s\n' "$files" | grep -E "$protected")
+  [ -n "$hits" ] && blocked="$blocked$hits
+"
+done
+
+[ -z "$blocked" ] && exit 0
+
+cat >&2 <<EOF
+
+================================================================
+ PUSH REFUSED -- project-private files would reach upstream.
+================================================================
+
+Target remote: $remote_url
+
+Offending paths:
+$blocked
+thud/THUD_RULES.md quotes copyrighted Thud rule text and must never be
+upstreamed. None of our project files belong in OpenSpiel.
+
+Build the PR branch so that these files were never on it -- see the pre-PR
+checklist in thud/PLAN.md. Do not reach for --no-verify.
+
+EOF
+exit 1
