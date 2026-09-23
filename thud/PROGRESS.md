@@ -9,9 +9,12 @@ committed and pushed to `origin/thud`. **Next: Phase 3** — implement the game.
 **Next step, concretely:** first run the `~/.bashrc` check below. Then create
 `open_spiel/games/thud/` (`thud.h`, `thud.cc`, `thud_test.cc`, each with our Apache 2.0
 header), register it in `open_spiel/games/CMakeLists.txt` (adding the Apache §4(b)
-"modified" notice), and build move generation in the order hurl, dwarf move, shove, troll
-step, testing each against `THUD_RULES.md` before starting the next (`PLAN.md` Phases 3–4).
-Keep it very fast yet readable (`PLAN.md` Phase 3).
+"modified" notice), and work **test-first** as `PLAN.md` Phase 3 lays out: foundation
+(board, setup, positions from ASCII diagrams, action encoding with a round-trip test), then
+per move type — hurl, dwarf move, shove, troll step — write its tests from `THUD_RULES.md`
+and the unit-test table and corner cases in `PLAN.md` Phase 3 (borders, wrap-around), see
+them fail, implement, see them pass. Keep the code very fast yet readable. The user may want to review tests before
+the implementation; ask where to pause if they have not said.
 
 **Where we are:** The repo is at `~/thud-openspiel` (WSL2, Ubuntu 26.04.1, aarch64) on branch
 `thud`, pushed to `origin`, with an `upstream` remote and the pre-push hook installed. OpenSpiel
@@ -443,5 +446,25 @@ rejected; Phase 3 lists the two game parameters; Phase 5 adds checking the limit
 measurements against our own engine. `CLAUDE.md` now lists the generated playthrough as an
 allowed file under `open_spiel/`. The limit-measurement script was saved as
 `thud/experiments/limits_sim.py`. Everything was committed and pushed to `origin/thud`.
+
+**After the commit:** the user proposed **test-driven development** (recommended: the spec is
+already allowed / not-allowed lists, and tests written from it cannot inherit the code's
+misunderstandings) and for **border corner cases**: moves near horizontal, vertical and
+diagonal borders, and hurls/shoves away from, towards and across a border. Both are in
+`PLAN.md` Phases 3–4, extended with lines ending at a border, captures at border squares, the
+Thudstone and the exact end-condition boundaries. Checked by script: the octagon is convex
+along all 8 directions (no straight path leaves the board and re-enters, so "across the
+border" always means the path leaves the board); the longest move is 14 squares
+orthogonally but only 9 diagonally.
+
+The user then raised **row/column wrap-around**: with a flat board array, a long move can run
+off the end of one row and continue on the next (east from `(5,14)` lands on `(6,0)`), and in
+rows and columns 5–9 both ends are playable, so an off-board mask does not catch it (three
+such examples verified by script). Added as a corner case, with a Phase 3 design rule: build
+the ray tables from `(row, col)` coordinates, never by index arithmetic. The user also asked
+how test-first is reflected in the plan — it was only a paragraph, while the phase structure
+still said "Phase 3 implement, Phase 4 tests". Restructured: **Phase 3 is now "Implement
+test-first"** and contains the unit-test table and corner cases; **Phase 4 is "Integration
+tests and baselines"** (`RandomSimTest`, pyspiel registration, playthrough, cross-checks).
 
 **Next step:** as recorded in `## Current status` — Phase 3.
