@@ -96,7 +96,23 @@ hard-coded choice, so it becomes an experiment rather than an argument.
   game. Score-difference utility normalised to [-1, 1] gives a richer learning signal than
   win/loss. Settled: one battle per game, returns `±m / 32` (`THUD_RULES.md` §7, §9.5).
 
-### Phase 3 — Implement `thud.h` / `thud.cc`
+### Phase 3 — Implement test-first: `thud.h`, `thud.cc`, `thud_test.cc`
+
+**Work test-first (proposed by the user, 2026-09-22).** `THUD_RULES.md` is already written as
+allowed / not-allowed lists, so turn it into tests *before* the code that satisfies them —
+tests written from the spec cannot inherit the implementation's misunderstandings. Order:
+
+1. **Foundation:** board, setup, and constructing a position from an ASCII board diagram (as
+   the dstu and hexparrot tests do); the action encoding and `ActionToString`, with an
+   encoding round-trip test. Tests need these to set up positions and name moves.
+2. **Per move type, in the order hurl, dwarf move, shove, troll step:** write its tests from
+   the unit-test table and corner cases below, see them fail, implement, see them pass —
+   then move on. Writing all four generators and debugging them together is the obvious
+   trap here.
+3. **End conditions and scoring**, the same way.
+
+Each step's tests are a natural review point for the user — they are the rules in
+executable form — so pause for review where the user asks.
 
 **Performance and readability are both requirements.** Move generation is expected to be
 the training bottleneck, so the implementation must be **very fast** — but it must stay
@@ -105,7 +121,9 @@ simple data layouts (a flat padded board array, precomputed per-square ray table
 allocation in the hot path) rather than clever tricks that obscure the rules; one small,
 clearly named function per move type that reads like its section of `THUD_RULES.md`; and
 optimise from Phase 5 measurements, not guesses. A speed-up that makes a rule hard to
-check against the spec is not worth it.
+check against the spec is not worth it. **Build the ray tables from `(row, col)`
+coordinates, never by index arithmetic on the flat array**, so that no ray can wrap from one
+row or column into the next (see the wrap-around corner case below).
 
 **Template: `tic_tac_toe/` for the boilerplate, `chess/` for the action encoding.** With one
 action per turn (decided in Phase 2), Thud no longer needs Amazons' multi-phase turn state
@@ -124,13 +142,9 @@ of a from-square × direction × distance action layout.
   0, 101, ...)`, `chess.cc`). Without them, a position looks identical one turn before and one
   turn after the cap ends the game.
 
-Build move generation in the order **hurl, dwarf move, shove, troll step**, testing each
-before starting the next. Writing all four and then debugging them together is the obvious
-trap here.
+**Unit tests — written before the code they test** (`thud_test.cc`):
 
-### Phase 4 — Tests
-
-- **Unit-test every move type both ways: positive and negative.** For each of the five
+- **Test every move type both ways: positive and negative.** For each of the five
   move types, assert that every *allowed* move is generated, and — equally important —
   that every *forbidden* move is absent from `LegalActions()`. A move generator that is
   merely permissive passes any positive-only test suite, so the negative cases are what
@@ -144,9 +158,33 @@ trap here.
   | Troll step, captures all | 1 square to an empty square with ≥ 1 adjacent dwarf; **every** adjacent dwarf removed | landing where no dwarf is adjacent; any dwarf left adjacent afterwards |
   | Troll shove | line of `N >= 2`, distance `2..N`, lands empty, ≥ 1 adjacent dwarf, **all** adjacent dwarfs removed | distance 1 (that is a step); lone troll; distance `> N`; blocked path; landing on a piece; **landing where no dwarf is adjacent** |
 
-  Cover the board geometry explicitly too: moves off the octagon's diagonal edges, lines that
-  run into a cut corner, and maximum-length lines along a full 15-square rank. Test the
-  action encoding round trip (`THUD_RULES.md` §8) and the end conditions (§6) directly.
+- **Corner cases — cover each explicitly:**
+  - **No wrap-around between rows or columns** (raised by the user). A board stored as a flat
+    array can let a long move run off the end of one row and continue on the next: east from
+    `(5,14)` is index +1, which is `(6,0)`; north-east from `(6,14)` is index −14, also
+    `(6,0)`; in a column-major layout, south from `(14,5)` continues at `(0,6)`. In rows 5–9
+    and columns 5–9 both ends are playable squares, so a mask of off-board squares does
+    **not** catch it. Test long horizontal, vertical and diagonal moves, hurls and shoves
+    that end on, or would continue past, the last square of a full-length row or column, in
+    both directions, and assert that no legal move crosses from one row or column into
+    another.
+  - **Borders of all three kinds:** horizontal, vertical, and the diagonal edges of the cut
+    corners. For every move type, test moves along a border and next to it; for hurls and
+    shoves, test moving **away from** a border, **towards** it (e.g. hurling onto a troll on
+    an edge square) and **across** it — always illegal. The octagon is convex along all 8
+    directions (checked by script), so a path that leaves the board never re-enters: "across"
+    simply means the path leaves the board, and such action IDs are never legal.
+  - **Lines that end at a border:** `N` counts pieces only up to the edge.
+  - **Captures around a landing square on a border**, which has fewer than 8 neighbours.
+  - **The Thudstone:** it blocks paths, breaks a line, cannot be landed on or captured.
+  - **Maximum lengths:** 14-square moves along a full row or column, and 9-square moves along
+    the longest diagonals (the cut corners shorten every diagonal; checked by script).
+  - **Exact boundaries of the end conditions** (§6): the battle ends after exactly 200 turns
+    without a capture, not 199; after exactly 800 turns; when the player to move has no
+    legal move, including when a side has no pieces left.
+- Test the action encoding round trip (`THUD_RULES.md` §8) directly.
+
+### Phase 4 — Integration tests and baselines (once every move type passes)
 
 - `thud_test.cc` with OpenSpiel's `RandomSimTest` for crash-freedom and invariant checking.
 - Register the short name in `open_spiel/python/tests/pyspiel_test.py`.
