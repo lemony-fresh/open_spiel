@@ -1,3 +1,6 @@
+# Modified by the Thud-on-OpenSpiel authors (2026): added the Thud game
+# (thud/thud.cc, thud/thud.h) and its test target (thud_test).
+
 set(GAME_SOURCES
   amazons/amazons.cc
   amazons/amazons.h
@@ -227,6 +230,8 @@ set(GAME_SOURCES
   tarok/cards.h
   tarok/contracts.cc
   tarok/contracts.h
+  thud/thud.cc
+  thud/thud.h
   tic_tac_toe/tic_tac_toe.cc
   tic_tac_toe/tic_tac_toe.h
   tiny_bridge/tiny_bridge.cc
@@ -742,6 +747,10 @@ add_test(stones_and_gems_test stones_and_gems_test)
 add_executable(tarok_test tarok/tarok_test.cc ${OPEN_SPIEL_OBJECTS}
                $<TARGET_OBJECTS:tests>)
 add_test(tarok_test tarok_test)
+
+add_executable(thud_test thud/thud_test.cc ${OPEN_SPIEL_OBJECTS}
+               $<TARGET_OBJECTS:tests>)
+add_test(thud_test thud_test)
 
 add_executable(tic_tac_toe_test tic_tac_toe/tic_tac_toe_test.cc ${OPEN_SPIEL_OBJECTS}
                $<TARGET_OBJECTS:tests>)

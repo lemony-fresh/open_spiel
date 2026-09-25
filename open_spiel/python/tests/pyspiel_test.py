@@ -11,6 +11,9 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+#
+# Modified by the Thud-on-OpenSpiel authors (2026): added "thud" to the
+# expected games.
 """General tests for pyspiel python bindings."""
 
 import json
@@ -161,6 +164,7 @@ EXPECTED_MANDATORY_GAMES = frozenset([
     "spades",
     "stones_and_gems",
     "tarok",
+    "thud",
     "tic_tac_toe",
     "tiny_bridge_2p",
     "tiny_bridge_4p",
