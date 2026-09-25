@@ -22,11 +22,9 @@ produced the measurements in thud/PROGRESS.md, session 2 (2026-09-22):
   python3 limits_sim.py --player random --games 1000   # 148 s on 10 processes
   python3 limits_sim.py --player ai --games 3000       # 755 s on 10 processes
 
-Setup: hexparrot (MIT-licensed) is not vendored. Clone it outside this repo, by default to
-~/hexparrot_thudgame (or pass --hexparrot); the measurements used commit
-7b171108ddb76c75a0b4177a57083d8e36d764cc:
-
-  git clone https://github.com/hexparrot/thudgame.git ~/hexparrot_thudgame
+Setup as in perft_reference.py: hexparrot (MIT-licensed) is not vendored, but cloned
+outside this repo, by default to ~/.local/share/thud-openspiel/hexparrot_thudgame, at commit
+7b171108ddb76c75a0b4177a57083d8e36d764cc, which these measurements used.
 
 Seeds are fixed (0..N-1), so a run is reproducible for a given hexparrot commit.
 """
@@ -39,6 +37,8 @@ import random
 import statistics as st
 import sys
 import time
+
+import perft_reference
 
 SAFETY_CAP = 3000  # far beyond any limit we evaluate; no game reached it
 LIMIT_PAIRS = [(50, 400), (100, 400), (100, 800), (200, 400), (200, 800), (None, None)]
@@ -100,8 +100,9 @@ def main():
   parser.add_argument("--lookahead", type=int, default=3,
                       help="hexparrot AI lookahead (its GUI/console default is 3)")
   parser.add_argument("--workers", type=int, default=os.cpu_count())
-  parser.add_argument("--hexparrot", default=os.path.expanduser("~/hexparrot_thudgame"))
+  parser.add_argument("--hexparrot", default=perft_reference.DEFAULT_HEXPARROT)
   args = parser.parse_args()
+  perft_reference.check_hexparrot(args.hexparrot)  # Before the workers start.
 
   start = time.time()
   jobs = [(seed, args.player, args.lookahead, args.hexparrot) for seed in range(args.games)]

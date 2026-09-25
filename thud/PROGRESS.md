@@ -2,20 +2,22 @@
 
 ## Current status
 
-**Phase:** 0–3 **done** — Thud is implemented and passes all its tests (session 5,
-2026-09-25); **Phase 4 is next**.
+**Phase:** 0–4 **done** — Thud is implemented, passes all its tests, and has its
+integration baselines (session 5, 2026-09-25); **Phase 5 is next: benchmarks**.
 
 **Where we stand:**
 
 - `open_spiel/games/thud/thud.cc` implements the game as designed in `PLAN.md` Phase 3
   (padded 17x17 grid, one function per move type, `IsTerminal` cached and decided without
-  generating moves). `thud_test.cc`'s **46 test functions all pass, and no test was
-  changed** to get there; `ctest -R thud` takes about 2 s. A planted wrap-around bug is
-  caught by 21 tests, including all four wrap-around tests.
-- **The full OpenSpiel suite passes 284 of 285** (0 build warnings). The upstream Python
-  tests that iterate over every game (`api_test`, `games_sim_test`) now play Thud and pass.
-  The one failure is `playthrough_test`: "{'thud'} … do not have playthroughs. Create
-  playthroughs using generate_new_playthrough.sh" — Phase 4's first step.
+  generating moves). `thud_test.cc` has **47 test functions, all passing**; the first 46
+  passed without any test being changed, and the 47th runs OpenSpiel's generic tests.
+  `ctest -R thud` takes about 3 s. A planted wrap-around bug is caught by 21 tests, and
+  removing either end-of-battle limit by 2.
+- **The full OpenSpiel suite passes 285 of 285** (0 build warnings), including the upstream
+  Python tests that run every game and `playthrough_test` against Thud's new baseline,
+  `open_spiel/integration_tests/playthroughs/thud.txt`. **Regenerate the playthrough and
+  read its diff after any change to the rules, the encoding, the text formats or the
+  observation** (`./open_spiel/scripts/generate_new_playthrough.sh thud`).
 - The design decisions (`PLAN.md` Phase 3 list, each with its evidence): position text with
   the cut-off corners written `-`, `PositionFromText()` rejecting malformed text and
   impossible positions; every capture written `(r,c)-(r,c)x`; a 6-plane observation; the
@@ -27,25 +29,27 @@
   user. None was needed in session 5.
 - **After changing any test, run `thud/experiments/crosscheck_tests.py`**: it checks every
   hand-written move expectation (110 checks) and every test diagram against hexparrot's
-  engine and the reading rules. It and the scripts behind the tests' reference numbers
-  (`perft_reference.py`, `move_kinds_sim.py`) run hexparrot/thudgame from a clone outside
-  the repo, by default `~/hexparrot_thudgame`, which does **not** exist on this machine
-  (sessions 3–4 used a temporary clone at commit 7b171108). Clone it there first.
+  engine and the reading rules. All four scripts in `thud/experiments/` run
+  hexparrot/thudgame from a clone outside the repo, by default
+  `~/.local/share/thud-openspiel/hexparrot_thudgame` (under `$XDG_DATA_HOME` if set), which
+  **exists on this machine** at the pinned commit 7b171108 (2026-09-25). If it is missing,
+  every script stops with a full explanation: what hexparrot is, which scripts need it,
+  where it goes, and the exact commands to restore and check it.
 
-**Next steps, in order (Phase 4, `PLAN.md`):**
+**Next steps, in order (`PLAN.md`):**
 
-1. Generate the playthrough baseline with `./open_spiel/scripts/generate_new_playthrough.sh
-   thud`; then the full suite should pass 285 of 285. Never edit upstream tests to pass
-   (user, 2026-09-23: modify OpenSpiel itself only for registration or a clear bug).
-2. Add OpenSpiel's `RandomSimTest` to `thud_test.cc`.
-3. Phase 5: benchmarks.
+1. Phase 5: measure legal-move generations/sec, random rollouts/sec and MCTS
+   simulations/sec, and how random rollouts end under the 200/800 limits (compare with the
+   hexparrot-based measurements of session 2). These unblock the deferred decisions:
+   classical MCTS with an evaluation function vs AlphaZero-style learning, and local CPU
+   vs cloud GPU.
 
 **Where we are:** The repo is at `~/thud-openspiel` (WSL2, Ubuntu 26.04.1, aarch64) on branch
 `thud`, pushed to `origin`, with an `upstream` remote and the pre-push hook installed. OpenSpiel
 builds natively on ARM64: clang 21.1.8, cmake 4.2.3, Python 3.14.4 venv; `make -j10` takes
-4m41s with 0 warnings; `ctest -j10` passes 284 of 285 in about 107 s (the missing Thud
-playthrough, above); `./examples/example --game=tic_tac_toe` runs. The `manylinux` wheel
-fallback was not needed.
+4m41s with 0 warnings; `ctest -j10` passes 285 of 285 in about 2 minutes;
+`./examples/example --game=tic_tac_toe` runs. The `manylinux` wheel fallback was not
+needed.
 
 **Decided 2026-09-22 (all by the user; reasoning in the session-2 log):**
 
@@ -788,4 +792,53 @@ implementation as `8a4e6ed5`), each removed on its own under the per-test harnes
 
 Both files were then restored from the commit, and all tests pass again.
 
-**Next step:** as recorded in `## Current status` — Phase 4, starting with the playthrough.
+**Phase 4, the same day.**
+
+- **Playthrough:** `generate_new_playthrough.sh thud` wrote
+  `open_spiel/integration_tests/playthroughs/thud.txt` (890 KB, 3 s): one seeded random game
+  of 308 turns in which the trolls take the last dwarf, leaving 6 trolls — returns -0.75 /
+  +0.75, current player -4 (terminal). The playthrough format prefixes state lines with
+  `# `, so our rows show as `# -----dd.dd-----`. The full suite then passed 285 of 285.
+- **`TestOpenSpielGenericTests`** (a new, 47th test function, added for the user's review):
+  `LoadGameTest`, `NoChanceOutcomesTest`, and `RandomSimTest` with 10 games from the opening
+  and 10 from a position read from text (`RandomSimTestWithSpecificInitialState`, which
+  exercises saving diagram-started games). It passes; `thud_test` now takes 2.8 s. No
+  `RandomSimTestWithUndo`, as Thud has no `UndoAction`.
+- **The scripts' hexparrot clone:** re-running `crosscheck_tests.py` after the test change
+  failed with "No module named 'thud.bitboard'" — the temporary folder, and with it the
+  clone, had been cleared between sessions, and without it `import thud` finds this repo's
+  own `thud/` folder (the repo is on `PYTHONPATH`). `load_hexparrot` now checks for the
+  clone and prints how to make one. With a fresh clone: all 110 checks agree.
+
+**The user's three questions, afterwards:**
+
+- **Is `UndoAction` needed?** No. OpenSpiel's MCTS, in C++ and Python (AlphaZero builds
+  on the latter), never replays from scratch: it copies the root state once per simulation
+  (`mcts.cc:182`, `mcts.py:329`), so undo would replace one copy by many undos. Only
+  alpha-beta's optional `use_undo` benefits; `PLAN.md`'s Phase 5 entry now says so.
+- **Where the hexparrot clone lives:** moved from the proposed `~/hexparrot_thudgame` to
+  `~/.cache/thud-openspiel/hexparrot_thudgame` (the XDG cache directory: a re-creatable
+  download), now cloned there at the pinned commit. The location is defined once, in
+  `perft_reference.py` (`DEFAULT_HEXPARROT`, honouring `$XDG_CACHE_HOME`), and all four
+  scripts use it — including session 2's `limits_sim.py`, which added the path itself and
+  now also checks for the clone first. `move_kinds_sim.py` and `limits_sim.py` check in the
+  main process, since a worker that exits at start-up can hang a process pool. Verified:
+  all four scripts run with no `--hexparrot`, perft reproduces every count, and a missing
+  clone fails at once with the instructions.
+- **Then moved again, to `~/.local/share/thud-openspiel/hexparrot_thudgame`** after the user
+  asked whether `~/.cache` gets deleted. Nothing on this machine cleans it (no tmpfiles
+  rule; the one cleanup timer is for `~/.launchpadlib`), but the XDG specification defines
+  `$XDG_CACHE_HOME` for "user-specific non-essential data files" — what people and cleanup
+  tools delete to free space — while `$XDG_DATA_HOME` (default `~/.local/share`) holds
+  "user-specific data files". `DEFAULT_HEXPARROT` now honours `$XDG_DATA_HOME`. At the
+  user's request the missing-clone message now says everything a future session needs:
+  what hexparrot is and which scripts use it, that nothing in the build needs it, that it
+  must live outside the repo, the default location, the pinned commit, the two restore
+  commands, and how to check the result.
+- **Could a faster move generator change the order and break tests?** No, as long as it is
+  correct: OpenSpiel requires legal actions in ascending order (`spiel.h`), checked in
+  every state by `RandomSimTest` and by the tests' `LegalMoves`, so every correct generator
+  returns the same list. No explicit sort is needed now — ours generates that order by
+  construction; `PLAN.md` records the requirement for future optimisations.
+
+**Next step:** as recorded in `## Current status` — Phase 5, benchmarks.

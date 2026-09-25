@@ -59,8 +59,9 @@ def main():
   parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
   parser.add_argument("--games", type=int, default=1000)
   parser.add_argument("--workers", type=int, default=os.cpu_count())
-  parser.add_argument("--hexparrot", default=os.path.expanduser("~/hexparrot_thudgame"))
+  parser.add_argument("--hexparrot", default=ref.DEFAULT_HEXPARROT)
   args = parser.parse_args()
+  ref.check_hexparrot(args.hexparrot)  # Before the workers, which would hang.
 
   with mp.Pool(args.workers, initializer=ref.load_hexparrot,
                initargs=(args.hexparrot,)) as pool:

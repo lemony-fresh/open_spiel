@@ -297,18 +297,23 @@ of a from-square × direction × distance action layout.
   test.** Its first run found two diagrams with 12 trolls, which the reading rules decided
   that day reject.
 
-### Phase 4 — Integration tests and baselines (once every move type passes)
+### Phase 4 — Integration tests and baselines — **done** 2026-09-25
 
-Status 2026-09-25: the full suite passes 284 of 285, including the upstream Python tests
-that iterate over every game (`api_test`, `games_sim_test`); the one failure is
-`playthrough_test`, because Thud has no playthrough yet — generate it first.
+The full OpenSpiel suite passes 285 of 285.
 
-- Generate the playthrough baseline: `./open_spiel/scripts/generate_new_playthrough.sh thud`.
-- `thud_test.cc` with OpenSpiel's `RandomSimTest` for crash-freedom and invariant checking.
-- Register the short name in `open_spiel/python/tests/pyspiel_test.py` — done in Phase 3.
-- Cross-check a handful of positions against an existing implementation — candidates:
-  `github.com/dstu/thud` (Rust, has MCTS), `github.com/hexparrot/thudgame` (Python),
-  `github.com/THFlowers/Thud-CLI` (Java, MCTS).
+- The playthrough baseline, `open_spiel/integration_tests/playthroughs/thud.txt` (890 KB),
+  from `./open_spiel/scripts/generate_new_playthrough.sh thud`: one seeded random game of
+  308 turns, which the trolls win by taking the last dwarf (returns -0.75 / +0.75).
+  **Regenerate it and read the diff after any change to the rules, the encoding, the text
+  formats or the observation**; an unexpected diff means behaviour changed.
+- `TestOpenSpielGenericTests` in `thud_test.cc`: `LoadGameTest`, `NoChanceOutcomesTest`,
+  and `RandomSimTest` with 10 games from the opening and 10 from a position read from text
+  (`RandomSimTestWithSpecificInitialState`), as chess's test runs them. Not
+  `RandomSimTestWithUndo`: Thud has no `UndoAction` (a Phase 5 candidate).
+- The short name in `open_spiel/python/tests/pyspiel_test.py` — done in Phase 3.
+- Cross-checks against an existing implementation — done in Phase 3 against
+  hexparrot/thudgame: perft counts on five positions (`perft_reference.py`) and every
+  hand-written move expectation (`crosscheck_tests.py`).
 
 ### Phase 5 — Benchmark, then decide
 
@@ -320,7 +325,13 @@ hexparrot-based measurements in `PROGRESS.md`, session 2, to confirm that proxy 
 **Optimisation candidates — only where the measurements point, never before** (user,
 2026-09-24). Each is checked against the simple Phase 3 implementation, which stays as the
 reference: the same perft counts, and identical legal moves in every position of many random
-games.
+games. **Any faster move generator must still return the legal actions in ascending order**
+(`spiel.h`: "The actions should be returned in ascending order"; checked in every state by
+`RandomSimTest`'s `CheckLegalActionsAreSorted` and by the tests' `LegalMoves` helper).
+Since the order is defined by the action numbers, every correct generator returns the same
+list, however it finds the moves — so the tests' random games and the playthrough, which
+pick from that list, stay the same. The current generator produces that order by
+construction; a generator that finds moves in another order must sort them.
 
 - **Track lines of dwarfs and trolls incrementally** instead of recounting a line behind a
   piece whenever moves are generated. Postponed as premature: lines are short, hurls and
@@ -328,9 +339,13 @@ games.
   moves), and every move and capture would have to update lines along up to four axes —
   error-prone, and extra state to copy with every simulation.
 - **`UndoAction`**, only if we search with OpenSpiel's alpha-beta: it can undo moves
-  instead of copying the state at every node (`use_undo` in `algorithms/minimax.cc`),
-  while MCTS copies the state once per simulation regardless. Undoing a capture means
-  restoring up to 8 dwarfs, so each move would have to remember what it captured.
+  instead of copying the state at every node (`use_undo` in `algorithms/minimax.cc`).
+  **Not for MCTS** (checked 2026-09-25): OpenSpiel's MCTS, in C++ and in Python (which its
+  AlphaZero builds on), never replays a game from scratch — it copies the root state once
+  per simulation and plays forward on the copy (`mcts.cc:182`, `mcts.py:329`). Undo would
+  replace that one copy by undoing every move of the simulation, rollouts included, which
+  is more work, not less. Undoing a capture means restoring up to 8 dwarfs, so each move
+  would have to remember what it captured.
 
 ---
 

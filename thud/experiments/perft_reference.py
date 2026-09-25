@@ -30,13 +30,17 @@ could matter; the counts are valid only if the longest line reported is at most 
 The positions are kInitial and kTangled from thud_test.cc, each with both sides to move, and
 a midgame taken from hexparrot's AI playing itself, which becomes kMidgame.
 
-Setup: hexparrot (MIT-licensed) is not vendored. Clone it outside this repo, by default to
-~/hexparrot_thudgame (or pass --hexparrot); the counts used commit
-7b171108ddb76c75a0b4177a57083d8e36d764cc:
+Setup: hexparrot (MIT-licensed) is not vendored. Clone it outside this repo at commit
+7b171108ddb76c75a0b4177a57083d8e36d764cc, which every measurement used, by default to
+~/.local/share/thud-openspiel/hexparrot_thudgame ($XDG_DATA_HOME, default ~/.local/share:
+persistent user data, unlike ~/.cache, which is meant to be disposable); or pass
+--hexparrot PATH:
 
-  git clone https://github.com/hexparrot/thudgame.git ~/hexparrot_thudgame
+  git clone https://github.com/hexparrot/thudgame.git ~/.local/share/thud-openspiel/hexparrot_thudgame
+  git -C ~/.local/share/thud-openspiel/hexparrot_thudgame checkout 7b171108ddb76c75a0b4177a57083d8e36d764cc
 
-move_kinds_sim.py reuses this file's helpers.
+Without it, every script here stops with these instructions. The other scripts reuse this
+file's helpers and its default location.
 """
 
 import argparse
@@ -93,13 +97,53 @@ POSITIONS = [
 OTHER = {"dwarf": "troll", "troll": "dwarf"}
 DIRECTIONS = [(-1, 0), (-1, 1), (0, 1), (1, 1), (1, 0), (1, -1), (0, -1), (-1, -1)]
 
+# Where the scripts look for hexparrot's clone: persistent per-user data (XDG_DATA_HOME,
+# default ~/.local/share), not the cache, which is meant to be disposable. And the commit
+# every measurement used.
+DEFAULT_HEXPARROT = os.path.join(
+    os.environ.get("XDG_DATA_HOME") or os.path.expanduser("~/.local/share"),
+    "thud-openspiel", "hexparrot_thudgame")
+HEXPARROT_COMMIT = "7b171108ddb76c75a0b4177a57083d8e36d764cc"
+
 # hexparrot's engine, imported by load_hexparrot().
 Bitboard = Gameboard = Ply = selfplay = None
+
+
+def check_hexparrot(path):
+  """Exits with instructions to restore it unless hexparrot is cloned at `path`.
+
+  Without a clone there, `import thud` would find this repo's own thud/ folder (the repo
+  is on PYTHONPATH) and fail with a confusing "No module named 'thud.bitboard'".
+  """
+  if os.path.isfile(os.path.join(path, "thud", "gameboard.py")):
+    return
+  sys.exit(f"""hexparrot/thudgame is not installed at {path}.
+
+What it is: https://github.com/hexparrot/thudgame, an independent, MIT-licensed Python
+engine for Thud. The scripts in thud/experiments/ use it as the reference that our own
+implementation is checked against: crosscheck_tests.py (every hand-written move
+expectation in open_spiel/games/thud/thud_test.cc), perft_reference.py (TestPerft's
+counts), move_kinds_sim.py and limits_sim.py (measurements recorded in thud/PROGRESS.md).
+Nothing in the build or in the C++ tests needs it.
+
+Where it goes: outside this repository, never inside it (it is not vendored). The default
+is $XDG_DATA_HOME/thud-openspiel/hexparrot_thudgame, with $XDG_DATA_HOME defaulting to
+~/.local/share. Every measurement used commit {HEXPARROT_COMMIT}.
+
+To restore it:
+  git clone https://github.com/hexparrot/thudgame.git {path}
+  git -C {path} checkout {HEXPARROT_COMMIT}
+
+To check: {os.path.join(path, "thud", "gameboard.py")} must exist, and
+`git -C {path} log --oneline -1` must show 7b17110. Then re-run the script. To use a
+clone elsewhere, pass --hexparrot PATH. More in thud/experiments/perft_reference.py
+(module docstring) and in thud/PROGRESS.md (Current status).""")
 
 
 def load_hexparrot(path):
   """Imports hexparrot's engine from its clone at `path`; runs in every worker too."""
   global Bitboard, Gameboard, Ply, selfplay  # pylint: disable=global-statement
+  check_hexparrot(path)
   sys.path.insert(0, path)
   logging.disable(logging.CRITICAL)
   Bitboard = importlib.import_module("thud.bitboard").Bitboard
@@ -240,7 +284,7 @@ def pick_midgame():
 def main():
   parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
   parser.add_argument("--workers", type=int, default=os.cpu_count())
-  parser.add_argument("--hexparrot", default=os.path.expanduser("~/hexparrot_thudgame"))
+  parser.add_argument("--hexparrot", default=DEFAULT_HEXPARROT)
   args = parser.parse_args()
   load_hexparrot(args.hexparrot)
 
