@@ -3,7 +3,8 @@
 ## Current status
 
 **Phase:** 0–4 **done** — Thud is implemented, passes all its tests, and has its
-integration baselines (session 5, 2026-09-25); **Phase 5 is next: benchmarks**.
+integration baselines (session 5, 2026-09-25); **Phase 5 in progress**: first speed
+measurements taken (`PLAN.md` Phase 5), the deferred decisions still open.
 
 **Where we stand:**
 
@@ -38,18 +39,26 @@ integration baselines (session 5, 2026-09-25); **Phase 5 is next: benchmarks**.
 
 **Next steps, in order (`PLAN.md`):**
 
-1. Phase 5: measure legal-move generations/sec, random rollouts/sec and MCTS
-   simulations/sec, and how random rollouts end under the 200/800 limits (compare with the
-   hexparrot-based measurements of session 2). These unblock the deferred decisions:
-   classical MCTS with an evaluation function vs AlphaZero-style learning, and local CPU
-   vs cloud GPU.
+1. Phase 5: decide, with the user, what the first measurements mean for the deferred
+   decisions (`PLAN.md`): classical MCTS with an evaluation function vs AlphaZero-style
+   learning, and local CPU vs cloud GPU. Measured so far (one core, Release build): 905,000
+   moves/s and 2,640 random games/s (chess: 235,000 and 690), about 3,500 MCTS
+   simulations/s with random rollouts (chess: about 760).
+   **Concluded 2026-09-25: no further optimisation of the game logic for now.** For
+   AlphaZero-style learning the move generator is not the bottleneck: the network is, and
+   with a small network on a GPU, the Python side (about 50 µs to fetch an observation
+   through pyspiel, against about 1 µs for a whole move in C++). Revisit only if classical
+   MCTS with random rollouts is chosen and proves too slow; then profile first (`perf` /
+   `valgrind`, to be installed by the user).
 
 **Where we are:** The repo is at `~/thud-openspiel` (WSL2, Ubuntu 26.04.1, aarch64) on branch
 `thud`, pushed to `origin`, with an `upstream` remote and the pre-push hook installed. OpenSpiel
 builds natively on ARM64: clang 21.1.8, cmake 4.2.3, Python 3.14.4 venv; `make -j10` takes
 4m41s with 0 warnings; `ctest -j10` passes 285 of 285 in about 2 minutes;
 `./examples/example --game=tic_tac_toe` runs. The `manylinux` wheel fallback was not
-needed.
+needed. `build/` is OpenSpiel's default "Testing" build (`-O2`, all checks on); speed
+measurements use a Release build in `build-release/` (`BUILD_TYPE=Release`, only
+`benchmark_game` and `mcts_example` built — commands in the session-5 log).
 
 **Decided 2026-09-22 (all by the user; reasoning in the session-2 log):**
 
@@ -841,4 +850,76 @@ Both files were then restored from the commit, and all tests pass again.
   returns the same list. No explicit sort is needed now — ours generates that order by
   construction; `PLAN.md` records the requirement for future optimisations.
 
-**Next step:** as recorded in `## Current status` — Phase 5, benchmarks.
+**Phase 5, first measurements, the same day.** No instrumentation was needed: OpenSpiel's
+own programs time the game through its public API (the user's question about compiled-out
+instrumentation, and the pattern agreed for later, are in `PLAN.md` Phase 5).
+
+- **A Release build** in `build-release/` (ignored by git's `build*/`), only the two
+  programs needed: `BUILD_TYPE=Release CXX=clang++ cmake -DPython3_EXECUTABLE=$(which
+  python3) -DCMAKE_CXX_COMPILER=clang++ ../open_spiel && make -j10 benchmark_game
+  mcts_example` — 2 min 34 s, 0 warnings. `BUILD_TYPE` is read from the environment
+  (`open_spiel/CMakeLists.txt`); the default, "Testing", compiles at `-O2` with all checks,
+  Release at `-O3` with `SPIEL_DCHECK` off.
+- **Random games**, `./examples/benchmark_game --game=G --sims=N --attempts=5`, median of
+  rounds 2-5, one core (every move computes the observation, lists the legal actions and
+  applies one):
+
+  | Game | Moves/s | Games/s | Moves per game |
+  |---|---|---|---|
+  | **thud** | **905,480** | **2,636.9** | 343 |
+  | chess | 234,838 | 689.4 | 341 |
+  | go (19x19) | 478,894 | 828.5 | 578 |
+  | amazons | 3,107,885 | 14,926.4 | 208 |
+  | breakthrough | 1,280,232 | 19,843.8 | 65 |
+  | checkers | 338,711 | 4,966.1 | 68 |
+  | clobber | 1,754,625 | 92,658.4 | 19 |
+  | hex | 2,177,295 | 20,212.2 | 108 |
+
+  Thud is about 3.9 times faster per move than chess, at almost the same random-game
+  length — the user had expected them to be similar. Why: chess must discard every
+  pseudo-legal move that leaves its king in check and handles castling, en passant,
+  promotion and repeated positions, while Thud's moves are plain walks along lines with
+  nothing to discard; the observations are of similar size (1,280 vs 1,350 numbers).
+  Amazons' "moves" are thirds of a turn (queen, destination, arrow), so its numbers are not
+  comparable. OpenSpiel's docs publish no such figures.
+- **Release vs Testing:** Thud 905,480 vs 925,063 moves/s (no gain); chess 234,838 vs
+  205,811 and Go 478,894 vs 413,399 (about +15%). So Thud's hot path is probably not
+  compute-bound — a guess (for example, the fresh `std::vector` that every `LegalActions()`
+  returns) that only a profiler can confirm.
+- **MCTS**, `./examples/mcts_example --game=G --player1=mcts --player2=random
+  --max_simulations=1000 --rollout_count=1 --verbose=true --seed=1`, the "sims/s" that
+  `MCTSBot` reports for its first 10 moves: **Thud median 3,546 sims/s** (2,861-3,581),
+  chess 757 (699-795).
+- **How random games end**, new `thud/experiments/random_endings.py` (pyspiel, our
+  implementation, 1,000 games, seeds 0-999, 2.6 s): 98.6% routs, 1.4% the no-capture limit,
+  no turn-limit or stuck endings; length median 330, mean 343, max 668; longest stretch
+  without a capture median 53, max 200. The trolls win every random game (mean margin
+  -26.6), and every game's returns equal its margin / 32. Session 2's hexparrot figures
+  were 1.5% cut short, median 334, mean 343 — the proxy the limits were chosen on held.
+
+- **What this means for the deferred decisions** (input, nothing decided): classical MCTS
+  is cheap here — a 10,000-simulation search per move takes about 3 s on one core, about
+  0.3 s over 10 cores, before any optimisation. For AlphaZero-style learning each
+  simulation costs a network evaluation rather than a random game, so the network, not the
+  game, dominates — which shifts the weight to the CPU-vs-cloud-GPU decision, as this
+  machine has no CUDA GPU. Recorded in `PLAN.md` Phase 5 and its deferred-decisions table.
+- **The user asked whether that still holds with thousands of simulations per move.**
+  Yes, per simulation — each one is one network evaluation plus one legal-move list and a
+  few moves — but the claim was too sweeping, and was corrected in `PLAN.md`: a small
+  network on a fast GPU with big batches can get near microseconds per position, and then
+  the Python side becomes the bottleneck, still not the move generator. Measured through
+  pyspiel (random games, seed 0): 294,930 moves/s for legal moves + apply (3.4 µs a move),
+  18,819 moves/s once each move also fetches the observation into numpy (about 50 µs for
+  the observation), and 10.9 µs for one `legal_actions()` call in the opening (656 moves) —
+  against about 1.1 µs for a whole move in C++. OpenSpiel's Python AlphaZero fetches
+  observations with `state.observation_tensor()` (`alpha_zero.py:246`). The AlphaZero paper
+  confirms where the compute goes: "5,000 first-generation TPUs to generate self-play
+  games and 64 second-generation TPUs to train the neural networks".
+- **Concluded with the user: no further optimisation of the game logic for now** — in the
+  status block and `PLAN.md` Phase 5, to revisit only if classical MCTS with random
+  rollouts is chosen and proves too slow. `CLAUDE.md`'s build section now says that
+  `build/` is the "Testing" build type and how to make the Release build for speed
+  measurements.
+
+**Next step:** as recorded in `## Current status` — deciding with the user what the
+measurements mean for the deferred decisions.
