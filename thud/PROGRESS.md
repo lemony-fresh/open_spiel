@@ -2,25 +2,54 @@
 
 ## Current status
 
-**Phase:** 0 (environment), 1 (rules) and 2 (action encoding) are **done** as of 2026-09-22.
-The user read and approved `THUD_RULES.md`, and session 2's documentation changes are
-committed and pushed to `origin/thud`. **Next: Phase 3** — implement the game.
+**Phase:** 0–2 **done**; **Phase 3 in progress** (session 3, 2026-09-23 to 2026-09-24).
 
-**Next step, concretely:** first run the `~/.bashrc` check below. Then create
-`open_spiel/games/thud/` (`thud.h`, `thud.cc`, `thud_test.cc`, each with our Apache 2.0
-header), register it in `open_spiel/games/CMakeLists.txt` (adding the Apache §4(b)
-"modified" notice), and work **test-first** as `PLAN.md` Phase 3 lays out: foundation
-(board, setup, positions from ASCII diagrams, action encoding with a round-trip test), then
-per move type — hurl, dwarf move, shove, troll step — write its tests from `THUD_RULES.md`
-and the unit-test table and corner cases in `PLAN.md` Phase 3 (borders, wrap-around), see
-them fail, implement, see them pass. Keep the code very fast yet readable. The user may want to review tests before
-the implementation; ask where to pause if they have not said.
+**First thing next session: commit and push session 3's work** (user, 2026-09-24: "we can
+wait until tomorrow"). Nothing from session 3 is committed yet. The user reads the docs
+first — `PLAN.md`, this file, and the new scripts in `thud/experiments/` — then commit on
+`thud` and push to `origin`.
+
+**Where Phase 3 stands:** the tests are written and reviewed, the design review is half
+done, and nothing is implemented yet.
+
+- `open_spiel/games/thud/thud_test.cc` has **45 test functions**, written from
+  `THUD_RULES.md` before any implementation and reviewed with the user chunk by chunk (what
+  each review added is in the session-3 log). `thud.h` is the API; `thud.cc` is registration
+  plus **stubs only** — every function calls `NotImplemented()`. Registered in
+  `open_spiel/games/CMakeLists.txt` and `open_spiel/python/tests/pyspiel_test.py`, each with
+  the Apache §4(b) notice. `make thud_test` builds with no warnings; running it stops at the
+  first stub (`IsOnBoard`) — the intended red state.
+- **Design review** (`PLAN.md` Phase 3 list, each decision recorded there with its
+  evidence). Decided 2026-09-24: the position text is kept, and reading rejects malformed
+  text and impossible positions through `PositionFromText()`; every capture is written
+  `(r,c)-(r,c)x`; the observation has 6 planes (no Thudstone plane); the information state
+  is the move history. **Still open: the board storage, then the `thud.h` API** — including
+  saving a game that started from a diagram together with that diagram, as chess saves
+  `FEN: …` before its moves.
+- The reference numbers in the tests come from `thud/experiments/perft_reference.py` and
+  `move_kinds_sim.py`. Both run hexparrot/thudgame's engine from a clone outside the repo,
+  by default `~/hexparrot_thudgame`, which does **not** exist on this machine (session 3
+  used a temporary clone at commit 7b171108). Clone it there before re-running them.
+
+**Next steps, in order:**
+
+1. Commit and push (above).
+2. Finish the design review: the board storage, then the `thud.h` API.
+3. Implement in `main()`'s order until `ctest -R thud` passes. Then check the wrap-around
+   tests bite: plant the flat-array bug temporarily and confirm those tests fail.
+4. Phase 4. Until the game is implemented and the playthrough exists, upstream Python tests
+   that iterate over every registered game (`playthrough_test`, `api_test`,
+   `games_sim_test`) fail with `thud` in the registry — fix by implementing, never by
+   editing those tests (user, 2026-09-23: modify OpenSpiel itself only for registration or
+   a clear bug).
 
 **Where we are:** The repo is at `~/thud-openspiel` (WSL2, Ubuntu 26.04.1, aarch64) on branch
 `thud`, pushed to `origin`, with an `upstream` remote and the pre-push hook installed. OpenSpiel
 builds natively on ARM64: clang 21.1.8, cmake 4.2.3, Python 3.14.4 venv; `make -j10` takes
-4m41s with 0 warnings; `ctest -j10` passes 284/284 in 91 s; `./examples/example
---game=tic_tac_toe` runs. The `manylinux` wheel fallback was not needed.
+4m41s with 0 warnings; `ctest -j10` passed 284/284 in 91 s before Thud was registered (now
+`thud_test` fails by design until the implementation exists, as do the all-games tests in
+step 4 above); `./examples/example --game=tic_tac_toe` runs. The `manylinux` wheel fallback
+was not needed.
 
 **Decided 2026-09-22 (all by the user; reasoning in the session-2 log):**
 
@@ -37,15 +66,26 @@ builds natively on ARM64: clang 21.1.8, cmake 4.2.3, Python 3.14.4 venv; `make -
    plays strongly (`PLAN.md`, *Deferred decisions*). Termination otherwise as before: the
    battle also ends when the player to move has no legal move.
 
-**Unverified — check at the start of the next session:** whether the `~/.bashrc` lines from
-`CLAUDE.md` reach Claude Code's Bash tool. Its shell snapshot carried only `PATH` among
-exported variables and no `.bashrc` aliases, so `PYTHONPATH` probably does **not** arrive;
-the venv (a `PATH` change) might. Run `echo $PYTHONPATH; which python3` first thing. Until
-then, use `~/thud-openspiel/venv/bin/python3` explicitly. `ctest` is unaffected — CMake sets
-`PYTHONPATH` for the Python tests itself.
+**Decided 2026-09-23 and 2026-09-24 (session 3, all by the user; reasoning in the session-3
+log and in `PLAN.md` Phase 3):**
 
-**No outstanding chores.** `C:\Users\waech\thud-init\` was deleted (with the user's approval)
-and the Windows-side project memory now redirects to this repo.
+7. **Tests first, then a review of them, then a review of the design, then code.** The tests
+   include whole-position checks: the opening's complete legal set, perft against
+   hexparrot, the board's 8 symmetries, and invariants in every position of random games.
+8. **Position text kept**; reading rejects malformed text and impossible positions, and
+   `PositionFromText()` reports that by returning nullopt, as chess's `BoardFromFEN` does.
+9. **One notation for every capture:** `(r,c)-(r,c)x`; `(r,c)-(r,c)` captures nothing.
+10. **Observation: 6 planes** — dwarfs, trolls, empty, trolls to move, and the two
+    counters. The Thudstone is a hole like the cut-off corners, 0 in every board plane.
+11. **Information state: the move history**, as in tic-tac-toe, chess and Go.
+
+**Verified 2026-09-23:** the `~/.bashrc` lines from `CLAUDE.md` do reach Claude Code's Bash
+tool — a new session's shell snapshot has `PYTHONPATH` and the venv (`which python3` →
+`venv/bin/python3`). Session 2's worry was unfounded.
+
+**Outstanding chore: the commit and push at the top of this block.** (Session 2's clean-up is
+complete: `C:\Users\waech\thud-init\` is deleted and the Windows-side project memory
+redirects to this repo.)
 
 ---
 
@@ -468,3 +508,144 @@ test-first"** and contains the unit-test table and corner cases; **Phase 4 is "I
 tests and baselines"** (`RandomSimTest`, pyspiel registration, playthrough, cross-checks).
 
 **Next step:** as recorded in `## Current status` — Phase 3.
+
+### 2026-09-23 to 2026-09-24 — Session 3: tests first, their review, and half the design review
+
+**Ground rules from the user.** Write all tests first and pause for a review before
+implementing anything they test. Modify OpenSpiel itself only for registration or a clear
+bug. An independent Python model of the rules, planned as a cross-check, was dropped when
+the user asked why it was needed: the tests derive their expectations from `THUD_RULES.md`
+by hand, and perft adds an independent engine.
+
+**Written.** `thud.h` (the API, with a header comment in our own words: rules summary,
+parameters, position text format, move notation), `thud.cc` (game type, parameters,
+registration, observer, and a `NotImplemented()` stub for every function), `thud_test.cc`,
+and the two registration points with their Apache §4(b) notices. Build notes that cost time:
+
+- `SPIEL_CHECK_OP` declares locals `x` and `y`, so a test variable named `x` inside a check
+  fails to compile ("cannot appear in its own initializer"). `SPIEL_CHECK_TRUE_WSI` needs a
+  `Game`; the tests use their own `Require()` instead.
+- A new test target needs `cmake .` in `build/` before `make thud_test`.
+- `clang-format` is not installed. Check the 80-column limit with
+  `LC_ALL=C.UTF-8 grep -nP '^.{81,}$'` — `awk` counts bytes and overcounts `×` and `−`.
+- Python 3.14 starts `multiprocessing` workers with `forkserver`, so the experiment scripts
+  pass hexparrot's path to each worker through a pool initializer.
+
+**Completeness checks, added at the user's request before the review:** the opening's
+complete legal set for both sides (656 dwarf moves, 32 troll steps); **perft** on five
+positions against hexparrot/thudgame's engine (commit 7b171108), which ran from a
+temporary clone and is not a dependency — only its numbers are in the test; and the board's
+**8 symmetries**, on fixed positions and every position of 10 random games.
+
+**The test review, in 8 chunks, with the user.** Additions, by chunk:
+
+- Hurls: one dwarf ending several lines hurls along each, with `N` counted per direction
+  (`TestHurlSeveralLines`).
+- Dwarf moves: a move next to a troll captures nothing (`TestApplyDwarfMove`).
+- Shoves: the same for a troll ending several lines (`TestShoveSeveralLines`). The user
+  asked whether a shove must land next to a dwarf: yes, §5b.
+- Troll steps: a troll next to the landing square survives both a capture-all and a
+  declined capture; every capture apply test starts from non-zero counters, so the reset to
+  0 is visible; and a new random-play test of captures and counters after every move.
+- End of battle: a `CheckOver` helper — a finished battle has no player to move, no legal
+  action, and the returns of its margin — used by every end test, the turn limits included;
+  and capturing the last opposing piece ends the battle at once (a hurl of the last troll; a
+  capturing step taking the last two dwarfs). **The user asked whether the dwarfs can run out
+  of moves while they have dwarfs: no.** A dwarf next to an empty square can move there, one
+  next to a troll can hurl 1 square onto it; if every dwarf were stuck, every square next to
+  a dwarf would hold a dwarf or the Thudstone, so dwarfs would fill all 164 other squares.
+  The trolls can be stuck with pieces left. The proof is a comment above
+  `TestEndNoLegalMove`, and it gives the implementation a cheap end check (`PLAN.md`
+  Phase 3).
+- Whole positions: `TestShoveMaxDistance` (7 squares along a full row; perft cannot cover it,
+  because hexparrot stops hurls and shoves at 6 — evidence that this bug occurs in practice).
+  The random-play test became `TestRandomPlay`: in every position the battle is over exactly
+  when an ending of §6 holds (decided from the pieces with the proof above) and the players
+  alternate; each game ends through `CheckOver` with the margin counted on the board; all
+  five kinds of move must have been played; and a `RandomAction` helper fails cleanly on an
+  empty legal-action list instead of indexing into it.
+- **The user challenged "`TestSymmetry` needs no expected values":** right — a mirroring
+  function that did nothing would make both comparisons pass trivially. The test now checks
+  its own mirroring code first: each symmetry maps the 165 squares one-to-one onto the
+  board, the 8 send (0,5) to 8 different squares, and one quarter turn matches a
+  hand-drawn position, move and capturing step (recomputed independently in Python).
+- Random games use fixed seeds (20260923, 20260924), as upstream does (`chess_test.cc:339`
+  seeds `rng(23)`; `basic_tests.cc` uses the default seed). Whether ten games are enough to
+  play every kind of move was measured, not assumed — see the scripts below.
+- Also: 9 lines over 80 columns wrapped, and `TestPerft`'s comment corrected — 7-square
+  hurls and shoves fit along full columns as well as rows.
+
+**Experiment scripts** (user: keep them, note that they must not go upstream). Both are in
+`thud/experiments/`, set up like `limits_sim.py`, and re-run from there with identical
+results:
+
+- `perft_reference.py`, the source of `TestPerft`'s counts (about 21 s on 10 processes):
+  opening 656 / 22,624 / 14,142,624; opening with the trolls to move 32 / 20,360; tangled
+  380 (376 moves, 4 hurls) / 24,359; tangled with the trolls to move 64 (48 steps, 11
+  capturing steps, 5 shoves) / 24,155; midgame 40 (32, 7, 1) / 20,141 / 849,507. The
+  midgame is hexparrot's AI playing itself (lookahead 3), seed 0, after 17 turns. The
+  longest line of pieces seen in any position was 6, so hexparrot's 6-square cap never
+  mattered.
+- `move_kinds_sim.py`, the evidence behind `TestRandomPlay`'s coverage check: 1,000 random
+  games under our 200/800 limits (seeds 0–999, about 160 s) last 342 turns on average.
+  Dwarf moves, troll steps and capturing steps occur in every game (169.6, 143.4 and 25.5
+  per game); shoves in 89.1% (2.1 per game) and hurls in only 77.8% (1.4 per game). So ten
+  games miss a kind with a chance of about 3 in 10 million, and none of the 100 blocks of
+  ten consecutive games did.
+
+`PLAN.md`'s pre-PR checklist now says that `thud/experiments/` stays out like the rest of
+`thud/` (the push hook already refuses all of `thud/`), and that the upstream-bound files'
+33 comments pointing into `thud/` must be rewritten to stand alone, with a `grep` that
+lists them.
+
+**Design review, first half (2026-09-24).** Each decision is recorded with its evidence in
+`PLAN.md` Phase 3; in brief:
+
+- **Position text: kept.** Chess prints FEN and reads it back (`chess.cc:381`); nine
+  upstream games read positions from text; dstu prints the same unlabelled `d`/`T`/`O`
+  rows. Reading must reject malformed text and impossible positions (more than 32 dwarfs
+  or 8 trolls, `#` anywhere but exactly the cut-off corners, anything but the Thudstone on
+  (7,7)). The agreed test mechanism — an error handler that throws — was **withdrawn** on
+  finding `pyspiel.cc:829`: "When used from C++, OpenSpiel will never raise exceptions";
+  Google style bans them too. Instead, as chess's `BoardFromFEN` returns nullopt for a bad
+  FEN (`chess_board.h:265`, checked by `ChessState`'s constructor, `chess.cc:112`),
+  `PositionFromText()` returns nullopt and `TestRejectedPositions` checks it directly: 12
+  small edits of text that reads fine (8 changed or deleted characters, a deleted row, 3
+  bad status lines), and controls proving that the unedited text reads correctly.
+- **Notation: one form for every capture, `(r,c)-(r,c)x`** (the user's proposal).
+  hexparrot's notation also marks every capture after the move (`TF7-D5xC4`), and
+  OpenSpiel's `StringToAction` matches against the legal moves of the position, so the
+  strings stay unique. A one-square capture is now a hurl or a capturing step depending on
+  the piece: the tests' parser looks the piece up, and its position-free version refuses
+  one-square captures. 35 hurl names were rewritten; all 24 one-square captures in the tests
+  were checked by hand, and none changed meaning.
+- **Observation: 6 planes** — dwarfs, trolls, empty, trolls to move, turns without a
+  capture ÷ its limit, turns ÷ its limit — planes first, the same for both players, as in
+  chess (`chess.cc:406`). The proposed Thudstone plane was dropped after the user asked why
+  a stone that never moves needs one: by the rules it is simply a hole, and holes are 0 in
+  every board plane, as Havannah and Y leave their off-board cells. The user then asked
+  whether more planes could go, and to read the papers. AlphaGo (2016) had explicit
+  "Stone colour: Player stone/opponent stone/empty" planes plus constant "Ones" and "Zeros"
+  planes; AlphaGo Zero and AlphaZero dropped the empty plane ("0 if the intersection is
+  empty, contains an opponent stone, or if t < 0") — possible only because Go and chess
+  boards have no holes. On our grid, 61 squares are holes, so the empty plane stays: it is
+  the only thing telling an empty square from a hole. `thud.h` explains this in a table
+  (the user asked for that comment). AlphaZero also keeps a total-move-count plane for the
+  same reason as our turns plane: games "exceeding a maximum number of steps … were
+  terminated and assigned a drawn outcome".
+- **Information state: the move history**, as `tic_tac_toe.cc:232`, `amazons.cc:359`,
+  `chess.cc:397`, `checkers.cc:499` and `go.cc:129` do (Breakthrough provides none);
+  `TestInformationState` covers it.
+
+**Noted for later:** Part 4 must decide how a game started from a diagram is saved and
+restored — chess writes `FEN: …` before its moves (`ChessState::Serialize`,
+`ChessGame::DeserializeState`). And before training with OpenSpiel's Python AlphaZero, check
+its input layout: it reshapes observations to the game's planes-first shape
+(`model_linen.py:209`) and feeds flax's `nn.Conv`, which expects channels last (unverified;
+in `PLAN.md`'s deferred decisions).
+
+**Half-finished:** the design review's Parts 3 (board storage) and 4 (`thud.h` API); no
+implementation yet; **nothing from this session is committed** — the user will review the
+docs and commit and push next session.
+
+**Next step:** as recorded in `## Current status`.

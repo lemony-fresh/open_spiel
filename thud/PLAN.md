@@ -114,16 +114,63 @@ tests written from the spec cannot inherit the implementation's misunderstanding
 Each step's tests are a natural review point for the user — they are the rules in
 executable form — so pause for review where the user asks.
 
+**After the test review, revisit the design decisions — before implementing anything (user,
+2026-09-23).** All tests were written first and reviewed with the user chunk by chunk
+(session 3, finished 2026-09-24). Now go back over the decisions the tests and `thud.h` lock
+in, since changing them after the implementation exists means rewriting both. **Status
+2026-09-24: the first four are decided; the board storage and the `thud.h` API are next.**
+
+- the position text format — `#` `.` `d` `T` `O` rows plus the status line
+  `to_move=… turns=… turns_without_capture=…` — used by `ToString()` and for reading
+  positions. Every test position is written in it; `TestDiagramRoundTrip` pins the details.
+  **Decided 2026-09-24: kept**, one format both ways like chess's FEN, counters included.
+  Reading must also reject malformed text and impossible positions (listed in `thud.h`).
+  Following chess's `BoardFromFEN`, `PositionFromText()` returns nullopt for them and
+  `NewInitialState()` turns that into the usual fatal error; `TestRejectedPositions` checks
+  the function directly. Not a throwing error handler: OpenSpiel's C++ never throws
+  (`pyspiel.cc:829`), and Google style bans exceptions;
+- the `ActionToString` notation. The tests name every move in it; `TestActionToString` pins
+  it. **Decided 2026-09-24:** `(r,c)-(r,c)` for a move that captures nothing and
+  `(r,c)-(r,c)x` for every capture — hurl, capturing step or shove — as hexparrot marks
+  every capture after the move. So a one-square capture is a hurl or a capturing step
+  depending on the piece; the tests' parser looks it up in the position;
+- the observation tensor, proposed as 7 planes of 15x15 (dwarfs, trolls, empty, Thudstone,
+  trolls-to-move, turns-without-capture fraction, turns fraction), the same for both
+  players. `TestObservation` pins all of it. **Decided 2026-09-24: 6 planes, the Thudstone
+  plane dropped.** By the rules the stone is just a hole, like a cut-off corner, and holes
+  are 0 in every board plane, as Havannah and Y leave their off-board cells. The empty
+  plane stays: it is what tells an empty square from a hole. AlphaGo Zero and AlphaZero
+  drop it only because Go and chess boards have no holes. The rest is as in chess (and
+  AlphaZero): a side-to-move plane and counters scaled into 0-1, planes first;
+- `InformationStateString`: `thud.cc` declares it provided, but it is only a stub and no test
+  covers it. Upstream perfect-information games either return the move history,
+  `HistoryString()` (`tic_tac_toe.cc:232`, `amazons.cc:359`, `chess.cc:397`,
+  `checkers.cc:499`, `go.cc:129`), or do not provide it (`breakthrough.cc:52`).
+  **Decided 2026-09-24:** the move history, like those five; `TestInformationState`
+  covers it;
+- the board storage: a 165-square array numbered like the actions, with move paths
+  precomputed from `(row, col)` — instead of the padded 15x15 array suggested in Phase 2
+  and in the performance note below. It is internal, so no test depends on it;
+- the public API of `thud.h`: names, and what it exposes for tests and tools (`CellAt`,
+  `TurnsPlayed`, `TurnsWithoutCapture`, the encoding helpers, and `Position` with
+  `PositionFromText()`, added 2026-09-24). Also: a game started from a diagram must
+  serialize with its starting position, as chess writes `FEN: …` before the moves
+  (`ChessState::Serialize`, `ChessGame::DeserializeState`).
+
 **Performance and readability are both requirements.** Move generation is expected to be
 the training bottleneck, so the implementation must be **very fast** — but it must stay
 **readable**, because the rules are fiddly and correctness comes first. In practice: fast,
-simple data layouts (a flat padded board array, precomputed per-square ray tables, no
-allocation in the hot path) rather than clever tricks that obscure the rules; one small,
+simple data layouts (a flat board array — whether padded is the board-storage decision
+above — precomputed per-square ray tables, no allocation in the hot path) rather than
+clever tricks that obscure the rules; one small,
 clearly named function per move type that reads like its section of `THUD_RULES.md`; and
 optimise from Phase 5 measurements, not guesses. A speed-up that makes a rule hard to
 check against the spec is not worth it. **Build the ray tables from `(row, col)`
 coordinates, never by index arithmetic on the flat array**, so that no ray can wrap from one
-row or column into the next (see the wrap-around corner case below).
+row or column into the next (see the wrap-around corner case below). **`IsTerminal` needs
+no move generation:** the dwarfs have a legal move exactly while a dwarf is left, and the
+trolls exactly while some troll has an empty square next to it (proof in the comment above
+`TestEndNoLegalMove`; `TestRandomPlay` checks the same condition in every position).
 
 **Template: `tic_tac_toe/` for the boilerplate, `chess/` for the action encoding.** With one
 action per turn (decided in Phase 2), Thud no longer needs Amazons' multi-phase turn state
@@ -134,7 +181,8 @@ of a from-square × direction × distance action layout.
   `MaxGameLength`; game parameters `max_turns_without_capture` (default 200) and
   `max_turns` (default 800) in `parameter_specification`
 - `ThudState`: `CurrentPlayer`, `LegalActions`, `DoApplyAction`, `IsTerminal`, `Returns`,
-  `ObservationTensor`, `ObservationString`, `ToString`, `Clone`, `ActionToString`
+  `ObservationTensor`, `ObservationString`, `InformationStateString`, `ToString`, `Clone`,
+  `ActionToString`
 - **The observation must be Markov, including the end-of-battle limits:** besides the pieces
   and the side to move, `ObservationTensor` must carry the no-capture counter and the turn
   count (each scaled by its limit), because both limits change the outcome. OpenSpiel's
@@ -153,10 +201,10 @@ of a from-square × direction × distance action layout.
   | Move type | Positive | Negative — must NOT be legal |
   |---|---|---|
   | Dwarf move | 1..k squares, all 8 directions, to empty squares | through or onto any piece; through or onto the Thudstone; onto a troll (a dwarf never captures by moving) |
-  | Dwarf hurl | line of `N >= 1`, distance `1..N`, landing on a troll — including a **lone dwarf onto an adjacent troll** | lone dwarf at distance 2; distance `> N`; blocked path; landing on an empty square, a dwarf or the Thudstone; hurling the *rear* dwarf |
+  | Dwarf hurl | line of `N >= 1`, distance `1..N`, landing on a troll — including a **lone dwarf onto an adjacent troll**, and **one dwarf heading several lines, hurling along each** | lone dwarf at distance 2; distance `> N`; blocked path; landing on an empty square, a dwarf or the Thudstone; hurling the *rear* dwarf; a distance that only a longer line in **another direction** would allow (`N` is counted per direction) |
   | Troll step, captures none | exactly 1 square, all 8 directions, to an empty square | more than 1 square; onto any piece; onto the Thudstone |
   | Troll step, captures all | 1 square to an empty square with ≥ 1 adjacent dwarf; **every** adjacent dwarf removed | landing where no dwarf is adjacent; any dwarf left adjacent afterwards |
-  | Troll shove | line of `N >= 2`, distance `2..N`, lands empty, ≥ 1 adjacent dwarf, **all** adjacent dwarfs removed | distance 1 (that is a step); lone troll; distance `> N`; blocked path; landing on a piece; **landing where no dwarf is adjacent** |
+  | Troll shove | line of `N >= 2`, distance `2..N`, lands empty, ≥ 1 adjacent dwarf, **all** adjacent dwarfs removed — including **one troll ending several lines, shoved along each** | distance 1 (that is a step); lone troll; distance `> N`; blocked path; landing on a piece; **landing where no dwarf is adjacent**; a distance that only a longer line in **another direction** would allow (`N` is counted per direction) |
 
 - **Corner cases — cover each explicitly:**
   - **No wrap-around between rows or columns** (raised by the user). A board stored as a flat
@@ -178,11 +226,31 @@ of a from-square × direction × distance action layout.
   - **Captures around a landing square on a border**, which has fewer than 8 neighbours.
   - **The Thudstone:** it blocks paths, breaks a line, cannot be landed on or captured.
   - **Maximum lengths:** 14-square moves along a full row or column, and 9-square moves along
-    the longest diagonals (the cut corners shorten every diagonal; checked by script).
+    the longest diagonals (the cut corners shorten every diagonal; checked by script). Hurls
+    and shoves: 7 squares along a full row or column, the longest possible — perft cannot
+    cover these, because its reference engine stops at 6.
   - **Exact boundaries of the end conditions** (§6): the battle ends after exactly 200 turns
     without a capture, not 199; after exactly 800 turns; when the player to move has no
-    legal move, including when a side has no pieces left.
+    legal move, including when a side has no pieces left — and so at once when a capture
+    takes the last opposing piece. However it ends, a finished battle has no player to move
+    and no legal action.
 - Test the action encoding round trip (`THUD_RULES.md` §8) directly.
+- **Whole positions** (added during the user's test review, 2026-09-23):
+  - the opening's **complete** legal set, every action of every kind, with both sides to
+    move;
+  - **perft** — the number of move sequences of 1-3 turns — on five positions (opening,
+    a constructed tangled position, a midgame from a real game), against reference counts
+    from hexparrot/thudgame's independent engine, as OpenSpiel's `chess` test does with
+    published counts;
+  - the board's **8 symmetries**: in fixed and random-play positions, the legal moves of a
+    rotated or mirrored position are the rotated or mirrored legal moves, and applying a
+    move commutes with the symmetry;
+  - after **every move of random games**: the turn count rises by one, plain moves and
+    steps capture nothing and add one turn without a capture, a hurl removes exactly one
+    troll and a capturing step or shove exactly the dwarfs next to its landing square,
+    each resetting that count. In **every position** of those games, the players take turns
+    and the battle is over exactly when an ending of §6 holds, with the returns of the
+    pieces left. The games must play all five kinds of move, or the test fails.
 
 ### Phase 4 — Integration tests and baselines (once every move type passes)
 
@@ -240,7 +308,9 @@ Note that `.gitattributes export-ignore` does **not** help here: it only affects
 - The name "Thud" and its Discworld associations are plausibly trademarked. Flag this to the
   maintainers; it may require a rename or explicit permission.
 
-**3. The PR branch contains only these files.** Nothing from `CLAUDE.md` or `thud/`.
+**3. The PR branch contains only these files.** Nothing from `CLAUDE.md` or `thud/` — in
+particular not `thud/experiments/`, whose scripts run hexparrot/thudgame's engine (cloned
+outside this repo) to produce the reference numbers our tests quote.
 
 - `open_spiel/games/thud/{thud.h,thud.cc,thud_test.cc}`
 - `open_spiel/games/CMakeLists.txt` — game sources plus the test target
@@ -248,6 +318,13 @@ Note that `.gitattributes export-ignore` does **not** help here: it only affects
 - `open_spiel/integration_tests/playthroughs/thud.txt` — generated, not hand-written
 - `docs/games.md` — one table row: status badge, name, players, deterministic, perfect-info,
   description
+
+The upstreamed files must not point into `thud/` either. Comments in
+`open_spiel/games/thud/` cite `THUD_RULES.md` and its section numbers, `thud/PLAN.md`, and
+the scripts in `thud/experiments/`. Rewrite them to stand on their own: keep the facts (for
+example, that `TestPerft`'s counts come from hexparrot/thudgame at commit 7b171108) and drop
+the pointers. This lists them:
+`grep -rniE '[^/]thud/|THUD_RULES|section [0-9]' open_spiel/games/thud/`
 
 **4. Remove our Apache 2.0 "modified file" notices** from `games/CMakeLists.txt` and
 `pyspiel_test.py`. Those exist because *we* distribute a modified fork (Apache 2.0 §4(b));
@@ -273,7 +350,7 @@ Recorded here so they are decided deliberately rather than by accident.
 
 | Decision | Blocked on |
 |---|---|
-| Classical MCTS + evaluation function vs AlphaZero-style learning | Phase 5 benchmarks |
+| Classical MCTS + evaluation function vs AlphaZero-style learning | Phase 5 benchmarks. If OpenSpiel's Python AlphaZero, first check its input layout (noticed 2026-09-24, unverified): it reshapes observations to the game's planes-first shape (`model_linen.py:209`) and feeds them to flax's `nn.Conv`, which expects channels last. Every upstream board game reports planes first, as we do, so any fix belongs in the training code, not in `ObservationTensorShape`. |
 | Local CPU training vs rented cloud GPU | Phase 5 benchmarks |
 | `OPEN_SPIEL_BUILD_WITH_LIBTORCH` on aarch64 (needed for C++ AlphaZero) | Only if we commit to C++ AlphaZero |
 | Whether to attempt upstreaming to OpenSpiel | Thud is commercially published; copyright question unresolved |
