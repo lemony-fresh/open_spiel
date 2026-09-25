@@ -118,12 +118,15 @@ executable form — so pause for review where the user asks.
 2026-09-23).** All tests were written first and reviewed with the user chunk by chunk
 (session 3, finished 2026-09-24). Now go back over the decisions the tests and `thud.h` lock
 in, since changing them after the implementation exists means rewriting both. **Status
-2026-09-24: the first four are decided; the board storage and the `thud.h` API are next.**
+2026-09-24: all six are decided; implementation is next.**
 
-- the position text format — `#` `.` `d` `T` `O` rows plus the status line
+- the position text format — `-` `.` `d` `T` `O` rows plus the status line
   `to_move=… turns=… turns_without_capture=…` — used by `ToString()` and for reading
   positions. Every test position is written in it; `TestDiagramRoundTrip` pins the details.
   **Decided 2026-09-24: kept**, one format both ways like chess's FEN, counters included.
+  The cut-off corners were `#` until the `thud.h` API review the same day (below) changed
+  them to `-`: OpenSpiel's saved-game files drop every line starting with `#` as a comment
+  (`DeserializeGameAndState`, `spiel.cc`), and 10 of the 15 rows started with `#`.
   Reading must also reject malformed text and impossible positions (listed in `thud.h`).
   Following chess's `BoardFromFEN`, `PositionFromText()` returns nullopt for them and
   `NewInitialState()` turns that into the usual fatal error; `TestRejectedPositions` checks
@@ -148,26 +151,54 @@ in, since changing them after the implementation exists means rewriting both. **
   `checkers.cc:499`, `go.cc:129`), or do not provide it (`breakthrough.cc:52`).
   **Decided 2026-09-24:** the move history, like those five; `TestInformationState`
   covers it;
-- the board storage: a 165-square array numbered like the actions, with move paths
-  precomputed from `(row, col)` — instead of the padded 15x15 array suggested in Phase 2
-  and in the performance note below. It is internal, so no test depends on it;
+- the board storage, proposed as a 165-square array numbered like the actions, with move
+  paths precomputed from `(row, col)`. It is internal, so no test depends on it.
+  **Decided 2026-09-24: a padded grid** — the 15x15 grid inside a one-cell border, 17x17
+  cells, with the border and the cut-off corners holding a "not a square" value. A line is
+  walked by adding a fixed offset per direction (±1, ±16, ±17, ±18), and one condition —
+  "is the next cell empty?" — stops every walk, whatever is in the way: a piece, the
+  Thudstone, a cut-off corner or the edge. OpenSpiel's Go pads its board the same way
+  (`go_board.h:50`); hexparrot does too. Chosen for readability and safety, not speed: a
+  precomputed neighbour table (dstu's design, 165 cells) costs a dependent lookup per
+  step, and an unpadded grid needs a row/column bounds check per step (as chess's
+  `InBoardArea` does), whose omission is exactly the wrap-around bug; the speed and
+  memory differences are a cycle or so per step and ~100 bytes per state (a state's move
+  history alone is 16 bytes per turn). Translating between the actions' 165 numbers and
+  grid cells happens once per piece or applied move, never per step. How `thud.h`'s
+  private board member and the "not a square" value are declared is part of the API
+  item below;
 - the public API of `thud.h`: names, and what it exposes for tests and tools (`CellAt`,
   `TurnsPlayed`, `TurnsWithoutCapture`, the encoding helpers, and `Position` with
-  `PositionFromText()`, added 2026-09-24). Also: a game started from a diagram must
-  serialize with its starting position, as chess writes `FEN: …` before the moves
-  (`ChessState::Serialize`, `ChessGame::DeserializeState`).
+  `PositionFromText()`, added 2026-09-24). **Decided 2026-09-24:**
+  - **The grid's "not a square" value is `Cell::kOffBoard`** in the public `Cell` type,
+    documented as never returned by `CellAt()` nor found in a `Position` — as OpenSpiel's
+    Go keeps `GoColor::kGuard` for its padding (`go_board.h:30`).
+  - **A state is built from a `Position`**, not from text: `NewInitialState(text)` reads
+    the text with `PositionFromText()`, stops with a fatal error on nullopt, and builds the
+    state. The state remembers a starting `Position` other than the opening.
+  - **Saving a game started from a diagram**, as chess saves its starting FEN
+    (`ChessState::Serialize`, `ChessGame::DeserializeState`): `Serialize()` writes that
+    position in the text format, then the actions one per line; a game from the opening
+    keeps OpenSpiel's default of actions only; `DeserializeState()` tells them apart by the
+    first character. That needed the `#` → `-` change above. OpenSpiel's own mechanism
+    (`starting_state_str_`, written as `starting_state=…`) was rejected: it stores one line,
+    and `State::StartingState()`, exposed to Python as `starting_state()`, always parses
+    it as JSON (`spiel.h:1257`), so a Thud position there would make that call fail.
+    `TestSerialize` pins the saved text and restores both kinds of game, directly and
+    through `SerializeGameAndState` / `DeserializeGameAndState`.
+  - Not added: a way to read out the whole `Position` (tools can use `CellAt` until
+    something needs more) and `UndoAction` (a Phase 5 candidate).
 
 **Performance and readability are both requirements.** Move generation is expected to be
 the training bottleneck, so the implementation must be **very fast** — but it must stay
 **readable**, because the rules are fiddly and correctness comes first. In practice: fast,
-simple data layouts (a flat board array — whether padded is the board-storage decision
-above — precomputed per-square ray tables, no allocation in the hot path) rather than
-clever tricks that obscure the rules; one small,
-clearly named function per move type that reads like its section of `THUD_RULES.md`; and
-optimise from Phase 5 measurements, not guesses. A speed-up that makes a rule hard to
-check against the spec is not worth it. **Build the ray tables from `(row, col)`
-coordinates, never by index arithmetic on the flat array**, so that no ray can wrap from one
-row or column into the next (see the wrap-around corner case below). **`IsTerminal` needs
+simple data layouts (the padded grid decided above, no allocation in the hot path) rather
+than clever tricks that obscure the rules; one small, clearly named function per move type
+that reads like its section of `THUD_RULES.md`; and optimise from Phase 5 measurements, not
+guesses. A speed-up that makes a rule hard to check against the spec is not worth it.
+**Step by fixed offsets only on the padded grid, whose border stops every line — never on
+an unpadded flat array**, where a line can wrap from one row or column into the next (see
+the wrap-around corner case below). **`IsTerminal` needs
 no move generation:** the dwarfs have a legal move exactly while a dwarf is left, and the
 trolls exactly while some troll has an empty square next to it (proof in the comment above
 `TestEndNoLegalMove`; `TestRandomPlay` checks the same condition in every position).
@@ -250,7 +281,15 @@ of a from-square × direction × distance action layout.
     troll and a capturing step or shove exactly the dwarfs next to its landing square,
     each resetting that count. In **every position** of those games, the players take turns
     and the battle is over exactly when an ending of §6 holds, with the returns of the
-    pieces left. The games must play all five kinds of move, or the test fails.
+    pieces left; and both players' observation (every plane) and strings match the
+    position — also after the battle has ended, as OpenSpiel's generic tests require. The
+    games must play all five kinds of move, or the test fails.
+- **Every hand-written move expectation is cross-checked** against hexparrot's independent
+  engine by `thud/experiments/crosscheck_tests.py` (added 2026-09-24): exact move sets,
+  legal and illegal moves, reach tables and the position after a move, plus a check that
+  every test diagram is a position the reader accepts. **Re-run it after changing any
+  test.** Its first run found two diagrams with 12 trolls, which the reading rules decided
+  that day reject.
 
 ### Phase 4 — Integration tests and baselines (once every move type passes)
 
@@ -267,6 +306,21 @@ Measure legal-move generations/sec, random rollouts/sec, and MCTS simulations/se
 numbers in `PROGRESS.md`. These unblock both deferred decisions below. Also record how long
 random rollouts run and how they end under the 200/800 limits, and compare with the
 hexparrot-based measurements in `PROGRESS.md`, session 2, to confirm that proxy held.
+
+**Optimisation candidates — only where the measurements point, never before** (user,
+2026-09-24). Each is checked against the simple Phase 3 implementation, which stays as the
+reference: the same perft counts, and identical legal moves in every position of many random
+games.
+
+- **Track lines of dwarfs and trolls incrementally** instead of recounting a line behind a
+  piece whenever moves are generated. Postponed as premature: lines are short, hurls and
+  shoves are a small share of all moves (most work is walking empty squares for plain
+  moves), and every move and capture would have to update lines along up to four axes —
+  error-prone, and extra state to copy with every simulation.
+- **`UndoAction`**, only if we search with OpenSpiel's alpha-beta: it can undo moves
+  instead of copying the state at every node (`use_undo` in `algorithms/minimax.cc`),
+  while MCTS copies the state once per simulation regardless. Undoing a capture means
+  restoring up to 8 dwarfs, so each move would have to remember what it captured.
 
 ---
 
