@@ -52,20 +52,29 @@
 // ThudGame::NewInitialState(const std::string&): fifteen rows of fifteen
 // characters, row 0 (north) first, then a status line:
 //
-//   '#' not part of the board (a cut-off corner)   '.' empty square
+//   '-' not part of the board (a cut-off corner)   '.' empty square
 //   'd' dwarf   'T' troll   'O' the Thudstone (always at row 7, column 7)
 //
 //   to_move=dwarfs turns=0 turns_without_capture=0
+//
+// The cut-off corners are '-' rather than '#' because OpenSpiel's saved-game
+// files treat a line starting with '#' as a comment (see Serialize() below).
 //
 // When reading, the status line and each of its fields are optional (the
 // defaults are those shown), the fields may come in any order, and blank lines
 // and spaces around a row are ignored. Reading fails on malformed text (a row
 // of the wrong length, the wrong number of rows, an unknown character, an
 // unknown status field or value, a negative count) and on impossible
-// positions: '#' anywhere but exactly the cut-off corners, anything but the
+// positions: '-' anywhere but exactly the cut-off corners, anything but the
 // Thudstone at row 7, column 7, a second Thudstone, or more than 32 dwarfs or
 // 8 trolls. PositionFromText() then returns nullopt, and NewInitialState()
 // stops with a fatal error, as chess does for an invalid FEN.
+//
+// Saved games (Serialize()): the actions played, one per line, as OpenSpiel
+// saves by default. A game that started from a position other than the opening
+// first saves that position, in the text format above, and then its actions,
+// much as chess saves its starting FEN; DeserializeState() tells the two
+// apart by the first character.
 //
 // Actions as text (ActionToString), squares written (row,col), with a trailing
 // "x" for a move that captures:
@@ -141,14 +150,19 @@ inline constexpr int kDefaultMaxTurns = 800;
 inline constexpr int kDwarfPlane = 0;
 inline constexpr int kTrollPlane = 1;
 inline constexpr int kEmptyPlane = 2;
-inline constexpr int kTrollsToMovePlane = 3;  // 1 if trolls are to move.
+// 1 if the trolls are to move; after the battle has ended, if they would have
+// moved next.
+inline constexpr int kTrollsToMovePlane = 3;
 inline constexpr int kNoCaptureCountPlane =
     4;  // turns_without_capture / max_turns_without_capture.
 inline constexpr int kTurnCountPlane = 5;  // turns / max_turns.
 inline constexpr int kNumObservationPlanes = 6;
 
-// What occupies a square of the board.
-enum class Cell : std::int8_t { kEmpty, kDwarf, kTroll, kThudstone };
+// What occupies a square of the board. kOffBoard marks the cells of the
+// implementation's padded grid that are not squares (its border and the
+// cut-off corners), so that walking a line stops there; CellAt() never returns
+// it, and a Position never contains it.
+enum class Cell : std::int8_t { kEmpty, kDwarf, kTroll, kThudstone, kOffBoard };
 
 // A square as (row, column) on the 15x15 grid; row 0 is north.
 struct Coord {
@@ -193,8 +207,8 @@ class ThudState : public State {
  public:
   // The starting position.
   explicit ThudState(std::shared_ptr<const Game> game);
-  // A position read from text; see the format at the top of this file.
-  ThudState(std::shared_ptr<const Game> game, const std::string& diagram);
+  // Any position, such as one read by PositionFromText().
+  ThudState(std::shared_ptr<const Game> game, const Position& position);
 
   ThudState(const ThudState&) = default;
   ThudState& operator=(const ThudState&) = default;
@@ -211,6 +225,8 @@ class ThudState : public State {
                          absl::Span<float> values) const override;
   std::unique_ptr<State> Clone() const override;
   std::vector<Action> LegalActions() const override;
+  // See "Saved games" at the top of this file.
+  std::string Serialize() const override;
 
   // What occupies (row, col). Requires IsOnBoard(row, col).
   Cell CellAt(int row, int col) const;
@@ -222,12 +238,19 @@ class ThudState : public State {
   void DoApplyAction(Action action) override;
 
  private:
-  std::array<Cell, kNumSquares> board_;  // Indexed by SquareIndex().
+  // The 15x15 grid inside a one-cell border: kGridSize x kGridSize cells, row
+  // by row. The border and the cut-off corners hold Cell::kOffBoard, so a line
+  // walked by a fixed step per direction stops at the first cell that is not
+  // empty, whatever is in the way.
+  static constexpr int kGridSize = kBoardSize + 2;
+  std::array<Cell, kGridSize * kGridSize> grid_;
   Player to_move_ = kDwarfPlayer;
   int turns_played_ = 0;
   int turns_without_capture_ = 0;
   int max_turns_without_capture_;
   int max_turns_;
+  // Where the game started, if not from the opening; Serialize() saves it.
+  absl::optional<Position> start_;
 };
 
 // Game object.
@@ -238,7 +261,9 @@ class ThudGame : public Game {
   int NumDistinctActions() const override { return kNumDistinctActions; }
   using Game::NewInitialState;
   std::unique_ptr<State> NewInitialState() const override;
-  // A position read from text; see the format at the top of this file.
+  // A position read from text by PositionFromText(); stops with a fatal error
+  // if the text is malformed or the position impossible, as chess does for an
+  // invalid FEN.
   std::unique_ptr<State> NewInitialState(
       const std::string& diagram) const override;
   int NumPlayers() const override { return kNumPlayers; }
@@ -250,6 +275,9 @@ class ThudGame : public Game {
   }
   // Every turn is exactly one action, so the turn limit bounds the game.
   int MaxGameLength() const override { return max_turns_; }
+  // See "Saved games" at the top of this file.
+  std::unique_ptr<State> DeserializeState(
+      const std::string& str) const override;
 
   int max_turns_without_capture() const { return max_turns_without_capture_; }
   int max_turns() const { return max_turns_; }

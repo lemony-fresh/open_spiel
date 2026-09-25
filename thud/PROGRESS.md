@@ -2,42 +2,39 @@
 
 ## Current status
 
-**Phase:** 0–2 **done**; **Phase 3 in progress** (session 3, 2026-09-23 to 2026-09-24).
+**Phase:** 0–2 **done**; **Phase 3 in progress** — tests and design done (sessions 3–4,
+2026-09-23 to 2026-09-24); the implementation is next.
 
-**First thing next session: commit and push session 3's work** (user, 2026-09-24: "we can
-wait until tomorrow"). Nothing from session 3 is committed yet. The user reads the docs
-first — `PLAN.md`, this file, and the new scripts in `thud/experiments/` — then commit on
-`thud` and push to `origin`.
+**Where Phase 3 stands:** the tests are written, reviewed with the user and cross-checked
+against an independent engine; the design review is complete; nothing is implemented yet.
 
-**Where Phase 3 stands:** the tests are written and reviewed, the design review is half
-done, and nothing is implemented yet.
-
-- `open_spiel/games/thud/thud_test.cc` has **45 test functions**, written from
-  `THUD_RULES.md` before any implementation and reviewed with the user chunk by chunk (what
-  each review added is in the session-3 log). `thud.h` is the API; `thud.cc` is registration
-  plus **stubs only** — every function calls `NotImplemented()`. Registered in
-  `open_spiel/games/CMakeLists.txt` and `open_spiel/python/tests/pyspiel_test.py`, each with
-  the Apache §4(b) notice. `make thud_test` builds with no warnings; running it stops at the
-  first stub (`IsOnBoard`) — the intended red state.
-- **Design review** (`PLAN.md` Phase 3 list, each decision recorded there with its
-  evidence). Decided 2026-09-24: the position text is kept, and reading rejects malformed
-  text and impossible positions through `PositionFromText()`; every capture is written
-  `(r,c)-(r,c)x`; the observation has 6 planes (no Thudstone plane); the information state
-  is the move history. **Still open: the board storage, then the `thud.h` API** — including
-  saving a game that started from a diagram together with that diagram, as chess saves
-  `FEN: …` before its moves.
-- The reference numbers in the tests come from `thud/experiments/perft_reference.py` and
-  `move_kinds_sim.py`. Both run hexparrot/thudgame's engine from a clone outside the repo,
-  by default `~/hexparrot_thudgame`, which does **not** exist on this machine (session 3
-  used a temporary clone at commit 7b171108). Clone it there before re-running them.
+- `open_spiel/games/thud/thud_test.cc` has **46 test functions**, written from
+  `THUD_RULES.md` before any implementation (what each review added is in the session-3
+  and session-4 logs). `thud.h` is the API; `thud.cc` is registration plus **stubs only** —
+  every function calls `NotImplemented()`. Registered in `open_spiel/games/CMakeLists.txt`
+  and `open_spiel/python/tests/pyspiel_test.py`, each with the Apache §4(b) notice.
+  `make thud_test` builds with no warnings; running it stops at the first stub
+  (`IsOnBoard`) — the intended red state.
+- **Design review: complete** (`PLAN.md` Phase 3 list, each decision there with its
+  evidence): position text kept, with the cut-off corners written `-` (not `#`) and
+  `PositionFromText()` rejecting malformed text and impossible positions; every capture
+  written `(r,c)-(r,c)x`; a 6-plane observation; the move history as information state; a
+  padded 17x17 grid stepped by fixed offsets; `Cell::kOffBoard`; states built from a
+  `Position`; games started from a diagram saved as their position text, then their moves.
+- **After changing any test, run `thud/experiments/crosscheck_tests.py`**: it checks every
+  hand-written move expectation (110 checks) and every test diagram against hexparrot's
+  engine and the reading rules. It and the scripts behind the tests' reference numbers
+  (`perft_reference.py`, `move_kinds_sim.py`) run hexparrot/thudgame from a clone outside
+  the repo, by default `~/hexparrot_thudgame`, which does **not** exist on this machine
+  (sessions 3–4 used a temporary clone at commit 7b171108). Clone it there first.
 
 **Next steps, in order:**
 
-1. Commit and push (above).
-2. Finish the design review: the board storage, then the `thud.h` API.
-3. Implement in `main()`'s order until `ctest -R thud` passes. Then check the wrap-around
-   tests bite: plant the flat-array bug temporarily and confirm those tests fail.
-4. Phase 4. Until the game is implemented and the playthrough exists, upstream Python tests
+1. Implement in `main()`'s order until `ctest -R thud` passes, following `PLAN.md` Phase 3
+   (padded grid, one small function per move type, `IsTerminal` without move generation).
+2. Check that the wrap-around tests bite: plant a wrap-around bug temporarily (step by
+   offsets on an unpadded 15-wide index) and confirm those tests fail.
+3. Phase 4. Until the game is implemented and the playthrough exists, upstream Python tests
    that iterate over every registered game (`playthrough_test`, `api_test`,
    `games_sim_test`) fail with `thud` in the registry — fix by implementing, never by
    editing those tests (user, 2026-09-23: modify OpenSpiel itself only for registration or
@@ -79,13 +76,24 @@ log and in `PLAN.md` Phase 3):**
     counters. The Thudstone is a hole like the cut-off corners, 0 in every board plane.
 11. **Information state: the move history**, as in tic-tac-toe, chess and Go.
 
+**Decided 2026-09-24 (session 4, all by the user; reasoning in the session-4 log and in
+`PLAN.md` Phase 3):**
+
+12. **Board storage: a padded 17x17 grid**, stepped by fixed offsets — for readability and
+    safety, not speed. Tracking lines of pieces incrementally, and `UndoAction`, are
+    postponed as Phase 5 candidates.
+13. **The cut-off corners are written `-`, not `#`**, so that no line of the position text
+    looks like a comment in OpenSpiel's saved-game files.
+14. **The `thud.h` interface:** `Cell::kOffBoard` for the grid's non-squares; states built
+    from a `Position`; a game started from a diagram saves its position text, then its
+    moves.
+
 **Verified 2026-09-23:** the `~/.bashrc` lines from `CLAUDE.md` do reach Claude Code's Bash
 tool — a new session's shell snapshot has `PYTHONPATH` and the venv (`which python3` →
 `venv/bin/python3`). Session 2's worry was unfounded.
 
-**Outstanding chore: the commit and push at the top of this block.** (Session 2's clean-up is
-complete: `C:\Users\waech\thud-init\` is deleted and the Windows-side project memory
-redirects to this repo.)
+**No outstanding chores.** (Session 2's clean-up is complete: `C:\Users\waech\thud-init\` is
+deleted and the Windows-side project memory redirects to this repo.)
 
 ---
 
@@ -649,3 +657,82 @@ implementation yet; **nothing from this session is committed** — the user will
 docs and commit and push next session.
 
 **Next step:** as recorded in `## Current status`.
+
+### 2026-09-24 — Session 4: board storage, a test audit, the `thud.h` interface
+
+**Committed session 3** after the user read the docs: `e57b9ea8`, pushed to `origin/thud`.
+
+**Design review, Part 3 — board storage: a padded 17x17 grid** (decision and evidence in
+`PLAN.md` Phase 3). The user's questions shaped it:
+
+- *What would a table of precomputed paths (the 165-square proposal) actually contain?*
+  Positions only — the board's shape, computed once, never updated; the pieces live in a
+  separate array. Nothing tracks lines of pieces.
+- *Isn't a lookup slower than adding 16, 15, 14 or 1?* Yes: a small table stays in the
+  fastest cache, but each step waits for its lookup, while an add takes one cycle. Fixed
+  offsets need a rectangular grid, though — the actions' 165 numbering has rows of 5 to 15
+  squares — and on an unpadded 15-wide grid they wrap (east of (5,14) is index +1 = (6,0)).
+- *Isn't a bounds check on (row, col) as cheap as padding?* Yes. Padding doesn't add a
+  lookup either — each step reads the cell anyway, and a padded cell answers "off the
+  board" in that same read — so the choice is readability and safety: one condition stops
+  every walk. Chess checks `InBoardArea` per step, Go pads (`go_board.h:50`), dstu keeps
+  165 cells with neighbour tables, hexparrot pads.
+- *Would dropping the padding help caching across cores?* No: boards are 165–289 bytes,
+  OpenSpiel's MCTS keeps no boards in its tree (`mcts.h:114`) and copies one state per
+  simulation, and each state's move history alone is 16 bytes per turn.
+- *Track lines of dwarfs and trolls incrementally?* Postponed as premature optimisation; in
+  `PLAN.md` Phase 5 as a candidate, checked against the simple implementation.
+
+**A test audit, at the user's request.** A scratch script — kept as
+`thud/experiments/crosscheck_tests.py` — reads every position and move check out of
+`thud_test.cc` and recomputes it with hexparrot's engine: 27 exact move sets, 59 legal /
+illegal checks, 12 reach tables, 2 complete legal sets and 9 after-move positions. All
+agreed except two 7-square moves hexparrot cannot generate (its 6-square cap), confirmed by
+hand. No "must not be legal" check started on the wrong side's piece, and the opening
+diagram equals hexparrot's built-in start. Found and fixed:
+
+- **Two diagrams with 12 trolls**, which the previous day's reading rules reject:
+  `TestShoveBlockedAndThudstone`'s position (split into a Thudstone position with 7
+  trolls and a blocked-lines position with 5, which also gained a "no shoves at all"
+  check) and `TestDiagramRoundTrip`'s copy of it (now the 7-troll layout). The script now
+  checks every diagram against the reading rules.
+- Additions: the observation (every plane) and both strings checked in every position of
+  the random games, for both players, including after the battle ends (`thud.h` now says
+  the trolls-to-move plane then shows the side that would have moved);
+  `TestInitialPosition` checks the dwarfs are to move and the battle isn't over; reading
+  `turns_without_capture=200` gives a finished battle; and `"(7,4)-(4,4)"`'s comment now
+  says it would be a hurl with N = 1, not a move.
+- The script itself was checked with planted mistakes (a wrong expected shove, a ninth
+  troll): it caught both and exited with status 1.
+
+**Design review, Part 4 — the `thud.h` interface** (details in `PLAN.md`):
+
+- `Cell::kOffBoard` for the grid's non-squares, as Go keeps `GoColor::kGuard`
+  (`go_board.h:30`); states are built from a `Position`, with `NewInitialState(text)`
+  reading through `PositionFromText()`.
+- **Saving a game started from a diagram.** OpenSpiel's saved-game reader drops every line
+  starting with `#` as a comment (`spiel.cc`), and 10 of the 15 board rows started with
+  `#`. OpenSpiel's own starting-state mechanism (`starting_state_str_`, used by
+  tic-tac-toe, connect four and catch with JSON) was examined and rejected:
+  `State::StartingState()` always parses that string as JSON (`spiel.h:1257`) and is
+  exposed to Python as `starting_state()`. So, as chess does with its FEN, `Serialize()`
+  writes the starting position's text, then the moves; a game from the opening keeps the
+  default. **The user proposed replacing `#` with another character; `-` was chosen**
+  (light, not a piece letter, no special meaning; a space would be stripped by the reader,
+  and `_` is dstu's empty square).
+- The sweep: all 52 diagrams in `thud_test.cc` (3,120 characters, exactly 52 × 60
+  cut-off cells), two test code lines, `thud.h`'s format comment and reading rule,
+  `perft_reference.py`'s two diagrams and its diagram writer, `crosscheck_tests.py`'s
+  reading rules, and `PLAN.md`. Session 3's log above still says `#`, as the record of
+  that day's decision. Verified: no board `#` left in any file; all 110 cross-checks pass
+  and no diagram breaks the rules; `perft_reference.py` reproduces every count, and its
+  printed midgame equals `kMidgame`; a planted `#` is caught. New: `TestSerialize`, which
+  pins the saved text and restores both kinds of game directly and through
+  `SerializeGameAndState` / `DeserializeGameAndState`, and a rejection case for `#`.
+- Not added: reading out a whole `Position`, and `UndoAction` (useful only to OpenSpiel's
+  alpha-beta search, `use_undo` in `minimax.cc`; a Phase 5 candidate).
+
+**State at the end:** 46 test functions; `make thud_test` builds with no warnings and stops
+at the first stub; the design review is complete.
+
+**Next step:** as recorded in `## Current status` — the implementation.

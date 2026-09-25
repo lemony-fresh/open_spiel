@@ -86,9 +86,9 @@ ThudState::ThudState(std::shared_ptr<const Game> game) : State(game) {
 }
 
 ThudState::ThudState(std::shared_ptr<const Game> game,
-                     const std::string& diagram)
+                     const Position& position)
     : State(game) {
-  NotImplemented("reading a position");
+  NotImplemented("a state from a Position");
 }
 
 Player ThudState::CurrentPlayer() const { NotImplemented("CurrentPlayer"); }
@@ -122,6 +122,8 @@ std::vector<Action> ThudState::LegalActions() const {
   NotImplemented("LegalActions");
 }
 
+std::string ThudState::Serialize() const { NotImplemented("Serialize"); }
+
 Cell ThudState::CellAt(int row, int col) const { NotImplemented("CellAt"); }
 
 void ThudState::DoApplyAction(Action action) {
@@ -140,7 +142,12 @@ std::unique_ptr<State> ThudGame::NewInitialState() const {
 
 std::unique_ptr<State> ThudGame::NewInitialState(
     const std::string& diagram) const {
-  return std::make_unique<ThudState>(shared_from_this(), diagram);
+  NotImplemented("NewInitialState from text");
+}
+
+std::unique_ptr<State> ThudGame::DeserializeState(
+    const std::string& str) const {
+  NotImplemented("DeserializeState");
 }
 
 }  // namespace thud
