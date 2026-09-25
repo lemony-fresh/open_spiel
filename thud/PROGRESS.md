@@ -777,4 +777,15 @@ restored and compared byte for byte. The **full build** has 0 warnings, and **`c
 passes 284 of 285**: `api_test` and `games_sim_test` now play Thud and pass; the one
 failure is `playthrough_test`, because Thud has no playthrough yet.
 
+**The end-of-battle limits, checked the same way** (user's request, after committing the
+implementation as `8a4e6ed5`), each removed on its own under the per-test harness:
+
+- Without the no-capture limit, 2 tests fail: `TestEndNoCaptureLimit` and
+  `TestEndDefaultNoCaptureLimit`. `TestRandomPlay` does not notice: none of its 10 random
+  games goes 200 turns without a capture.
+- Without the turn limit, 2 tests fail: `TestEndTurnLimit`, and `TestReturns`, whose
+  official scoring example is a finished battle only because it is read with `turns=800`.
+
+Both files were then restored from the commit, and all tests pass again.
+
 **Next step:** as recorded in `## Current status` — Phase 4, starting with the playthrough.
