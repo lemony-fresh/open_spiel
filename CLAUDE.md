@@ -102,6 +102,17 @@ ctest -R thud              # just ours
 ./examples/example --game=thud
 ```
 
+`build/` is OpenSpiel's default build type, "Testing" (`-O2`, all runtime checks on). **For
+speed measurements use a Release build** (`-O3`, `SPIEL_DCHECK` off) in its own folder, which
+git ignores:
+
+```bash
+mkdir -p build-release && cd build-release
+BUILD_TYPE=Release CXX=clang++ cmake -DPython3_EXECUTABLE=$(which python3) \
+  -DCMAKE_CXX_COMPILER=clang++ ../open_spiel
+make -j10 benchmark_game mcts_example   # ~2.5 min; add targets as needed
+```
+
 Playthrough regression baseline (our most valuable correctness tool — it catches accidental
 rule changes):
 

@@ -322,6 +322,72 @@ numbers in `PROGRESS.md`. These unblock both deferred decisions below. Also reco
 random rollouts run and how they end under the 200/800 limits, and compare with the
 hexparrot-based measurements in `PROGRESS.md`, session 2, to confirm that proxy held.
 
+**First measurements, 2026-09-25** (details and commands in `PROGRESS.md`, session 5), one
+core, Release build (`build-release/`, `BUILD_TYPE=Release`):
+
+- Random games with OpenSpiel's `benchmark_game` (every move: observation, legal actions,
+  apply): **905,000 moves/s, 2,640 games/s** — chess 235,000 moves/s and 690 games/s at
+  the same game length (341 moves), Go 479,000 moves/s.
+- MCTS with random rollouts (`mcts_example`, 1,000 simulations per move): **about 3,500
+  simulations/s** — chess about 760.
+- Random games' endings (`thud/experiments/random_endings.py`, our implementation): 98.6%
+  routs, 1.4% the no-capture limit, none the turn limit; median 330 turns, mean 343 —
+  matching hexparrot's 1.5% and 334 / 343, so the proxy held.
+- The Release build is no faster than the Testing build for Thud (chess and Go gain about
+  15%), which hints that the hot path is not compute-bound — for example the fresh
+  `std::vector` each `LegalActions()` returns. Only a profiler can tell; see the
+  optimisation candidates below.
+- **Why Thud is about 4 times faster than chess per move** (the user expected them to be
+  similar): chess must discard every pseudo-legal move that leaves its king in check, and
+  handles castling, en passant, promotion and repeated positions; Thud's moves are plain
+  walks along lines with nothing to discard afterwards. The observations are of similar
+  size (chess 1,280 numbers, Thud 1,350), so they do not explain the difference.
+
+**What the numbers mean for the deferred decisions** (input for deciding them with the
+user; nothing decided yet):
+
+- **Classical MCTS is cheap here:** a 10,000-simulation search per move takes about 3 s on
+  one core, about 0.3 s spread over the 10 cores — before any optimisation.
+- **For AlphaZero-style learning the move generator is not the bottleneck** — checked after
+  the user asked whether thousands of simulations per move would make it one. Each
+  simulation costs one network evaluation, one legal-move list and a few moves on a copied
+  state, whatever the number of simulations, so the comparison is per simulation:
+  - Our C++ does a whole move, observation included, in about 1 µs. A network evaluation
+    on a 15x15 board costs about 0.2 GFLOP for a small net (6 residual blocks of 64
+    channels) and about 10 GFLOP at AlphaZero's size (20 blocks of 256): milliseconds on a
+    CPU core. AlphaZero itself spent its compute on self-play, not on training: "5,000
+    first-generation TPUs to generate self-play games and 64 second-generation TPUs to
+    train the neural networks" (arXiv 1712.01815).
+  - Only a small net on a fast GPU, evaluating big batches, gets near microseconds per
+    position. Then the next bottleneck is the Python side, still not our move generator:
+    measured through pyspiel, fetching one observation into numpy takes about 50 µs, and a
+    legal-move list about 11 µs in the opening, against about 1 µs for the move in C++ —
+    and OpenSpiel's Python AlphaZero fetches observations that way
+    (`state.observation_tensor()`, `alpha_zero.py:246`). The remedies there are a C++
+    search (OpenSpiel's C++ AlphaZero, which needs LibTorch) or filling numpy buffers
+    directly, not a faster move generator.
+  - So the decision that matters is where the network runs; this machine has no CUDA GPU
+    (`CLAUDE.md`). For classical MCTS with random rollouts, by contrast, the game's speed
+    is the cost: each simulation plays a whole random game.
+
+**Instrumentation, if we ever need it** (agreed with the user, 2026-09-25): these
+measurements need none, since OpenSpiel's tools time the game through its public API.
+Counters inside the code, if a question needs them, go under a compile-time switch that is
+off by default — `if constexpr (kInstrumentation)`, with `kInstrumentation` set from
+`-DTHUD_INSTRUMENTATION` in a separate build folder — as OpenSpiel's `SPIEL_DCHECK` checks
+are compiled out of Release builds. `if constexpr` keeps the code compiled and type-checked
+while it is off, so it cannot rot. A template parameter would be awkward: OpenSpiel creates
+every Thud state through one registered factory. For "where does the time go", a sampling
+profiler needs no code at all; `perf` and `valgrind` are not installed in this WSL (the user
+can install them), `gprof` is but needs a `-pg` build.
+
+**Status 2026-09-25: no further optimisation of the game logic for now** (the user's
+conclusion from the measurements above). For AlphaZero-style learning the move generator
+is not the bottleneck — the network is, and with a small network on a GPU, the Python side
+— so a faster generator would not show in training time. Revisit only if we choose
+classical MCTS with random rollouts, where each simulation plays a whole random game, and
+its ~3,500 simulations/s per core prove too slow; then profile first.
+
 **Optimisation candidates — only where the measurements point, never before** (user,
 2026-09-24). Each is checked against the simple Phase 3 implementation, which stays as the
 reference: the same perft counts, and identical legal moves in every position of many random
@@ -429,8 +495,8 @@ Recorded here so they are decided deliberately rather than by accident.
 
 | Decision | Blocked on |
 |---|---|
-| Classical MCTS + evaluation function vs AlphaZero-style learning | Phase 5 benchmarks. If OpenSpiel's Python AlphaZero, first check its input layout (noticed 2026-09-24, unverified): it reshapes observations to the game's planes-first shape (`model_linen.py:209`) and feeds them to flax's `nn.Conv`, which expects channels last. Every upstream board game reports planes first, as we do, so any fix belongs in the training code, not in `ObservationTensorShape`. |
-| Local CPU training vs rented cloud GPU | Phase 5 benchmarks |
+| Classical MCTS + evaluation function vs AlphaZero-style learning | Phase 5 benchmarks — first numbers in (2026-09-25; Phase 5 above: about 3,500 MCTS simulations/s per core); to be decided with the user. If OpenSpiel's Python AlphaZero, first check its input layout (noticed 2026-09-24, unverified): it reshapes observations to the game's planes-first shape (`model_linen.py:209`) and feeds them to flax's `nn.Conv`, which expects channels last. Every upstream board game reports planes first, as we do, so any fix belongs in the training code, not in `ObservationTensorShape`. |
+| Local CPU training vs rented cloud GPU | Phase 5 benchmarks — first numbers in (2026-09-25; Phase 5 above); to be decided with the user. For AlphaZero-style training the network, not the game, dominates the cost, and this machine has no CUDA GPU. |
 | `OPEN_SPIEL_BUILD_WITH_LIBTORCH` on aarch64 (needed for C++ AlphaZero) | Only if we commit to C++ AlphaZero |
 | Whether to attempt upstreaming to OpenSpiel | Thud is commercially published; copyright question unresolved |
 | **End-of-battle limits** (`THUD_RULES.md` §6: no-capture cap and hard turn cap) — **re-evaluate once our engine plays strongly** | A strong engine of our own. The current defaults rest on proxies only (random play and hexparrot's heuristic AI; see `PROGRESS.md`, session 2), and strong play may stall in ways the proxies never do. Re-measure on our engine's self-play: how games end (rout, no legal move, no-capture cap, hard cap), the longest no-capture stretches, and the "dead tail" after the last capture. Lower the no-capture cap if games regularly sit out the whole cap; raise it if it cuts off real manoeuvring. Both are game parameters, so no code change is needed. |
