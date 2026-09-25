@@ -96,7 +96,10 @@ hard-coded choice, so it becomes an experiment rather than an argument.
   game. Score-difference utility normalised to [-1, 1] gives a richer learning signal than
   win/loss. Settled: one battle per game, returns `±m / 32` (`THUD_RULES.md` §7, §9.5).
 
-### Phase 3 — Implement test-first: `thud.h`, `thud.cc`, `thud_test.cc`
+### Phase 3 — Implement test-first: `thud.h`, `thud.cc`, `thud_test.cc` — **done** 2026-09-25
+
+All 46 test functions pass, with no change to any test; a planted wrap-around bug (a
+15-wide row stride) is caught by 21 of them, including all four wrap-around tests.
 
 **Work test-first (proposed by the user, 2026-09-22).** `THUD_RULES.md` is already written as
 allowed / not-allowed lists, so turn it into tests *before* the code that satisfies them —
@@ -111,8 +114,11 @@ tests written from the spec cannot inherit the implementation's misunderstanding
    trap here.
 3. **End conditions and scoring**, the same way.
 
-Each step's tests are a natural review point for the user — they are the rules in
-executable form — so pause for review where the user asks.
+The user reviewed the tests before any implementation (sessions 3–4), so the implementation
+works through all move types in one go, without pausing for review (user, 2026-09-25).
+**A test that fails and seems to need changing is never just edited to pass:** record each
+such change with its reason, and go over every one with the user afterwards, to make sure
+the changed test is truly correct rather than bent to match a broken implementation.
 
 **After the test review, revisit the design decisions — before implementing anything (user,
 2026-09-23).** All tests were written first and reviewed with the user chunk by chunk
@@ -293,9 +299,13 @@ of a from-square × direction × distance action layout.
 
 ### Phase 4 — Integration tests and baselines (once every move type passes)
 
-- `thud_test.cc` with OpenSpiel's `RandomSimTest` for crash-freedom and invariant checking.
-- Register the short name in `open_spiel/python/tests/pyspiel_test.py`.
+Status 2026-09-25: the full suite passes 284 of 285, including the upstream Python tests
+that iterate over every game (`api_test`, `games_sim_test`); the one failure is
+`playthrough_test`, because Thud has no playthrough yet — generate it first.
+
 - Generate the playthrough baseline: `./open_spiel/scripts/generate_new_playthrough.sh thud`.
+- `thud_test.cc` with OpenSpiel's `RandomSimTest` for crash-freedom and invariant checking.
+- Register the short name in `open_spiel/python/tests/pyspiel_test.py` — done in Phase 3.
 - Cross-check a handful of positions against an existing implementation — candidates:
   `github.com/dstu/thud` (Rust, has MCTS), `github.com/hexparrot/thudgame` (Python),
   `github.com/THFlowers/Thud-CLI` (Java, MCTS).
