@@ -191,7 +191,7 @@ DecodedAction DecodeAction(Action action);
 
 // A position: what the text format at the top of this file describes.
 struct Position {
-  std::array<Cell, kNumSquares> board;  // Indexed by SquareIndex().
+  std::array<Cell, kNumSquares> board{};  // Indexed by SquareIndex().
   Player to_move = kDwarfPlayer;
   int turns_played = 0;
   int turns_without_capture = 0;
@@ -238,6 +238,29 @@ class ThudState : public State {
   void DoApplyAction(Action action) override;
 
  private:
+  // Sets the board, the side to move and the counters from `position`.
+  void SetPosition(const Position& position);
+  // The current position, for ToString().
+  Position GetPosition() const;
+
+  // Move generation. `cell` is the piece's cell in grid_, `square` its square
+  // number for the actions. Each adds the piece's line actions to `actions`
+  // in increasing order; a troll's capture steps go to `capture_steps`.
+  void AddDwarfMoves(int square, int cell, std::vector<Action>* actions) const;
+  void AddTrollMoves(int square, int cell, std::vector<Action>* actions,
+                     std::vector<Action>* capture_steps) const;
+  // The number of pieces like the one on `cell` in the unbroken line that
+  // starts at `cell` and runs by `step`, counting the piece itself.
+  int LineLength(int cell, int step) const;
+  // The number of dwarfs on the cells next to `cell`.
+  int DwarfsNextTo(int cell) const;
+  // Whether the side to move has a legal move, decided without generating
+  // moves: a dwarf can move while it has an empty or troll neighbour (a move,
+  // or a one-square hurl), a troll while it has an empty neighbour.
+  bool SideToMoveCanMove() const;
+  // Whether the battle is over (THUD_RULES.md section 6); kept in terminal_.
+  bool BattleOver() const;
+
   // The 15x15 grid inside a one-cell border: kGridSize x kGridSize cells, row
   // by row. The border and the cut-off corners hold Cell::kOffBoard, so a line
   // walked by a fixed step per direction stops at the first cell that is not
@@ -247,6 +270,9 @@ class ThudState : public State {
   Player to_move_ = kDwarfPlayer;
   int turns_played_ = 0;
   int turns_without_capture_ = 0;
+  int num_dwarfs_ = 0;
+  int num_trolls_ = 0;
+  bool terminal_ = false;  // BattleOver(), updated whenever the board changes.
   int max_turns_without_capture_;
   int max_turns_;
   // Where the game started, if not from the opening; Serialize() saves it.

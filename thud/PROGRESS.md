@@ -2,25 +2,29 @@
 
 ## Current status
 
-**Phase:** 0–2 **done**; **Phase 3 in progress** — tests and design done (sessions 3–4,
-2026-09-23 to 2026-09-24); the implementation is next.
+**Phase:** 0–3 **done** — Thud is implemented and passes all its tests (session 5,
+2026-09-25); **Phase 4 is next**.
 
-**Where Phase 3 stands:** the tests are written, reviewed with the user and cross-checked
-against an independent engine; the design review is complete; nothing is implemented yet.
+**Where we stand:**
 
-- `open_spiel/games/thud/thud_test.cc` has **46 test functions**, written from
-  `THUD_RULES.md` before any implementation (what each review added is in the session-3
-  and session-4 logs). `thud.h` is the API; `thud.cc` is registration plus **stubs only** —
-  every function calls `NotImplemented()`. Registered in `open_spiel/games/CMakeLists.txt`
-  and `open_spiel/python/tests/pyspiel_test.py`, each with the Apache §4(b) notice.
-  `make thud_test` builds with no warnings; running it stops at the first stub
-  (`IsOnBoard`) — the intended red state.
-- **Design review: complete** (`PLAN.md` Phase 3 list, each decision there with its
-  evidence): position text kept, with the cut-off corners written `-` (not `#`) and
-  `PositionFromText()` rejecting malformed text and impossible positions; every capture
-  written `(r,c)-(r,c)x`; a 6-plane observation; the move history as information state; a
-  padded 17x17 grid stepped by fixed offsets; `Cell::kOffBoard`; states built from a
-  `Position`; games started from a diagram saved as their position text, then their moves.
+- `open_spiel/games/thud/thud.cc` implements the game as designed in `PLAN.md` Phase 3
+  (padded 17x17 grid, one function per move type, `IsTerminal` cached and decided without
+  generating moves). `thud_test.cc`'s **46 test functions all pass, and no test was
+  changed** to get there; `ctest -R thud` takes about 2 s. A planted wrap-around bug is
+  caught by 21 tests, including all four wrap-around tests.
+- **The full OpenSpiel suite passes 284 of 285** (0 build warnings). The upstream Python
+  tests that iterate over every game (`api_test`, `games_sim_test`) now play Thud and pass.
+  The one failure is `playthrough_test`: "{'thud'} … do not have playthroughs. Create
+  playthroughs using generate_new_playthrough.sh" — Phase 4's first step.
+- The design decisions (`PLAN.md` Phase 3 list, each with its evidence): position text with
+  the cut-off corners written `-`, `PositionFromText()` rejecting malformed text and
+  impossible positions; every capture written `(r,c)-(r,c)x`; a 6-plane observation; the
+  move history as information state; a padded 17x17 grid; `Cell::kOffBoard`; states built
+  from a `Position`; games started from a diagram saved as their position text, then their
+  moves.
+- **Rule for failing tests (user, 2026-09-25):** a test that fails and seems to need
+  changing is never just edited to pass — record it, and review each such change with the
+  user. None was needed in session 5.
 - **After changing any test, run `thud/experiments/crosscheck_tests.py`**: it checks every
   hand-written move expectation (110 checks) and every test diagram against hexparrot's
   engine and the reading rules. It and the scripts behind the tests' reference numbers
@@ -28,25 +32,20 @@ against an independent engine; the design review is complete; nothing is impleme
   the repo, by default `~/hexparrot_thudgame`, which does **not** exist on this machine
   (sessions 3–4 used a temporary clone at commit 7b171108). Clone it there first.
 
-**Next steps, in order:**
+**Next steps, in order (Phase 4, `PLAN.md`):**
 
-1. Implement in `main()`'s order until `ctest -R thud` passes, following `PLAN.md` Phase 3
-   (padded grid, one small function per move type, `IsTerminal` without move generation).
-2. Check that the wrap-around tests bite: plant a wrap-around bug temporarily (step by
-   offsets on an unpadded 15-wide index) and confirm those tests fail.
-3. Phase 4. Until the game is implemented and the playthrough exists, upstream Python tests
-   that iterate over every registered game (`playthrough_test`, `api_test`,
-   `games_sim_test`) fail with `thud` in the registry — fix by implementing, never by
-   editing those tests (user, 2026-09-23: modify OpenSpiel itself only for registration or
-   a clear bug).
+1. Generate the playthrough baseline with `./open_spiel/scripts/generate_new_playthrough.sh
+   thud`; then the full suite should pass 285 of 285. Never edit upstream tests to pass
+   (user, 2026-09-23: modify OpenSpiel itself only for registration or a clear bug).
+2. Add OpenSpiel's `RandomSimTest` to `thud_test.cc`.
+3. Phase 5: benchmarks.
 
 **Where we are:** The repo is at `~/thud-openspiel` (WSL2, Ubuntu 26.04.1, aarch64) on branch
 `thud`, pushed to `origin`, with an `upstream` remote and the pre-push hook installed. OpenSpiel
 builds natively on ARM64: clang 21.1.8, cmake 4.2.3, Python 3.14.4 venv; `make -j10` takes
-4m41s with 0 warnings; `ctest -j10` passed 284/284 in 91 s before Thud was registered (now
-`thud_test` fails by design until the implementation exists, as do the all-games tests in
-step 4 above); `./examples/example --game=tic_tac_toe` runs. The `manylinux` wheel fallback
-was not needed.
+4m41s with 0 warnings; `ctest -j10` passes 284 of 285 in about 107 s (the missing Thud
+playthrough, above); `./examples/example --game=tic_tac_toe` runs. The `manylinux` wheel
+fallback was not needed.
 
 **Decided 2026-09-22 (all by the user; reasoning in the session-2 log):**
 
@@ -736,3 +735,46 @@ diagram equals hexparrot's built-in start. Found and fixed:
 at the first stub; the design review is complete.
 
 **Next step:** as recorded in `## Current status` — the implementation.
+
+### 2026-09-25 — Session 5: the implementation
+
+**Instructions from the user.** Work through all move types in one go, without pausing for
+review (the plan's pause note is replaced). Check that all tests pass. **A test that fails
+and seems to need changing must not simply be edited to pass:** note each such change and
+review it with the user, so the changed test is truly correct rather than bent to match a
+broken implementation. Now in `PLAN.md` Phase 3.
+
+**Implemented `thud.cc`** as designed:
+
+- Geometry computed once from `(row, col)`: square numbers and grid cells. The padded grid
+  holds `Cell::kOffBoard` on its border and the cut-off corners, and each direction is a
+  fixed grid offset (`kRowStep * 17 + kColStep`).
+- One function per move type: `AddDwarfMoves` (walk empty squares; a hurl if the first
+  non-empty square holds a troll within the length of the line behind the dwarf) and
+  `AddTrollMoves` (a step to each empty neighbour; a capture step if dwarfs are next to it;
+  shoves of 2..N squares along an empty path to a square next to a dwarf). `LegalActions`
+  visits squares and directions in increasing order and appends the capture steps last,
+  so its result is sorted without sorting.
+- `IsTerminal` is cached in `terminal_`, recomputed after every move: a limit reached, or
+  the side to move stuck — decided locally (a dwarf can move while it has an empty or troll
+  neighbour, a troll while it has an empty neighbour), independent of the proof the
+  random-play test uses. Piece counts are kept for the returns.
+- `PositionFromText` implements every reading rule in `thud.h`, printing its reason on
+  rejection; the opening is parsed once from a text constant. `Serialize` /
+  `DeserializeState` save a diagram-started game as its position text, then its moves.
+- `SetPosition` also checks a `Position` built without the reader (pieces within 32 and 8,
+  the Thudstone only on (7,7), no `kOffBoard` squares), so returns stay in [-1, 1].
+- `ThudGame` checks that both limits are positive. `Position::board` is now
+  value-initialised.
+
+**Results.** All 46 test functions passed on the first run (about 2 s), **with no change
+to any test** — `thud_test.cc` is byte-identical to its committed version. The 13
+rejection cases each printed the reader's reason. The **wrap-around check**, with the
+files backed up: a 15-wide row stride (the plan's flat-array bug) plus a temporary
+per-test harness showed 21 failing tests — all four wrap-around tests, the hurl, move,
+shove and step tests near row ends, perft, symmetry and random play; both files were then
+restored and compared byte for byte. The **full build** has 0 warnings, and **`ctest`
+passes 284 of 285**: `api_test` and `games_sim_test` now play Thud and pass; the one
+failure is `playthrough_test`, because Thud has no playthrough yet.
+
+**Next step:** as recorded in `## Current status` — Phase 4, starting with the playthrough.
