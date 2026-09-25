@@ -181,7 +181,7 @@ def known(moves):
 
 def main():
   parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-  parser.add_argument("--hexparrot", default=os.path.expanduser("~/hexparrot_thudgame"))
+  parser.add_argument("--hexparrot", default=ref.DEFAULT_HEXPARROT)
   parser.add_argument("--test_file", default=TEST_FILE)
   args = parser.parse_args()
   ref.load_hexparrot(args.hexparrot)

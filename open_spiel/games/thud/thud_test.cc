@@ -47,6 +47,7 @@
 #include "open_spiel/abseil-cpp/absl/types/span.h"
 #include "open_spiel/spiel.h"
 #include "open_spiel/spiel_utils.h"
+#include "open_spiel/tests/basic_tests.h"
 
 namespace open_spiel {
 namespace thud {
@@ -2597,6 +2598,22 @@ void TestRandomPlay() {
   SPIEL_CHECK_GT(played[static_cast<int>(Kind::kShove)], 0);
 }
 
+// ---------------------------------------------------------------------------
+// OpenSpiel's generic tests, as other games' tests run them: loading the game,
+// no chance outcomes, and random games that check the whole State API in
+// every position (legal action masks, observations, clones, serialization).
+
+void TestOpenSpielGenericTests() {
+  testing::LoadGameTest("thud");
+  testing::NoChanceOutcomesTest(*Thud());
+  testing::RandomSimTest(*Thud(), 10);
+  // Also from a position read from text, which Serialize() saves differently.
+  std::shared_ptr<const Game> game = Thud();
+  std::unique_ptr<ThudState> start = FromDiagram(
+      game, kTangled, "to_move=trolls turns=40 turns_without_capture=12");
+  testing::RandomSimTestWithSpecificInitialState(*game, 10, start.get());
+}
+
 }  // namespace
 }  // namespace thud
 }  // namespace open_spiel
@@ -2651,4 +2668,5 @@ int main(int argc, char** argv) {
   thud::TestPerft();
   thud::TestSymmetry();
   thud::TestRandomPlay();
+  thud::TestOpenSpielGenericTests();
 }
