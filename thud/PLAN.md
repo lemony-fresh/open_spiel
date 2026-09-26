@@ -566,8 +566,8 @@ first session, with no patch at all.**
   batches in the same order — resnet 32 x 2, learning rate 1e-3, weight decay 1e-4,
   1,500 steps of 128, seeds 1-3. Built as OpenSpiel's `docs/library.md` describes, with no
   CMake change: `build-shared/libopen_spiel.so` plus upstream's `model.cc` and `vpnet.cc`
-  compiled alongside (`thud/experiments/build_az_layout_check.sh`). On the held-out
-  positions at step 1,500, mean of the seeds (range):
+  compiled alongside (`thud/experiments/build_az_program.sh az_layout_check`). On the
+  held-out positions at step 1,500, mean of the seeds (range):
 
   | Task | Baseline | Python as is | Python planes last | **C++** |
   |---|---|---|---|---|
@@ -604,8 +604,42 @@ first session, with no patch at all.**
   In the trainer, the smoke test's settings with `OMP_NUM_THREADS=1` collected 3.0 and
   6.4 states/s in its two steps, against 0.8 (428 s in all, against 1,700 s); the
   training steps took 3-6 s either way at this size. So set `OMP_NUM_THREADS=1`, or batch
-  the inference (`--inference_batch_size`, `--inference_threads`); still to measure:
-  batching, bigger networks, and the learner's speed with one thread.
+  the inference (`--inference_batch_size`, `--inference_threads`).
+
+  **Measured 2026-09-25** with the new `thud/experiments/az_throughput.cc` (upstream's
+  `MCTSBot`, `VPNetEvaluator` and `VPNetModel`, fresh networks; each searcher plays its
+  own random games so no position repeats) and `az_throughput.sh`, 100 simulations a
+  search, on mains power:
+
+  | Network | Network alone, ms/position, 1 thread: one at a time / batches of 64 — Thud; chess; Connect Four | One search, 1 thread, simulations/s — Thud; chess; Connect Four |
+  |---|---|---|
+  | 32 x 2 | 5.5 / 0.63; 0.66 / 0.12; 0.18 / 0.06 | 180; 1,585; 10,400 |
+  | 64 x 4 | 7.4 / 2.1; 1.2 / 0.51; 0.67 / 0.29 | 140; 835; 2,555 |
+  | 128 x 6 | 14.9 / 9.3; 3.9 / 2.7; 3.1 / 1.6 | 65; 260; 450 |
+
+  - Thud's search time is almost all network time (180 simulations/s is 5.6 ms each: one
+    network call at a 15% cache-hit rate); the tree costs little despite ~200 legal moves.
+  - One at a time, Thud costs 8x chess with the small network but 4x with the large one;
+    in batches of 64 the large network's ratio is 3.5x, the board-size ratio (225 against
+    64 squares). That fits a large fixed cost per call — plausibly the policy head's
+    450 x 19,800 weights, 35.6 MB read for every call — which batching spreads.
+  - Scaling without batching, 1 to 10 searches at once: chess 64 x 4 grows smoothly (835
+    to 4,816 simulations/s at 10); Thud erratically, at most ~600 (32 x 2 peaks at 6
+    searches, then falls to 210 at 10; 64 x 4 gave 90 with 2 searches against 140 with
+    1). Single 20 s runs: how much is noise is not yet known.
+  - Batched inference (64 x 4): 1,600 simulations/s with 32 searchers, batches of 32, 2
+    inference threads with `OMP_NUM_THREADS=4` — 2.8x the best without batching. The
+    128 x 6 batched runs were too short to count (about one search per searcher in 20 s).
+  - The learner, 1,024 positions a step on 10 threads: 0.54 s (32 x 2), 1.9 s (64 x 4),
+    14.9 s (128 x 6).
+  - No throttling: 10 searches for 5 minutes gave 569 and 592 simulations/s in the two
+    halves.
+  - Not comparable with `az_speed.py`'s Python network times: JAX used all cores.
+
+  **To do** (interrupted 2026-09-25, when the user needed the laptop): rerun sections 4
+  (batched inference, all three sizes, 40 s windows) and 7 (section 3's noise check) —
+  `thud/experiments/az_throughput.sh OUT.jsonl 4 7`, about 20 minutes with all cores busy
+  — then turn the best configuration per size into games per hour.
 - [ ] A small real training run on this CPU; read the evaluation against MCTS **per side**
   (Phase 5: that opponent's strength differs greatly between dwarfs and trolls), as the
   share of games won and the mean margin; and check how widely both sides' searches

@@ -41,7 +41,7 @@ AlphaZero also runs here but is not our route (too slow, and a layout bug).
   `crosscheck_tests.py`, `move_kinds_sim.py`, `limits_sim.py`) run hexparrot/thudgame;
   `random_endings.py` and `mcts_games.py` need only pyspiel; `az_layout_check.py` and
   `az_speed.py` need pyspiel and the JAX set; `az_layout_check.cc` is their C++
-  counterpart, built by `build_az_layout_check.sh` against `build-shared/libopen_spiel.so`.
+  counterpart, built by `build_az_program.sh` against `build-shared/libopen_spiel.so`.
   hexparrot runs from a clone
   outside the repo, by default
   `~/.local/share/thud-openspiel/hexparrot_thudgame` (under `$XDG_DATA_HOME` if set), which
@@ -51,9 +51,12 @@ AlphaZero also runs here but is not our route (too slow, and a layout bug).
 
 **Next steps, in order (`PLAN.md` Phase 6):**
 
-1. **Throughput on this CPU**, always with `OMP_NUM_THREADS=1`: simulations/s and
-   games/hour for a few network sizes, and batched inference (`--inference_batch_size`,
-   `--inference_threads`). Decides when to move to the cloud.
+1. **Finish the throughput step** (`PLAN.md` Phase 6: most of it measured 2026-09-25;
+   interrupted when the user needed the laptop): rerun
+   `thud/experiments/az_throughput.sh OUT.jsonl 4 7` (batched inference with longer
+   windows, and a noise check; about 20 minutes with all cores busy — ask the user
+   first), then turn the best configuration per network size into games per hour. That
+   decides the small run's network and when to move to the cloud.
 2. **A small training run** with `thud/experiments/az_thud.flags`: read the evaluation
    per side, as the share of games won and the mean margin (the side is recovered from the
    evaluator logs); measure how widely both sides' searches spread their visits and whether
@@ -1156,8 +1159,9 @@ instrumentation, and the pattern agreed for later, are in `PLAN.md` Phase 5).
   correctly** (`PLAN.md` Phase 6, with the table). Built as OpenSpiel's `docs/library.md`
   describes, with no CMake change (the user approved the route): `build-shared/`
   configured like `build-torch/` plus `BUILD_SHARED_LIB=ON`, `make open_spiel` in 136 s,
-  0 warnings; `thud/experiments/build_az_layout_check.sh` compiles the new
-  `az_layout_check.cc` with upstream's `model.cc` and `vpnet.cc` (the shared library
+  0 warnings; `thud/experiments/build_az_layout_check.sh` (since renamed
+  `build_az_program.sh`) compiles the new `az_layout_check.cc` with upstream's
+  `model.cc` and `vpnet.cc` (the shared library
   leaves the LibTorch model out) using CMake's flags for them (33 s; it first missed
   `open_spiel/json/include`). `az_layout_check.py --export` (6 s) writes the games,
   checksums and batch orders. My refactor of its `positions()` was checked against the
@@ -1170,4 +1174,20 @@ instrumentation, and the pattern agreed for later, are in `PLAN.md` Phase 5).
   trolls' capture question 99.0% (99.4%, 91.2%), dwarfs' policy mass on hurls 77.9%
   (68.1%, 13.7%).
 
-**Next step:** as recorded in `## Current status` — throughput on this CPU.
+- **Throughput, mostly measured** (`PLAN.md` Phase 6, with the tables; the user put the
+  laptop on mains power and "best performance"). The user asked for comparison numbers:
+  the AlphaZero paper's (80,000 positions/s in chess on TPUs; 5,000 TPUs for self-play,
+  800 simulations a move, 44 million chess games in 9 hours; checked in the paper) only
+  show the scale, so chess and Connect Four were measured here alongside Thud. New
+  `thud/experiments/az_throughput.cc` (modes search, learn, infer) and
+  `az_throughput.sh` (sections 1-7); `build_az_layout_check.sh` became
+  `build_az_program.sh PROGRAM`, which also compiles upstream's `vpevaluator.cc`. The
+  first run, 60 measurements in 37 minutes, all succeeded. Findings: Thud's search is
+  network-bound; a large fixed cost per network call (plausibly the 35.6 MB policy head)
+  makes batching essential; batched inference gave 1,600 simulations/s on 64 x 4 (2.8x
+  unbatched); no throttling. Two parts were not reliable (the 128 x 6 batched runs too
+  short; Thud's unbatched scaling erratic), so a follow-up of sections 4 and 7 started,
+  and was stopped when the user needed the laptop. `pkill -f` on a pattern that also
+  occurs in its own command line killed my shell: use `pgrep -x`/`pkill -x` by name.
+
+**Next step:** as recorded in `## Current status` — finish the throughput step.

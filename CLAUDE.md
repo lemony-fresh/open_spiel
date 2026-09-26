@@ -150,7 +150,7 @@ Our own C++ programs that use the AlphaZero model (so far `az_layout_check.cc`) 
 against OpenSpiel built as a shared library, as `docs/library.md` describes, in
 `build-shared/`, so no upstream CMake file changes: `build-torch/`'s configure plus
 `BUILD_SHARED_LIB=ON`, then `make -j10 open_spiel` (~2.5 min). The commands, and the
-compiler flags copied from CMake, are in `thud/experiments/build_az_layout_check.sh`.
+compiler flags copied from CMake, are in `thud/experiments/build_az_program.sh`.
 
 **Now that JAX and PyTorch are in the venv, the next cmake run in `build/` adds their
 Python tests** (OpenSpiel detects both when `OPEN_SPIEL_ENABLE_JAX`/`_PYTORCH` are
