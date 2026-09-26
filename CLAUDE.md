@@ -55,10 +55,23 @@ re-derive them.
   emulation (its pip tags are `win_amd64`), and no `win_arm64` OpenSpiel wheels exist.
 - **Keep the repo on the WSL native filesystem** (`~/thud-openspiel`), never under
   `/mnt/c/...`. Cross-filesystem I/O is drastically slower and makes every build painful.
-- **There is no CUDA GPU.** The integrated GPU is a Qualcomm Adreno X1-85. There is also no
-  official prebuilt LibTorch for aarch64 Linux, so `OPEN_SPIEL_BUILD_WITH_LIBTORCH=ON`
-  (OpenSpiel's C++ AlphaZero) is high-risk on this machine and is currently **off**. Any
-  serious neural-network training will need either cloud compute or a reduced scale.
+- **There is no CUDA GPU.** The integrated GPU is a Qualcomm Adreno X1-85. Any serious
+  neural-network training will need either cloud compute or a reduced scale.
+- **LibTorch for aarch64 comes from PyTorch's pip wheel.** PyTorch publishes no standalone
+  LibTorch download for aarch64 Linux, but the wheel `torch==2.10.0` (cp314,
+  `manylinux_2_28_aarch64`) ships LibTorch complete — libraries, C++ headers and
+  `TorchConfig.cmake` — built with the C++11 ABI, like our clang build (checked
+  2026-09-25). OpenSpiel's C++ AlphaZero (`OPEN_SPIEL_BUILD_WITH_LIBTORCH=ON`) builds
+  that way, unpatched, in its own folder `build-torch/` (below), and passes its tests and
+  the tic-tac-toe control: `thud/PLAN.md` Phase 6.
+- **Run LibTorch programs with `OMP_NUM_THREADS=1`.** LibTorch gives every caller 10
+  OpenMP threads, and each AlphaZero actor and evaluator calls the network itself, so
+  several of them oversubscribe the 10 cores: three searches at once ran at 16
+  simulations/s each by default, 128 each with one thread (2026-09-25).
+- **The venv has OpenSpiel's pinned JAX set** (`jax==0.9.0.1`, `flax==0.12.3`, ... from
+  `open_spiel/scripts/python_extra_deps.sh`), which pins numpy to 2.3.5: flax 0.12.3
+  requires numpy below 2.4. The JAX CPU build warns "An NVIDIA GPU may be present"; there
+  is none, and it falls back to the CPU as it should.
 - OpenSpiel does publish `manylinux_2_28_aarch64` wheels (cp311–cp314). If the C++ build
   breaks, `pip install open_spiel` is a usable fallback to keep Python-side work moving.
 
@@ -112,6 +125,31 @@ BUILD_TYPE=Release CXX=clang++ cmake -DPython3_EXECUTABLE=$(which python3) \
   -DCMAKE_CXX_COMPILER=clang++ ../open_spiel
 make -j10 benchmark_game mcts_example   # ~2.5 min; add targets as needed
 ```
+
+OpenSpiel's C++ AlphaZero needs LibTorch (from the pip wheel, above) and libnop
+(`open_spiel/libnop/libnop/`, cloned by `install.sh`; git ignores it). It has its own
+Release folder, `build-torch/`, which builds only the C++ targets: `pyspiel` keeps
+coming from `build/`, and LibTorch's bundled pybind11 was reported to clash with ours in
+a `pyspiel` build (OpenSpiel issue #966; not tried with 2.10):
+
+```bash
+mkdir -p build-torch && cd build-torch
+BUILD_TYPE=Release OPEN_SPIEL_BUILD_WITH_LIBTORCH=ON OPEN_SPIEL_BUILD_WITH_LIBNOP=ON \
+  CXX=clang++ cmake -DPython3_EXECUTABLE=$(which python3) -DCMAKE_CXX_COMPILER=clang++ \
+  -DCMAKE_PREFIX_PATH=$(python3 -c 'import torch; print(torch.utils.cmake_prefix_path)') \
+  ../open_spiel
+make -j10 torch_integration_test torch_model_test torch_vpnet_test \
+  alpha_zero_torch_example alpha_zero_torch_game_example   # ~3.5 min
+```
+
+cmake warns "static library kineto_LIBRARY-NOTFOUND not found" (a profiling library
+the wheel does not ship); the build does not need it. Our AlphaZero defaults for Thud
+are in `thud/experiments/az_thud.flags` (`--flagfile`).
+
+**Now that JAX and PyTorch are in the venv, the next cmake run in `build/` adds their
+Python tests** (OpenSpiel detects both when `OPEN_SPIEL_ENABLE_JAX`/`_PYTORCH` are
+unset, `open_spiel/python/CMakeLists.txt:172-190`; `build-torch/`'s configure did), so
+`ctest` will then run more than the 285 tests recorded so far.
 
 Playthrough regression baseline (our most valuable correctness tool — it catches accidental
 rule changes):

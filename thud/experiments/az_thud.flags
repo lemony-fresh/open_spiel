@@ -1,0 +1,58 @@
+# Copyright 2026 The Thud-on-OpenSpiel authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Our defaults for OpenSpiel's C++ AlphaZero on Thud, where they differ from upstream's.
+# The reasoning in full, and the settings still to decide: thud/PLAN.md Phase 6,
+# "Settings to determine empirically". From build-torch/:
+#
+#   OMP_NUM_THREADS=1 ./examples/alpha_zero_torch_example \
+#     --flagfile=../thud/experiments/az_thud.flags --path=DIR [more flags]
+#
+# The last value of a flag wins, so flags after --flagfile override these. Each run's
+# config.json records the values it used.
+#
+# OMP_NUM_THREADS=1 is an environment variable, so it cannot go in this file. LibTorch
+# gives every caller 10 threads by default, and each actor and evaluator calls the network
+# itself, so they oversubscribe the 10 cores: three searches at once managed 16
+# simulations/s each with the default, 128 each with one thread (measured 2026-09-25).
+
+--game=thud
+
+# Resignation off (decided with the user, 2026-09-25; upstream default 0.8, meaning 80%
+# of self-play games may resign). Why:
+# - Thud's returns are the final margin over 32, and margins reward playing a decided
+#   battle to the best score. A resigned game instead records the search's estimate as
+#   its result (alpha_zero.cc:155-157) and skips exactly that part.
+# - Upstream's threshold, a value above 0.95, means expecting to win by more than 30 of
+#   32 points, so it would rarely fire anyway.
+# - Decided battles still end: after 200 turns without a capture or 800 in all
+#   (THUD_RULES.md section 6), with real margins. The cost is self-play time in such dead
+#   tails; if that proves large, lower the no-capture cap rather than resign.
+# 0 turns it off completely: a game may resign only if a uniform draw in [0, 1) is below
+# this value (alpha_zero.cc:202-203). Evaluation games never resign.
+--cutoff_probability=0
+
+# Dirichlet noise at the root: alpha 0.1 (decided with the user, 2026-09-25; upstream
+# default 1). Why:
+# - AlphaZero scaled alpha "in inverse proportion to the approximate number of legal
+#   moves in a typical position" (0.3 chess, 0.15 shogi, 0.03 Go; arXiv 1712.01815).
+#   Alpha times the move count, roughly how many moves the noise lands on, stays near 10.
+# - Thud's two sides differ greatly: the dwarfs have ~400 legal moves, the trolls ~32. By
+#   AlphaZero's rule that is alpha ~0.025 for the dwarfs and ~0.3 for the trolls, but the
+#   C++ bot applies one alpha to whichever side is to move (mcts.cc:284-290).
+# - Upstream's 1 gives the dwarfs ~400: noise spread evenly, like mixing in 25% uniform,
+#   so no untried idea ever stands out. 0.1, the geometric mean of the two sides'
+#   values, gives ~40 for the dwarfs and ~3 for the trolls: 4x and 3x off the rule.
+# Still to test: 0.03 and 0.3 against 0.1, once uct_c and the simulations are chosen.
+--policy_alpha=0.1
