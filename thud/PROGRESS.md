@@ -2,10 +2,15 @@
 
 ## Current status
 
-**Phase:** 0–4 **done** — Thud is implemented, passes all its tests, and has its
-integration baselines (session 5, 2026-09-25); **Phase 5 in progress**: first speed
-measurements and MCTS-against-MCTS games done (`PLAN.md` Phase 5), the deferred decisions
-still open, the AlphaZero route prepared but not started.
+**Phase:** 0–5 **done** — Thud is implemented, passes all its tests, has its integration
+baselines, and is benchmarked (session 5, 2026-09-25); **Phase 6 in progress**:
+AlphaZero-style learning with **OpenSpiel's C++ AlphaZero**, decided with the user
+2026-09-25 (`PLAN.md` Phase 6). **It builds and runs here**: LibTorch 2.10 from PyTorch's
+aarch64 pip wheel, in `build-torch/`, no change to upstream code; OpenSpiel's LibTorch
+tests pass, it learns tic-tac-toe like the Python control, and a Thud smoke test runs
+end to end. Run it with `OMP_NUM_THREADS=1` (self-play up to 8x faster) and our defaults in
+`thud/experiments/az_thud.flags` (resignation off, root noise α 0.1). OpenSpiel's Python
+AlphaZero also runs here but is not our route (too slow, and a layout bug).
 
 **Where we stand:**
 
@@ -33,39 +38,40 @@ still open, the AlphaZero route prepared but not started.
   hand-written move expectation (110 checks) and every test diagram against hexparrot's
   engine and the reading rules. Four scripts in `thud/experiments/` (`perft_reference.py`,
   `crosscheck_tests.py`, `move_kinds_sim.py`, `limits_sim.py`) run hexparrot/thudgame;
-  `random_endings.py` and `mcts_games.py` need only pyspiel. hexparrot runs from a clone
+  `random_endings.py` and `mcts_games.py` need only pyspiel; `az_layout_check.py` and
+  `az_speed.py` need pyspiel and the JAX set. hexparrot runs from a clone
   outside the repo, by default
   `~/.local/share/thud-openspiel/hexparrot_thudgame` (under `$XDG_DATA_HOME` if set), which
   **exists on this machine** at the pinned commit 7b171108 (2026-09-25). If it is missing,
   every script stops with a full explanation: what hexparrot is, which scripts need it,
   where it goes, and the exact commands to restore and check it.
 
-**Next steps, in order (`PLAN.md`):**
+**Next steps, in order (`PLAN.md` Phase 6):**
 
-1. Phase 5: decide, with the user, what the first measurements mean for the deferred
-   decisions (`PLAN.md`): classical MCTS with an evaluation function vs AlphaZero-style
-   learning, and local CPU vs cloud GPU. Measured so far (one core, Release build): 905,000
-   moves/s and 2,640 random games/s (chess: 235,000 and 690), about 3,500 MCTS
-   simulations/s with random rollouts (chess: about 760).
-   **Concluded 2026-09-25: no further optimisation of the game logic for now.** For
-   AlphaZero-style learning the move generator is not the bottleneck: the network is, and
-   with a small network on a GPU, the Python side (about 50 µs to fetch an observation
-   through pyspiel, against about 1 µs for a whole move in C++). Revisit only if classical
-   MCTS with random rollouts is chosen and proves too slow; then profile first (`perf` /
-   `valgrind`, to be installed by the user).
-   **MCTS against MCTS** (OpenSpiel's plain UCT with random rollouts; random play gives the
-   trolls every game): the dwarfs win 7 of 10 at 1,000 simulations per move and **19 of
-   20 at 5,000** (mean dwarf margin +17.7, median 91 turns). That measures the searcher,
-   not Thud's balance: the dwarfs have ~450 moves a turn to the trolls' ~30, UCT tries
-   each once before any twice, and random rollouts almost never play a hurl, so the
-   trolls' search barely sees hurl threats. Width limits plain UCT more than speed does;
-   AlphaZero's policy priors address that. Reproduce with
-   `thud/experiments/mcts_games.py`.
-2. **The AlphaZero route** (user, 2026-09-25: on this machine's CPU first, a cloud GPU once
-   everything works) — to be confirmed by the user, then: install OpenSpiel's pinned JAX
-   set into the venv (session 5 log has the versions; none installed yet), run a small
-   smoke test of OpenSpiel's Python AlphaZero on Thud, and check the input-layout question
-   in `PLAN.md`'s deferred decisions. Read its evaluation against MCTS per side.
+1. **C++ against Python layout control on Thud**: `az_layout_check.py`'s supervised task
+   with the C++ model (`VPNetModel::Learn`) and exactly the Python runs' parameters; the two
+   Python results bracket where it should land. Needs a small C++ program in
+   `thud/experiments/`, built without editing upstream CMake files — how is still open.
+2. **Throughput on this CPU**, always with `OMP_NUM_THREADS=1`: simulations/s and
+   games/hour for a few network sizes, and batched inference (`--inference_batch_size`,
+   `--inference_threads`). Decides when to move to the cloud.
+3. **A small training run** with `thud/experiments/az_thud.flags`: read the evaluation
+   per side, as the share of games won and the mean margin (the side is recovered from the
+   evaluator logs); measure how widely both sides' searches spread their visits and whether
+   the dwarfs' policy sharpens (the untried-move question — measure first, user); use few
+   evaluation levels (the default 7 reach 300,000 simulations a move).
+4. Then settings (`PLAN.md` Phase 6, *Settings to determine empirically*: `uct_c`,
+   simulations and network size first; then α 0.03 and 0.3 against 0.1), then a cloud GPU.
+5. **If we ever fall back to the Python route** (user, 2026-09-25): first re-verify the
+   layout-bug findings (`PLAN.md` Phase 6), then fix it in **one concise PR with
+   experiments verifying correctness, for example on tic-tac-toe, chess and Thud**; the
+   uncompiled inference needs its own fix.
+
+Earlier conclusions that still stand (`PLAN.md` Phase 5): no further optimisation of the
+game logic for now — the network, not the move generator, is the cost of AlphaZero-style
+learning. MCTS against MCTS (dwarfs win 7 of 10 at 1,000 simulations, 19 of 20 at 5,000)
+measures the searcher, not Thud's balance; OpenSpiel's AlphaZero evaluates itself against
+that searcher, so read its evaluation per side.
 
 **Where we are:** The repo is at `~/thud-openspiel` (WSL2, Ubuntu 26.04.1, aarch64) on branch
 `thud`, pushed to `origin`, with an `upstream` remote and the pre-push hook installed. OpenSpiel
@@ -74,7 +80,10 @@ builds natively on ARM64: clang 21.1.8, cmake 4.2.3, Python 3.14.4 venv; `make -
 `./examples/example --game=tic_tac_toe` runs. The `manylinux` wheel fallback was not
 needed. `build/` is OpenSpiel's default "Testing" build (`-O2`, all checks on); speed
 measurements use a Release build in `build-release/` (`BUILD_TYPE=Release`, only
-`benchmark_game` and `mcts_example` built — commands in the session-5 log).
+`benchmark_game` and `mcts_example` built — commands in the session-5 log), and the C++
+AlphaZero a Release build with LibTorch in `build-torch/` (commands in `CLAUDE.md`). The
+venv now has the JAX set and `torch==2.10.0`, so **the next cmake run in `build/` adds
+their Python tests**, and the 285 will grow.
 
 **Decided 2026-09-22 (all by the user; reasoning in the session-2 log):**
 
@@ -988,6 +997,163 @@ instrumentation, and the pattern agreed for later, are in `PLAN.md` Phase 5).
   rlax==0.1.8 distrax==0.1.7 flax==0.12.3` (`open_spiel/scripts/python_extra_deps.sh:69-71`).
   Installing them waits for the user's go-ahead.
 
-**Next step:** as recorded in `## Current status` — the user confirms the AlphaZero route;
-then install the pinned JAX set and run a small smoke test of OpenSpiel's Python
-AlphaZero on Thud.
+- **The AlphaZero route, steps 1-2** (the user confirmed it, and asked for a reminder of
+  the steps: install JAX; control run on tic-tac-toe; settle the input-layout question;
+  Thud smoke test; throughput on this CPU; a small real run; cloud GPU):
+  - Installed OpenSpiel's pinned JAX set with
+    `python3 -m pip install --upgrade jax==0.9.0.1 jaxlib==0.9.0.1 dm-haiku==0.0.16
+    optax==0.2.7 chex==0.1.91 rlax==0.1.8 distrax==0.1.7 flax==0.12.3`, as OpenSpiel's CI
+    does (`ci_script.sh:38`). A dry run first showed it would take numpy from 2.5.3 to
+    2.3.5; the wheels' metadata shows why: `flax-0.12.3` requires `numpy<2.4.0` (jax needs
+    `>=2.0`, scipy 1.18.1 `>=2.0.0,<2.8`, OpenSpiel's `requirements.txt` `>=1.21.5`).
+    `pip check` is clean. JAX runs on the CPU (it warns about "an NVIDIA GPU", which does
+    not exist, and falls back); pyspiel works with numpy 2.3.5 (Thud's initial observation
+    reshapes to planes summing to 32 dwarfs, 8 trolls, 124 empty), and
+    `ctest -R "pyspiel_test|playthrough|thud"` passes.
+  - Control: OpenSpiel's `model_test.py` (6 passed, 2 skipped by upstream design: "Too
+    slow for the CI", "May save to the disk") and `evaluator_test.py` (4 passed). The
+    example, `python3 alpha_zero.py --path DIR` (tic-tac-toe, resnet 256 x 2, 2 actors, 2
+    evaluators), ran until my 30-minute `timeout`: 17 of its 26 learning steps (each waits
+    for 2,048 new states, `alpha_zero.py:389`). It learns: policy loss 1.53 -> 1.03,
+    value loss 0.23 -> 0.03; self-play draws 42% -> 80%; against MCTS at 40 to 40,000
+    simulations, from -0.44..-0.5 at every level to +0.42, +0.20, +0.10 at the three
+    weakest and draws at the rest.
+- **The input-layout question, settled: a real bug in OpenSpiel's Python AlphaZero.** The
+  user challenged it ("wouldn't someone else have found it already? double- and
+  triple-check"), so each way it could be wrong was checked:
+  - A transpose somewhere on the way? None: `state.observation_tensor()`
+    (`alpha_zero.py:246`) -> replay buffer (`:455`) -> reshape to
+    `game.observation_tensor_shape()` (`:589`, `:144`; `model_linen.py:209`) -> `nn.Conv`.
+    Built for Thud, the model's first kernel is `(3, 3, 15, 8)`: 15 input channels, the
+    board's columns; the same `nn.Conv` on a `(15, 15, 6)` control input has 6. One dwarf
+    at (7, 3) reaches output positions (plane 0-1, row 6-8): the windows slide over planes.
+  - Planes last intended? No: OpenSpiel's API reference says planes first
+    (`docs/api_reference/game_observation_tensor_shape.md:28`), so are the games its
+    AlphaZero docs use (`tic_tac_toe.h:155`, `connect_four.h:198`), the docs call the
+    resnet the AlphaGo Zero one (`docs/alpha_zero.md:55`), and the C++ AlphaZero reads
+    planes first (`alpha_zero_torch/model.cc:39`, `:82`).
+  - Known or intended? The TensorFlow model of 2020-03-02 (`6393dd33`) transposed
+    planes-first input and the tic-tac-toe example asked for it
+    (`data_format="channels_first"`); the rewrite `bcdb0b44` (2020-03-23) dropped the
+    transpose (`tfkl.Reshape(input_shape)` into `tfkl.Conv2D(padding="same")`, Keras
+    channels-last), and every version since, including the 2025 flax port (`model_nnx.py`
+    too), has it. `gh search issues`/`prs` on google-deepmind/open_spiel for "channels
+    first/last", "data_format", "NHWC", "permute_dimensions", "Conv2D alpha", "alpha zero
+    observation shape" and more found nothing related.
+  - Does it matter? New `thud/experiments/az_layout_check.py`: OpenSpiel's own model and
+    update step, unmodified, trained on positions of random games (400 games for training,
+    100 others for testing, every 7th turn so both sides appear — every 8th sampled only
+    dwarf turns, caught by the per-side report). 6 runs in parallel, 545 s. Results in
+    `PLAN.md` Phase 6: on the dwarfs' "is a hurl available?" 79.0% as is vs 98.0% planes
+    last (baseline 66.9%); trolls 91.2% vs 99.4% (baseline 91.8%); dwarfs' policy mass on
+    hurls 13.7% vs 68.1% (uniform 1.2%). Worst planes-last run beats best as-is run on
+    every discriminating measure; planes last takes 1.7 times as long per step.
+- **The user asked: is the C++ AlphaZero faster, did nobody serious use the Python one, why
+  Python?** Python was the route only because `CLAUDE.md` said no LibTorch exists for
+  aarch64. Findings:
+  - OpenSpiel's docs recommend C++ for speed (`docs/alpha_zero.md:37-43`, quoted in
+    `PLAN.md` Phase 6); its README warns it is an unmaintained user contribution with a
+    pybind11 problem (issue #966).
+  - New `thud/experiments/az_speed.py` (57 s): the Python search alone does 7,100-8,500
+    simulations/s in this run (12,900 in an earlier one) at 656 and 253 dwarf moves; with
+    AlphaZero's network evaluator, 12-24 simulations/s for resnets 32 x 2, 64 x 4 and
+    128 x 6. The network per position: 26.9 / 41.2 / 52.3 ms as upstream calls it
+    (`Model.inference`, never compiled), 0.68 / 1.50 / 3.59 ms compiled once, 0.07 / 0.18
+    / 0.68 ms in compiled batches of 64.
+  - LibTorch: `pip install --dry-run torch==2.10.0` offers
+    `torch-2.10.0-cp314-cp314-manylinux_2_28_aarch64.whl`; downloaded (146 MB), it
+    contains `TorchConfig.cmake`, `libtorch.so`, `libtorch_cpu.so`, `libc10.so` and the
+    C++ API headers (9,788 header files); `torch/utils/__init__.py` defines
+    `cmake_prefix_path` as `share/cmake`; `nm -D libc10.so` shows 240 `__cxx11` symbols.
+    `CLAUDE.md` corrected.
+- **Decided with the user: the C++ route, with a generous time limit** (`PLAN.md` Phase 6),
+  and a standing note for the Python route: re-verify the layout findings, then one concise
+  PR with experiments (tic-tac-toe, chess, Thud). Phase 5 marked done; the deferred
+  decisions table updated.
+
+- **The C++ AlphaZero builds, unpatched, and passes its tests** (commands now in
+  `CLAUDE.md`, *Build and test*):
+  - `torch==2.10.0` installed in the venv from the wheel downloaded for the inspection
+    (`python3 -m pip install --find-links DIR torch==2.10.0`; it reports `2.10.0+cpu`;
+    `pip check` clean). libnop cloned as `install.sh` does (its `master`, then
+    `35e800d8`).
+  - `build-torch/` configured Release with LibTorch and libnop, `CMAKE_PREFIX_PATH` from
+    `torch.utils.cmake_prefix_path`. cmake found `libtorch.so` in the venv, warned
+    "static library kineto_LIBRARY-NOTFOUND not found" (unneeded), and detected JAX
+    0.9.0.1 and PyTorch for the Python tests — so the next cmake run in `build/` will add
+    those tests too.
+  - `make -j10` of the three LibTorch tests and both AlphaZero examples: 215 s, 0 errors,
+    0 warnings, no change to upstream code. Issue #966, read beforehand, reports two
+    problems, neither of which applies: link errors from an old-ABI LibTorch (ours is
+    C++11-ABI), and a pybind11 clash when building `pyspiel` (not built in `build-torch/`).
+  - `torch_integration_test` (prints nothing on success), `torch_model_test`, and
+    `torch_vpnet_test` (97 s: trains the resnet on all 4,520 tic-tac-toe states and
+    requires both losses below 0.1) pass. PyTorch 2.10 warns once that the `uint8`
+    legal-moves mask is deprecated (`vpnet.cc:183`, `model.cc:210`).
+- **Tic-tac-toe control passes** (`PLAN.md` Phase 6, with the table): the Python example's
+  settings, 26 steps, 21 minutes; losses fall, self-play draws 41% → 83%, beats MCTS at
+  40-400 simulations and draws the rest. 48 s a step against Python's 106 s, but
+  training-bound. **The user asked whether the Python control was a corrected version:
+  no** — upstream's, layout bug included, which on a 3x3 board probably costs little (not
+  measured); the comparison shows only that the C++ pipeline learns. Clarified in
+  `PLAN.md`.
+- **The user asked for a fair C++ against Python comparison on Thud, with exactly the
+  Python runs' parameters.** The Python Thud numbers come from a supervised test with no
+  search (`az_layout_check.py`), so the fair C++ run is the same task with the C++ model;
+  recorded as a Phase 6 item, with what cannot be matched without changing upstream code
+  (initialisation; value loss halved in Python; different L2 terms).
+- **Thud smoke test passes** (resnet 32 x 2, 50 simulations, 2 steps): games finish
+  (110-296 moves), the learner trains, checkpoints are written, the evaluator plays, clean
+  exit. The trolls won everything, whichever side AlphaZero took. It ran at 0.8 states/s.
+- **Why so slow: LibTorch's threads oversubscribe the CPU.** Its OpenMP backend gives each
+  caller 10 threads, and every actor and evaluator calls the network itself. A first
+  measurement failed: `alpha_zero_torch_example --verbose` logs nothing per move, as the
+  flag is never passed on (`alpha_zero.cc:112`, `:148`). Redone with
+  `alpha_zero_torch_game_example --verbose`, which prints each search's speed: 1 search
+  244 simulations/s by default, 163 with `OMP_NUM_THREADS=1`; 3 at once 16 each by
+  default, 128 each with one thread. In the trainer: 0.8 → 3.0 and 6.4 states/s.
+  `CLAUDE.md` now says to run LibTorch programs with `OMP_NUM_THREADS=1`.
+- **Thud's returns are margins, and that suits AlphaZero.** I first called them win/draw/
+  loss, which was wrong: they are the final margin over 32. The user explained the
+  objective — a match is two battles with the sides swapped, won on the combined margin.
+  Checked in the code: the value head learns the expected margin (real-valued target,
+  squared error, `tanh`); only monitoring statistics count by sign. Recorded in
+  `PLAN.md` Phase 6, *Margins as the value target*.
+- **Match-aware play deferred** (user: the single-battle agent first). Maximising the
+  expected margin maximises the expected match total, but not the chance of winning the
+  match, where the second battle's play depends on the carried margin. The network would
+  need the battle number and the carried margin as input; designs in *Deferred
+  decisions*. KataGo's komi input and score utility verified in its paper.
+- **The search: the user corrected me on `uct_c`.** I said margins might need a lower
+  `uct_c`; the user pointed out that it works multiplicatively — right: it absorbs the
+  values' scale. What it does not absorb is their level: OpenSpiel counts an untried move
+  as 0, an even game (`mcts.cc:108`). From the formula, the side that is ahead then
+  follows its prior below the root, and the side that is losing tries a new move with
+  almost every simulation while its prior is flat. **Verified: AlphaZero counts untried
+  moves as losses** (its pseudocode; Leela Chess Zero's blog; MuZero's official
+  pseudocode likewise), so following the prior is AlphaZero's design, and the losing
+  side's burst of breadth is OpenSpiel's own, mostly early. KataGo uses the parent's value
+  minus a reduction. **User: measure first** (small run); a fix would be an upstream
+  option, raised with the user first.
+- **Settings to determine** (user asked): a list in `PLAN.md` Phase 6. Verified
+  AlphaZero's root-noise rule (α inversely proportional to the move count; 0.3, 0.15, 0.03).
+  Thud's sides would want about 0.025 and 0.3, but OpenSpiel uses one α: **α = 0.1 chosen
+  by the user**, testing 0.03 and 0.3 recorded as follow-up. **Resignation off** (user
+  agreed): on by default in upstream (80% of self-play games), off completely with
+  `--cutoff_probability=0` (`alpha_zero.cc:202-203`).
+- **New `thud/experiments/az_thud.flags`** (user: off by default, without upstream
+  changes): our defaults, loaded with Abseil's `--flagfile`, each with its reasoning in a
+  comment. Tested: the file's values reach `config.json`, the last value of a flag wins,
+  `#` comments are ignored.
+- Evaluation, from the code: OpenSpiel does not record which side AlphaZero played, but
+  each evaluator log line pairs the game's returns with AlphaZero's, so the side can be
+  recovered whenever the margin is not 0. Its default 7 levels reach 300,000 simulations a
+  move against MCTS with random rollouts — use fewer on Thud.
+- `CLAUDE.md` updated: LibTorch works from the wheel; the `OMP_NUM_THREADS=1` rule; the
+  `build-torch/` commands and the kineto warning; the coming JAX and PyTorch tests.
+- **Not committed:** `CLAUDE.md`, `thud/PLAN.md`, `thud/PROGRESS.md`, and the new
+  `thud/experiments/az_layout_check.py`, `az_speed.py` and `az_thud.flags` — for the
+  user's review first.
+
+**Next step:** as recorded in `## Current status` — the C++ against Python layout control
+on Thud, then throughput.
