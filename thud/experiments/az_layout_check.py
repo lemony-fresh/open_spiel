@@ -33,6 +33,11 @@ games, train and test from different games.
   python3 az_layout_check.py --variant fixed --seed 1
 
 Prints one JSON line per evaluation. Needs pyspiel and OpenSpiel's JAX dependencies.
+
+  python3 az_layout_check.py --export DIR
+
+writes what az_layout_check.cc, the C++ counterpart, needs to train OpenSpiel's C++
+model on exactly these positions and batches (seeds 1-3); see that file.
 """
 
 import argparse
@@ -54,19 +59,25 @@ SHAPE = (6, 15, 15)  # ThudGame::ObservationTensorShape()
 TROLLS_TO_MOVE_PLANE = 3
 
 
-def positions(game, seeds, every):
-  """Every `every`-th position of random games: (observation, legal, capturing)."""
+def positions(game, seeds, every, games=None):
+  """Every `every`-th position of random games: (observation, legal, capturing).
+
+  If `games` is a list, each game's actions are appended to it.
+  """
   data = []
   for seed in seeds:
-    rng, state, turn = random.Random(seed), game.new_initial_state(), 0
+    rng, state, turn, actions = random.Random(seed), game.new_initial_state(), 0, []
     while not state.is_terminal():
       legal = state.legal_actions()
       if turn % every == 0:
         captures = [a for a in legal if state.action_to_string(a).endswith("x")]
         data.append((np.asarray(state.observation_tensor(), np.float32),
                      np.asarray(legal), np.asarray(captures, dtype=np.int64)))
-      state.apply_action(rng.choice(legal))
+      actions.append(rng.choice(legal))
+      state.apply_action(actions[-1])
       turn += 1
+    if games is not None:
+      games.append(actions)
   return data
 
 
@@ -79,6 +90,42 @@ def load_data(game, cache):
   with open(cache, "wb") as f:
     pickle.dump(data, f)
   return data
+
+
+def checksums(data):
+  """Counts and sums that any exact copy of the positions must reproduce."""
+  # Two planes hold fractions, so the planes are summed in float64 and rounded.
+  obs = np.stack([o for o, _, _ in data]).reshape(-1, *SHAPE).astype(np.float64)
+  return {"positions": len(data),
+          "legal": sum(len(l) for _, l, _ in data),
+          "legal_sum": int(sum(l.sum() for _, l, _ in data)),
+          "captures": sum(len(c) for _, _, c in data),
+          "captures_sum": int(sum(c.sum() for _, _, c in data)),
+          "plane_sums": [round(float(s), 3) for s in obs.sum(axis=(0, 2, 3))]}
+
+
+def export(game, directory, steps, batch_size, seeds):
+  """Writes what the C++ counterpart needs to train on exactly these positions.
+
+  train_games.txt and test_games.txt hold one game's actions per line, to replay;
+  summary.json the positions' checksums; batches_seed<S>.bin the batch indices seed S
+  draws, steps x batch_size little-endian int32, in order.
+  """
+  os.makedirs(directory, exist_ok=True)
+  summary = {"every": 7, "steps": steps, "batch_size": batch_size}
+  for name, seeds_of_games in (("train", range(400)), ("test", range(10_000, 10_100))):
+    games = []
+    summary[name] = checksums(positions(game, seeds_of_games, 7, games))
+    with open(os.path.join(directory, f"{name}_games.txt"), "w") as f:
+      f.writelines(" ".join(map(str, actions)) + "\n" for actions in games)
+  for seed in seeds:  # As main() draws them.
+    rng = np.random.default_rng(seed)
+    indices = np.stack([rng.integers(summary["train"]["positions"], size=batch_size)
+                        for _ in range(steps)])
+    indices.astype("<i4").tofile(os.path.join(directory, f"batches_seed{seed}.bin"))
+  with open(os.path.join(directory, "summary.json"), "w") as f:
+    json.dump(summary, f, indent=1)
+  print(json.dumps(summary))
 
 
 def model_input(observation, variant):
@@ -129,7 +176,7 @@ def evaluate(model, predict, test, variant, num_actions):
 
 def main():
   parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-  parser.add_argument("--variant", choices=["as_is", "fixed"], required=True)
+  parser.add_argument("--variant", choices=["as_is", "fixed"])
   parser.add_argument("--seed", type=int, default=1)
   parser.add_argument("--steps", type=int, default=1500)
   parser.add_argument("--eval_every", type=int, default=250)
@@ -137,9 +184,16 @@ def main():
   parser.add_argument("--nn_width", type=int, default=32)
   parser.add_argument("--nn_depth", type=int, default=2)
   parser.add_argument("--cache", default="/tmp/az_layout_check_positions.pkl")
+  parser.add_argument("--export", metavar="DIR",
+                      help="instead of training, write the data for az_layout_check.cc")
   args = parser.parse_args()
 
   game = pyspiel.load_game("thud")
+  if args.export:
+    export(game, args.export, args.steps, args.batch_size, seeds=(1, 2, 3))
+    return
+  if not args.variant:
+    parser.error("--variant is required unless --export is given")
   train, test = load_data(game, args.cache)
   num_actions = game.num_distinct_actions()
   shape = SHAPE if args.variant == "as_is" else (15, 15, 6)
