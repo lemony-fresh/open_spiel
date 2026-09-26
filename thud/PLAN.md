@@ -554,23 +554,40 @@ first session, with no patch at all.**
   its average against MCTS was 0 — at this strength the side decides, which is why the
   evaluation is read per side. It was slow, 0.8 states/s (about 20 simulations/s per
   actor): see the throughput step.
-- [ ] **Thud layout control, C++ against Python** (user, 2026-09-25: compare fairly, with
-  exactly the Python runs' parameters). Repeat `az_layout_check.py`'s supervised task with
-  the C++ model (`VPNetModel::Learn`, `vpnet.h:124`) and everything the Python runs set:
-  the same positions (random games 0-399 for training, 10,000-10,099 for testing, every
-  7th turn; they regenerate exactly from the seeds while the rules are unchanged), the same
-  targets, resnet 32 x 2, learning rate 1e-3, weight decay 1e-4, 1,500 steps of 128,
-  evaluated every 250 on the same per-side measures, seeds 1-3. The two Python results
-  bracket it: near "planes last" (98.0% / 99.4% / 68.1%) the C++ model reads Thud's board
-  correctly; near "as is" (79.0% / 91.2% / 13.7%) it does not. Record with the results
-  what cannot be matched without changing upstream code: the initialisation; the value
-  loss (C++ `MSELoss`, `model.cc:353`; Python `optax.l2_loss`, which halves it,
-  `model_linen.py:373`); the L2 term (C++ `weight_decay * sum(w^2) / 2` over all but the
-  biases, batch-norm scales included, `model.cc:356-373`; Python `weight_decay * sum(w^2)`
-  without biases and batch norm, `model_linen.py:316-322`). Needs a small C++ program in
-  `thud/experiments/`, built without editing upstream CMake files — how, to be settled
-  then. There is no Python AlphaZero self-play run on Thud to compare against (too slow,
-  above); for self-play the like-for-like comparison is the tic-tac-toe control.
+- [x] **Thud layout control, C++ against Python** (user, 2026-09-25: compare fairly, with
+  exactly the Python runs' parameters) — **passes, 2026-09-25: the C++ model reads Thud's
+  board correctly.** `az_layout_check.py`'s supervised task, trained with upstream's C++
+  model, unmodified (`VPNetModel::Learn`), on exactly the Python runs' data and settings:
+  `az_layout_check.py --export` writes the random games (0-399 for training,
+  10,000-10,099 for testing), checksums of the positions taken from them (every 7th turn),
+  and each seed's batch order; the new `az_layout_check.cc` replays the games with Thud's
+  C++ code, stops unless its 20,036 + 4,816 positions reproduce the checksums (a
+  tampered count and a tampered plane sum were both caught), and trains on the same
+  batches in the same order — resnet 32 x 2, learning rate 1e-3, weight decay 1e-4,
+  1,500 steps of 128, seeds 1-3. Built as OpenSpiel's `docs/library.md` describes, with no
+  CMake change: `build-shared/libopen_spiel.so` plus upstream's `model.cc` and `vpnet.cc`
+  compiled alongside (`thud/experiments/build_az_layout_check.sh`). On the held-out
+  positions at step 1,500, mean of the seeds (range):
+
+  | Task | Baseline | Python as is | Python planes last | **C++** |
+  |---|---|---|---|---|
+  | Dwarfs: is a hurl available? (value head) | 66.9% | 79.0% (77.4-81.0) | 98.0% (97.9-98.2) | **97.9%** (97.8-97.9) |
+  | Trolls: is a capture available? (value head) | 91.8% | 91.2% (90.2-92.2) | 99.4% (99.3-99.5) | **99.0%** (98.0-99.5) |
+  | Dwarfs: policy mass on hurls | 1.2% | 13.7% (9.5-16.0) | 68.1% (63.8-71.6) | **77.9%** (75.8-81.3) |
+
+  The value heads match planes last step by step (the dwarfs' question at 97.4% by step
+  500 in both). The C++ policy learns the hurls faster (47% at step 500, against 10% for
+  planes last); the differences that cannot be matched without changing upstream code
+  may explain it: the initialisation; the value loss (C++ `MSELoss`, `model.cc:353`;
+  Python `optax.l2_loss`, which halves it, `model_linen.py:373`); the L2 term (C++
+  `weight_decay * sum(w^2) / 2` over all but the biases, batch-norm scales included,
+  `model.cc:356-373`; Python `weight_decay * sum(w^2)` without biases and batch norm,
+  `model_linen.py:316-322`). Both runs dip on the trolls' question at step 1,250 (C++
+  95.0%, planes last 97.7%), plausibly from the shared batch order. The trolls' policy
+  scores about 99% everywhere, uninformative as before. Wall times are not comparable
+  (different parallelism). There is no Python AlphaZero self-play run on Thud to compare
+  against (too slow, above); for self-play the like-for-like comparison is the
+  tic-tac-toe control.
 - [ ] Throughput on this CPU: simulations/s and games/hour for a few network sizes — the
   numbers that decide when to move to the cloud. **First finding (2026-09-25): LibTorch's
   threads oversubscribe the CPU.** Its OpenMP backend gives every caller 10 threads, and

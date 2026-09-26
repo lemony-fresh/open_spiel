@@ -146,6 +146,12 @@ cmake warns "static library kineto_LIBRARY-NOTFOUND not found" (a profiling libr
 the wheel does not ship); the build does not need it. Our AlphaZero defaults for Thud
 are in `thud/experiments/az_thud.flags` (`--flagfile`).
 
+Our own C++ programs that use the AlphaZero model (so far `az_layout_check.cc`) link
+against OpenSpiel built as a shared library, as `docs/library.md` describes, in
+`build-shared/`, so no upstream CMake file changes: `build-torch/`'s configure plus
+`BUILD_SHARED_LIB=ON`, then `make -j10 open_spiel` (~2.5 min). The commands, and the
+compiler flags copied from CMake, are in `thud/experiments/build_az_layout_check.sh`.
+
 **Now that JAX and PyTorch are in the venv, the next cmake run in `build/` adds their
 Python tests** (OpenSpiel detects both when `OPEN_SPIEL_ENABLE_JAX`/`_PYTORCH` are
 unset, `open_spiel/python/CMakeLists.txt:172-190`; `build-torch/`'s configure did), so

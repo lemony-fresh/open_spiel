@@ -7,8 +7,9 @@ baselines, and is benchmarked (session 5, 2026-09-25); **Phase 6 in progress**:
 AlphaZero-style learning with **OpenSpiel's C++ AlphaZero**, decided with the user
 2026-09-25 (`PLAN.md` Phase 6). **It builds and runs here**: LibTorch 2.10 from PyTorch's
 aarch64 pip wheel, in `build-torch/`, no change to upstream code; OpenSpiel's LibTorch
-tests pass, it learns tic-tac-toe like the Python control, and a Thud smoke test runs
-end to end. Run it with `OMP_NUM_THREADS=1` (self-play up to 8x faster) and our defaults in
+tests pass, it learns tic-tac-toe like the Python control, a Thud smoke test runs end
+to end, and on Thud's board it learns like the Python model with the layout fixed (the
+C++ against Python layout control). Run it with `OMP_NUM_THREADS=1` (self-play up to 8x faster) and our defaults in
 `thud/experiments/az_thud.flags` (resignation off, root noise α 0.1). OpenSpiel's Python
 AlphaZero also runs here but is not our route (too slow, and a layout bug).
 
@@ -39,7 +40,9 @@ AlphaZero also runs here but is not our route (too slow, and a layout bug).
   engine and the reading rules. Four scripts in `thud/experiments/` (`perft_reference.py`,
   `crosscheck_tests.py`, `move_kinds_sim.py`, `limits_sim.py`) run hexparrot/thudgame;
   `random_endings.py` and `mcts_games.py` need only pyspiel; `az_layout_check.py` and
-  `az_speed.py` need pyspiel and the JAX set. hexparrot runs from a clone
+  `az_speed.py` need pyspiel and the JAX set; `az_layout_check.cc` is their C++
+  counterpart, built by `build_az_layout_check.sh` against `build-shared/libopen_spiel.so`.
+  hexparrot runs from a clone
   outside the repo, by default
   `~/.local/share/thud-openspiel/hexparrot_thudgame` (under `$XDG_DATA_HOME` if set), which
   **exists on this machine** at the pinned commit 7b171108 (2026-09-25). If it is missing,
@@ -48,21 +51,17 @@ AlphaZero also runs here but is not our route (too slow, and a layout bug).
 
 **Next steps, in order (`PLAN.md` Phase 6):**
 
-1. **C++ against Python layout control on Thud**: `az_layout_check.py`'s supervised task
-   with the C++ model (`VPNetModel::Learn`) and exactly the Python runs' parameters; the two
-   Python results bracket where it should land. Needs a small C++ program in
-   `thud/experiments/`, built without editing upstream CMake files — how is still open.
-2. **Throughput on this CPU**, always with `OMP_NUM_THREADS=1`: simulations/s and
+1. **Throughput on this CPU**, always with `OMP_NUM_THREADS=1`: simulations/s and
    games/hour for a few network sizes, and batched inference (`--inference_batch_size`,
    `--inference_threads`). Decides when to move to the cloud.
-3. **A small training run** with `thud/experiments/az_thud.flags`: read the evaluation
+2. **A small training run** with `thud/experiments/az_thud.flags`: read the evaluation
    per side, as the share of games won and the mean margin (the side is recovered from the
    evaluator logs); measure how widely both sides' searches spread their visits and whether
    the dwarfs' policy sharpens (the untried-move question — measure first, user); use few
    evaluation levels (the default 7 reach 300,000 simulations a move).
-4. Then settings (`PLAN.md` Phase 6, *Settings to determine empirically*: `uct_c`,
+3. Then settings (`PLAN.md` Phase 6, *Settings to determine empirically*: `uct_c`,
    simulations and network size first; then α 0.03 and 0.3 against 0.1), then a cloud GPU.
-5. **If we ever fall back to the Python route** (user, 2026-09-25): first re-verify the
+4. **If we ever fall back to the Python route** (user, 2026-09-25): first re-verify the
    layout-bug findings (`PLAN.md` Phase 6), then fix it in **one concise PR with
    experiments verifying correctness, for example on tic-tac-toe, chess and Thud**; the
    uncompiled inference needs its own fix.
@@ -1151,9 +1150,24 @@ instrumentation, and the pattern agreed for later, are in `PLAN.md` Phase 5).
   move against MCTS with random rollouts — use fewer on Thud.
 - `CLAUDE.md` updated: LibTorch works from the wheel; the `OMP_NUM_THREADS=1` rule; the
   `build-torch/` commands and the kineto warning; the coming JAX and PyTorch tests.
-- **Not committed:** `CLAUDE.md`, `thud/PLAN.md`, `thud/PROGRESS.md`, and the new
-  `thud/experiments/az_layout_check.py`, `az_speed.py` and `az_thud.flags` — for the
-  user's review first.
+- Committed and pushed after the user's review: a9c96748.
 
-**Next step:** as recorded in `## Current status` — the C++ against Python layout control
-on Thud, then throughput.
+- **The C++ against Python layout control on Thud passes: the C++ model reads the board
+  correctly** (`PLAN.md` Phase 6, with the table). Built as OpenSpiel's `docs/library.md`
+  describes, with no CMake change (the user approved the route): `build-shared/`
+  configured like `build-torch/` plus `BUILD_SHARED_LIB=ON`, `make open_spiel` in 136 s,
+  0 warnings; `thud/experiments/build_az_layout_check.sh` compiles the new
+  `az_layout_check.cc` with upstream's `model.cc` and `vpnet.cc` (the shared library
+  leaves the LibTorch model out) using CMake's flags for them (33 s; it first missed
+  `open_spiel/json/include`). `az_layout_check.py --export` (6 s) writes the games,
+  checksums and batch orders. My refactor of its `positions()` was checked against the
+  committed version: all 24,852 positions identical; the earlier Python logs, still in the
+  scratchpad, show the same 20,036 + 4,816. The checksums first compared a float32 sum
+  as an integer, inexact for the two fractional planes (1,022,859 against 1,022,834.531
+  in float64): now float64 sums, compared to within 0.01; a tampered count and a tampered
+  plane sum both stop the program. Seeds 1-3 in parallel with 3 threads each, 946 s. At
+  step 1,500: dwarfs' hurl question 97.9% (Python planes last 98.0%, as is 79.0%),
+  trolls' capture question 99.0% (99.4%, 91.2%), dwarfs' policy mass on hurls 77.9%
+  (68.1%, 13.7%).
+
+**Next step:** as recorded in `## Current status` — throughput on this CPU.
