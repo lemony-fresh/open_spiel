@@ -330,6 +330,32 @@ core, Release build (`build-release/`, `BUILD_TYPE=Release`):
   the same game length (341 moves), Go 479,000 moves/s.
 - MCTS with random rollouts (`mcts_example`, 1,000 simulations per move): **about 3,500
   simulations/s** — chess about 760.
+- **MCTS against MCTS** (OpenSpiel's `MCTSBot` with random rollouts, which `mcts_example`
+  plays; summarised by `thud/experiments/mcts_games.py`). Plain MCTS needs nothing new;
+  only "MCTS with an evaluation function" would need a Thud heuristic of our own. Random
+  against random, the trolls win every game (mean dwarf margin -26.6). With MCTS:
+
+  | Simulations per move | Games (seeds) | Dwarfs win (95% interval) | Mean dwarf margin | Turns, median (range) | Time on 10 cores |
+  |---|---|---|---|---|---|
+  | 1,000 | 10 (1-10) | 7 (40-89%) | +4.2 | 246 (137-336) | 53 s |
+  | 5,000 | 20 (1-20) | **19** (76-99%) | **+17.7** | **91** (47-248) | 400 s, 1.4 s a move |
+
+  Every game ends in a rout; neither limit comes into play. At 5,000 simulations 19 games
+  end with no troll left, the dwarfs keeping a median 19.5 of their 32.
+- **Why more search helps the dwarfs so much** (measured by replaying those games): the
+  dwarfs have a median 330-470 legal moves a turn, the trolls 26-39, and OpenSpiel's MCTS
+  tries every move once before any move twice (an unvisited move's UCT value is infinite,
+  `mcts.cc:95`). At 1,000 simulations the dwarfs' search gives each move about 3 visits and
+  took an available hurl 14% of the time; at 5,000, about 11 visits and 57%. The trolls'
+  search has a blind spot that more simulations barely reach: when a hurl is on the board,
+  hurls are about 0.2-0.4% of the dwarfs' moves, so a random rollout almost never plays it,
+  while a troll capture is about 20% of the trolls' moves. Rollouts therefore punish a
+  dwarf left open to trolls but hardly ever a troll left in a line of dwarfs; the trolls'
+  search sees that threat only where its tree reaches the dwarfs' ~450 replies.
+- **So these runs measure the searcher, not the balance of Thud** — the result follows
+  the search budget: the trolls win every random game, the dwarfs 7 of 10 at 1,000
+  simulations and 19 of 20 at 5,000. The official match (two battles, sides swapped, combined margin;
+  `THUD_RULES.md` §9.5) does not need a balanced battle anyway.
 - Random games' endings (`thud/experiments/random_endings.py`, our implementation): 98.6%
   routs, 1.4% the no-capture limit, none the turn limit; median 330 turns, mean 343 —
   matching hexparrot's 1.5% and 334 / 343, so the proxy held.
@@ -348,6 +374,17 @@ user; nothing decided yet):
 
 - **Classical MCTS is cheap here:** a 10,000-simulation search per move takes about 3 s on
   one core, about 0.3 s spread over the 10 cores — before any optimisation.
+- **But width, not only speed, limits it** (MCTS against MCTS above): at a dwarf node,
+  plain UCT spends its first ~450 simulations trying every move once, and random rollouts
+  hardly ever find a hurl. An evaluation function would replace the rollouts, not the
+  width; that also needs move priors or pruning. AlphaZero's search has priors built in:
+  under PUCT an unvisited move is worth its policy prior, not infinity (`mcts.cc:103-111`),
+  and OpenSpiel's Python AlphaZero uses PUCT (`alpha_zero.py:201`).
+- **Read AlphaZero's evaluation per side.** OpenSpiel's Python AlphaZero measures progress
+  against exactly this searcher — plain UCT with random rollouts, alternating sides, at
+  growing simulation counts (`alpha_zero.py:338-360`). Since that opponent's strength
+  differs so much between dwarfs and trolls, an average over both sides would hide which
+  side the network has learned.
 - **For AlphaZero-style learning the move generator is not the bottleneck** — checked after
   the user asked whether thousands of simulations per move would make it one. Each
   simulation costs one network evaluation, one legal-move list and a few moves on a copied
@@ -495,7 +532,7 @@ Recorded here so they are decided deliberately rather than by accident.
 
 | Decision | Blocked on |
 |---|---|
-| Classical MCTS + evaluation function vs AlphaZero-style learning | Phase 5 benchmarks — first numbers in (2026-09-25; Phase 5 above: about 3,500 MCTS simulations/s per core); to be decided with the user. If OpenSpiel's Python AlphaZero, first check its input layout (noticed 2026-09-24, unverified): it reshapes observations to the game's planes-first shape (`model_linen.py:209`) and feeds them to flax's `nn.Conv`, which expects channels last. Every upstream board game reports planes first, as we do, so any fix belongs in the training code, not in `ObservationTensorShape`. |
+| Classical MCTS + evaluation function vs AlphaZero-style learning | Phase 5 benchmarks — first numbers in (2026-09-25; Phase 5 above: about 3,500 MCTS simulations/s per core); to be decided with the user. MCTS against MCTS (Phase 5 above) shows that the dwarfs' ~450 moves a turn limit plain UCT more than speed does: an evaluation function alone would not fix that, AlphaZero's policy priors address it. If OpenSpiel's Python AlphaZero, first check its input layout (noticed 2026-09-24, unverified): it reshapes observations to the game's planes-first shape (`model_linen.py:209`) and feeds them to flax's `nn.Conv`, which expects channels last. Every upstream board game reports planes first, as we do, so any fix belongs in the training code, not in `ObservationTensorShape`. |
 | Local CPU training vs rented cloud GPU | Phase 5 benchmarks — first numbers in (2026-09-25; Phase 5 above); to be decided with the user. For AlphaZero-style training the network, not the game, dominates the cost, and this machine has no CUDA GPU. |
 | `OPEN_SPIEL_BUILD_WITH_LIBTORCH` on aarch64 (needed for C++ AlphaZero) | Only if we commit to C++ AlphaZero |
 | Whether to attempt upstreaming to OpenSpiel | Thud is commercially published; copyright question unresolved |

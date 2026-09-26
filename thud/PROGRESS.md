@@ -4,7 +4,8 @@
 
 **Phase:** 0–4 **done** — Thud is implemented, passes all its tests, and has its
 integration baselines (session 5, 2026-09-25); **Phase 5 in progress**: first speed
-measurements taken (`PLAN.md` Phase 5), the deferred decisions still open.
+measurements and MCTS-against-MCTS games done (`PLAN.md` Phase 5), the deferred decisions
+still open, the AlphaZero route prepared but not started.
 
 **Where we stand:**
 
@@ -30,8 +31,10 @@ measurements taken (`PLAN.md` Phase 5), the deferred decisions still open.
   user. None was needed in session 5.
 - **After changing any test, run `thud/experiments/crosscheck_tests.py`**: it checks every
   hand-written move expectation (110 checks) and every test diagram against hexparrot's
-  engine and the reading rules. All four scripts in `thud/experiments/` run
-  hexparrot/thudgame from a clone outside the repo, by default
+  engine and the reading rules. Four scripts in `thud/experiments/` (`perft_reference.py`,
+  `crosscheck_tests.py`, `move_kinds_sim.py`, `limits_sim.py`) run hexparrot/thudgame;
+  `random_endings.py` and `mcts_games.py` need only pyspiel. hexparrot runs from a clone
+  outside the repo, by default
   `~/.local/share/thud-openspiel/hexparrot_thudgame` (under `$XDG_DATA_HOME` if set), which
   **exists on this machine** at the pinned commit 7b171108 (2026-09-25). If it is missing,
   every script stops with a full explanation: what hexparrot is, which scripts need it,
@@ -50,6 +53,19 @@ measurements taken (`PLAN.md` Phase 5), the deferred decisions still open.
    through pyspiel, against about 1 µs for a whole move in C++). Revisit only if classical
    MCTS with random rollouts is chosen and proves too slow; then profile first (`perf` /
    `valgrind`, to be installed by the user).
+   **MCTS against MCTS** (OpenSpiel's plain UCT with random rollouts; random play gives the
+   trolls every game): the dwarfs win 7 of 10 at 1,000 simulations per move and **19 of
+   20 at 5,000** (mean dwarf margin +17.7, median 91 turns). That measures the searcher,
+   not Thud's balance: the dwarfs have ~450 moves a turn to the trolls' ~30, UCT tries
+   each once before any twice, and random rollouts almost never play a hurl, so the
+   trolls' search barely sees hurl threats. Width limits plain UCT more than speed does;
+   AlphaZero's policy priors address that. Reproduce with
+   `thud/experiments/mcts_games.py`.
+2. **The AlphaZero route** (user, 2026-09-25: on this machine's CPU first, a cloud GPU once
+   everything works) — to be confirmed by the user, then: install OpenSpiel's pinned JAX
+   set into the venv (session 5 log has the versions; none installed yet), run a small
+   smoke test of OpenSpiel's Python AlphaZero on Thud, and check the input-layout question
+   in `PLAN.md`'s deferred decisions. Read its evaluation against MCTS per side.
 
 **Where we are:** The repo is at `~/thud-openspiel` (WSL2, Ubuntu 26.04.1, aarch64) on branch
 `thud`, pushed to `origin`, with an `upstream` remote and the pre-push hook installed. OpenSpiel
@@ -920,6 +936,58 @@ instrumentation, and the pattern agreed for later, are in `PLAN.md` Phase 5).
   rollouts is chosen and proves too slow. `CLAUDE.md`'s build section now says that
   `build/` is the "Testing" build type and how to make the Release build for speed
   measurements.
+- **MCTS against MCTS, at the user's request** ("is classical MCTS already in place? Then
+  see whether the win ratio moves towards the dwarfs"): plain MCTS with random rollouts is
+  entirely OpenSpiel's (`MCTSBot`, played by `mcts_example`); only MCTS with an evaluation
+  function would need a Thud heuristic of our own. 10 games, one per core,
+  `./examples/mcts_example --game=thud --player1=mcts --player2=mcts
+  --max_simulations=1000 --rollout_count=1 --num_games=1 --seed=N` for N = 1..10 (Release
+  build), 53 s in all. **The dwarfs won 7 of 10** (dwarf margins +5, +11, +6, +6, +10, +9,
+  +11; the trolls' wins -4, -4, -8; mean +4.2), where random play gives the trolls every
+  game. Every game ended in a rout — 7 with no trolls left, 3 with no dwarfs — in 137-336
+  turns (random games: median 330); neither limit came into play.
+- **Again at 5,000 simulations per move, 20 games** (user's request): the same command with
+  `--max_simulations=5000`, seeds 1-20, 10 at a time through `xargs -P 10`, 400 s in all,
+  91-292 s a game, 1.39 s a move (about 3,600 simulations/s). **The dwarfs won 19 of 20**
+  (95% Wilson interval 76-99%, against 40-89% for the 7 of 10), mean dwarf margin +17.7
+  (margins -8, +5, +7, +9, +12, +16, +17, +19 ×3, +20 ×2, +22 ×2, +24 ×3, +26, +27, +30).
+  Games got much shorter: median 91 turns (47-248), against 246 at 1,000. 19 ended with no
+  troll left, the dwarfs keeping a median 19.5 of their 32; the one troll win (seed 5) left
+  2 trolls. Again only routs.
+- **Why the dwarfs gain so much from more search** — measured by replaying all 30 games
+  through pyspiel (new `thud/experiments/mcts_games.py`, which also produces the figures
+  above from the logs; its docstring has the exact command, checked by running it at 10
+  simulations):
+  - Width: the dwarfs had a median 328 (1,000 sims) and 469 (5,000) legal moves a turn,
+    the trolls 39 and 26. OpenSpiel's UCT gives an unvisited move infinite value
+    (`mcts.cc:95`), so a search tries every move once before any twice: about 3 visits per
+    dwarf move at 1,000 simulations, about 11 at 5,000. With a hurl on the board, the
+    dwarfs took it 14% of the time at 1,000 and 57% at 5,000; they had one on 46% and 24%
+    of their turns.
+  - Rollouts: when a capture is available, it is a median 0.2-0.4% of the dwarfs' moves
+    but about 20% of the trolls'. A random rollout hardly ever plays a hurl, so a troll
+    left in a line of dwarfs is punished only through the tree, where the trolls' search
+    must reach the one hurl among the dwarfs' ~450 replies; a dwarf left next to trolls is
+    punished by the rollouts too. The trolls took an available capture only 26% and 28%
+    of the time — probably because one dwarf is 1/32 of the margin, small next to rollout
+    noise (a guess, not measured).
+  - Conclusion recorded in `PLAN.md` Phase 5: these runs measure the searcher, not the
+    balance of Thud (the result follows the search budget; the official match swaps sides
+    anyway, `THUD_RULES.md` §9.5). Width limits plain UCT more than speed does, which an
+    evaluation function alone would not fix; AlphaZero's PUCT gives unvisited moves their
+    policy prior instead of infinity (`mcts.cc:103-111`; Python AlphaZero uses PUCT,
+    `alpha_zero.py:201`). And OpenSpiel's AlphaZero evaluates itself against plain UCT
+    with random rollouts, alternating sides (`alpha_zero.py:338-360`), so its evaluation
+    must be read per side.
+- **AlphaZero route: prepared, not started.** The user's direction (2026-09-25): if
+  classical MCTS was not already in place, go the AlphaZero learning route, on this
+  machine's CPU for now and on a cloud GPU once everything works. MCTS turned out to be in
+  place, and the user asked for the 5,000-simulation run next, so the route is still to be
+  confirmed. Groundwork: the venv has no JAX (`import jax` fails). For Python above 3.13
+  OpenSpiel pins `jax==0.9.0.1 jaxlib==0.9.0.1 dm-haiku==0.0.16 optax==0.2.7 chex==0.1.91
+  rlax==0.1.8 distrax==0.1.7 flax==0.12.3` (`open_spiel/scripts/python_extra_deps.sh:69-71`).
+  Installing them waits for the user's go-ahead.
 
-**Next step:** as recorded in `## Current status` — deciding with the user what the
-measurements mean for the deferred decisions.
+**Next step:** as recorded in `## Current status` — the user confirms the AlphaZero route;
+then install the pinned JAX set and run a small smoke test of OpenSpiel's Python
+AlphaZero on Thud.
