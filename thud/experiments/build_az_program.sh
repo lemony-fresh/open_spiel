@@ -13,11 +13,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Builds az_layout_check.cc into build-shared/az_layout_check, without touching
-# OpenSpiel's CMake files: it links against OpenSpiel built as a shared library, as
-# OpenSpiel's docs/library.md describes, and compiles upstream's C++ AlphaZero model
-# (model.cc, vpnet.cc, unmodified) alongside, since that library leaves them out. The
-# compiler flags are those CMake uses for the model in build-torch/.
+# Builds one of our C++ programs that use OpenSpiel's C++ AlphaZero,
+# thud/experiments/PROGRAM.cc, into build-shared/PROGRAM, without touching OpenSpiel's
+# CMake files: it links against OpenSpiel built as a shared library, as OpenSpiel's
+# docs/library.md describes, and compiles upstream's AlphaZero model and evaluator
+# (model.cc, vpnet.cc, vpevaluator.cc, unmodified) alongside, since that library leaves
+# them out. The compiler flags are those CMake uses for them in build-torch/.
+#
+#   thud/experiments/build_az_program.sh az_layout_check    # or az_throughput
 #
 # Needs build-shared/libopen_spiel.so, from the repo root:
 #
@@ -30,6 +33,11 @@
 #   make -j10 open_spiel    # ~2.5 min
 
 set -euo pipefail
+if [ $# -ne 1 ]; then
+  echo "Usage: $0 PROGRAM   (builds thud/experiments/PROGRAM.cc)" >&2
+  exit 1
+fi
+program=$1
 repo=$(cd "$(dirname "$0")/../.." && pwd)
 src=$repo/open_spiel
 lib=$repo/build-shared
@@ -47,11 +55,12 @@ clang++ -std=gnu++20 -O3 -DNDEBUG -Wno-everything \
   -I"$repo" -I"$src" -I"$src/abseil-cpp" -I"$src/json/include" \
   -I"$src/libnop/libnop/include" \
   -isystem "$torch/include" -isystem "$torch/include/torch/csrc/api/include" \
-  -o "$lib/az_layout_check" \
-  "$repo/thud/experiments/az_layout_check.cc" \
+  -o "$lib/$program" \
+  "$repo/thud/experiments/$program.cc" \
   "$src/algorithms/alpha_zero_torch/model.cc" \
   "$src/algorithms/alpha_zero_torch/vpnet.cc" \
+  "$src/algorithms/alpha_zero_torch/vpevaluator.cc" \
   -L"$lib" -lopen_spiel -Wl,-rpath,"$lib" \
   -Wl,--no-as-needed "$torch/lib/libtorch.so" "$torch/lib/libtorch_cpu.so" \
   "$torch/lib/libc10.so" -Wl,--as-needed -Wl,-rpath,"$torch/lib"
-echo "Built $lib/az_layout_check"
+echo "Built $lib/$program"

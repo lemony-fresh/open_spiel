@@ -23,7 +23,7 @@
 // checksums, and then trains on the same batches in the same order: resnet 32 x 2,
 // learning rate 1e-3, weight decay 1e-4, evaluated on the same per-side measures.
 //
-//   thud/experiments/build_az_layout_check.sh      # builds it next to libopen_spiel.so
+//   thud/experiments/build_az_program.sh az_layout_check   # next to libopen_spiel.so
 //   python3 thud/experiments/az_layout_check.py --export DATA
 //   OMP_NUM_THREADS=3 build-shared/az_layout_check DATA SEED
 //
