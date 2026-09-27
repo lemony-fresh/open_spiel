@@ -9,9 +9,16 @@ AlphaZero-style learning with **OpenSpiel's C++ AlphaZero**, decided with the us
 aarch64 pip wheel, in `build-torch/`, no change to upstream code; OpenSpiel's LibTorch
 tests pass, it learns tic-tac-toe like the Python control, a Thud smoke test runs end
 to end, and on Thud's board it learns like the Python model with the layout fixed (the
-C++ against Python layout control). Run it with `OMP_NUM_THREADS=1` (self-play up to 8x faster) and our defaults in
-`thud/experiments/az_thud.flags` (resignation off, root noise α 0.1). OpenSpiel's Python
-AlphaZero also runs here but is not our route (too slow, and a layout bug).
+C++ against Python layout control). Run it with batched inference (32 actors, batches of
+32, 2 inference threads, `OMP_NUM_THREADS=4`: 2.7-7x faster self-play for the small
+networks) and our defaults in `thud/experiments/az_thud.flags` (resignation off, root
+noise α 0.1). OpenSpiel's Python AlphaZero also runs here but is not our route (too slow,
+and a layout bug). **Stage 1 of the Phase 6 roadmap is done** (2026-09-27): learning works
+on unmodified OpenSpiel — run A's network (64 x 4, 100 simulations) rose steadily against
+its untrained start to step 14 — then the dwarfs' play collapsed in its last two steps;
+100 simulations beat 400 at equal machine time; the dwarfs' searches are pure breadth
+(untried moves count as even games). **Next: stage 2**, our own copy of the C++
+AlphaZero, then stage 3a, the value of untried moves.
 
 **Where we stand:**
 
@@ -40,8 +47,12 @@ AlphaZero also runs here but is not our route (too slow, and a layout bug).
   engine and the reading rules. Four scripts in `thud/experiments/` (`perft_reference.py`,
   `crosscheck_tests.py`, `move_kinds_sim.py`, `limits_sim.py`) run hexparrot/thudgame;
   `random_endings.py` and `mcts_games.py` need only pyspiel; `az_layout_check.py` and
-  `az_speed.py` need pyspiel and the JAX set; `az_layout_check.cc` is their C++
-  counterpart, built by `build_az_program.sh` against `build-shared/libopen_spiel.so`.
+  `az_speed.py` need pyspiel and the JAX set. The C++ programs — `az_layout_check.cc`
+  (the layout control), `az_throughput.cc` (with `az_throughput.sh`), `az_reuse.cc`,
+  `az_match.cc` (head-to-head matches) and `az_buffer_stats.cc` (search breadth from a
+  saved replay buffer) — are built by `build_az_program.sh PROGRAM` against
+  `build-shared/libopen_spiel.so`; `az_thud.flags` holds our trainer defaults. Training
+  runs, their scripts and match results live outside the repo in `~/thud-runs/`.
   hexparrot runs from a clone
   outside the repo, by default
   `~/.local/share/thud-openspiel/hexparrot_thudgame` (under `$XDG_DATA_HOME` if set), which
@@ -49,22 +60,31 @@ AlphaZero also runs here but is not our route (too slow, and a layout bug).
   every script stops with a full explanation: what hexparrot is, which scripts need it,
   where it goes, and the exact commands to restore and check it.
 
-**Next steps, in order (`PLAN.md` Phase 6):**
+**Next steps, in order (`PLAN.md` Phase 6).** The order of all Phase 6 work, what each
+stage must show first, every decision so far and what waits for later are in **`PLAN.md`
+Phase 6, *Phase 6 roadmap and decision log*** — read it before choosing what to do.
 
-1. **Finish the throughput step** (`PLAN.md` Phase 6: most of it measured 2026-09-25;
-   interrupted when the user needed the laptop): rerun
-   `thud/experiments/az_throughput.sh OUT.jsonl 4 7` (batched inference with longer
-   windows, and a noise check; about 20 minutes with all cores busy — ask the user
-   first), then turn the best configuration per network size into games per hour. That
-   decides the small run's network and when to move to the cloud.
-2. **A small training run** with `thud/experiments/az_thud.flags`: read the evaluation
-   per side, as the share of games won and the mean margin (the side is recovered from the
-   evaluator logs); measure how widely both sides' searches spread their visits and whether
-   the dwarfs' policy sharpens (the untried-move question — measure first, user); use few
-   evaluation levels (the default 7 reach 300,000 simulations a move).
-3. Then settings (`PLAN.md` Phase 6, *Settings to determine empirically*: `uct_c`,
-   simulations and network size first; then α 0.03 and 0.3 against 0.1), then a cloud GPU.
-4. **If we ever fall back to the Python route** (user, 2026-09-25): first re-verify the
+1. **Run A2 is running** (stage 1's last experiment; since 2026-09-27 12:17, ends ~16:50):
+   run A with a 2x replay buffer (`--replay_buffer_size=131072`, reuse 3), 4.5 hours of
+   machine time, in `~/thud-runs/stage1_sims100_buffer2x/`, archiving every position
+   (`~/thud-runs/archive_buffer.sh`). Compare it with run A **at equal numbers of
+   positions** (a bigger buffer does not change the self-play speed). Run A's dwarf play
+   collapsed only at steps 15-16 (~330,000-351,000 positions), which A2 does not reach in
+   4.5 hours, so **resume A2 tonight to run past ~351,000 positions** (this also tests
+   resuming, which growing the network needs). Then: A2's checkpoints against the anchor
+   (run A's untrained start), A2 against A at equal positions, and the 400-simulation
+   match postponed from the morning.
+2. **Stage 2, in progress** (`PLAN.md` Phase 6 roadmap): our own copy of the C++
+   AlphaZero and its MCTS in `thud/`, in our own namespace, proven identical to upstream
+   (identical searches for fixed positions and seeds, the tic-tac-toe control, the layout
+   check, upstream loading our checkpoint). Code while the machine runs; build at low
+   priority; run the identity checks when the CPU is free.
+3. **Stage 3a: the value of untried moves** (user: urgent) — the dwarfs' flat policy
+   targets, which get worse as the trolls improve; likely behind run A's collapse.
+4. Then the rest of the roadmap: playout caps with per-side settings (3b), tree reuse
+   with one shared tree (3c), settings (4), the convolutional policy head (5), a cloud
+   GPU (6).
+5. **If we ever fall back to the Python route** (user, 2026-09-25): first re-verify the
    layout-bug findings (`PLAN.md` Phase 6), then fix it in **one concise PR with
    experiments verifying correctness, for example on tic-tac-toe, chess and Thud**; the
    uncompiled inference needs its own fix.
@@ -1190,4 +1210,144 @@ instrumentation, and the pattern agreed for later, are in `PLAN.md` Phase 5).
   and was stopped when the user needed the laptop. `pkill -f` on a pattern that also
   occurs in its own command line killed my shell: use `pgrep -x`/`pkill -x` by name.
 
-**Next step:** as recorded in `## Current status` — finish the throughput step.
+- **2026-09-26: throughput finished** (the user asked for the follow-up). Sections 4 and
+  7 rerun, 22 runs, 82 minutes of wall time against my estimate of 20 — I first blamed
+  searches overrunning their windows, but it was probably mostly the laptop sleeping (see
+  below) — none failed. Batched inference with 32 searchers, batches of 32 and 2
+  inference threads at `OMP_NUM_THREADS=4` is best for every size: 4,245 simulations/s
+  on 32 x 2 (~7x unbatched), 1,690 on 64 x 4 (2.7x), ~350 on 128 x 6 (no gain: its
+  convolutions dominate). All 10 cores on inference halves it. The unbatched scaling,
+  repeated with longer windows, is smooth (Thud 64 x 4: 140, 267, 427, 620 for 1, 2, 4,
+  10 searches); the first run's dips did not reproduce. At 100 simulations a move and
+  ~250 moves a game: ~600 games an hour at 32 x 2, ~240 at 64 x 4, ~50 at 128 x 6 —
+  this CPU suits small networks and small runs. `CLAUDE.md` and the flagfile's comment
+  now say how to set `OMP_NUM_THREADS` with and without batching.
+
+- **Trainer check and control** (the user asked for both, then a summary): 64 x 4, 100
+  simulations, no evaluators, 15 minutes each — batched (32 actors, batches of 32, 2
+  inference threads, `OMP_NUM_THREADS=4`) and unbatched (10 actors, one thread). Speed
+  read from the actors' logs, as the learner only sees whole games in bursts (my first
+  plan, reading it from the learner's steps, would have measured nothing for 8 minutes;
+  I told the user it would take ~30 minutes, not 18). **The laptop slept during both**:
+  `/proc/uptime` was ~11 hours behind the wall clock, the batched run took 55 minutes of
+  wall time for 15 of its own, and `powercfg` shows why — on mains power it sleeps after
+  5 minutes without input (3 on battery; hibernation never on mains). The pause-free
+  games still agree with the benchmark: batched ~1,760 simulations/s (6 games, 0.536-0.566
+  moves/s per actor; benchmark 1,690), unbatched ~640 (1 game; benchmark 620). Also: the
+  learner needed ~3.5-4 s per 1,024 positions alongside the actors; the batched trainer
+  kept only half to two thirds of the CPU busy; stopping the trainer waits for all
+  running games, so both runs were killed after my 60 s grace.
+- **At the user's request, one consolidated analysis** of all the throughput work, by
+  topic rather than by day: `PLAN.md` Phase 6, throughput — how it was measured, where
+  the time goes, using all cores, the learner, the trainer, what it means per hour, the
+  pitfalls met, and what is still open. `CLAUDE.md` now notes the sleep timer.
+
+- **The clean trainer check** (the user turned sleep off on mains power, verified with
+  `powercfg`: sleep and hibernation never while plugged in, the laptop on mains power):
+  three 30-minute runs with a pause detector (wall clock against `/proc/uptime` every 10
+  s: 539 samples over 90 minutes, no pause, largest drift 0.04 s). 64 x 4 batched: 1,707
+  simulations/s (benchmark 1,690); 64 x 4 unbatched: 513 (benchmark 620; the learner's
+  single thread takes a core); 32 x 2 batched: 4,259 (benchmark 4,245). The benchmark
+  carries over, learner and all. At the user's request, all the throughput work is now
+  one final report in `PLAN.md` Phase 6 (*Throughput on this CPU — final report*).
+
+- **Decisions with the user after the throughput report** (all in `PLAN.md` Phase 6, now
+  with a **roadmap and decision log** at its top, made because the user was losing track):
+  64 x 4 to start (32 x 2's convolutions see only 11 x 11 squares); first runs 100 against
+  400 simulations at equal machine time, decided head-to-head in pairs of battles with the
+  sides swapped; our own copy of the C++ AlphaZero and its MCTS, for changes inside the
+  search and trainer; the order: baseline learning on unmodified OpenSpiel first, then the
+  copy proven identical, then one change at a time (playout caps with per-side settings,
+  tree reuse with one shared tree, the value of untried moves), settings, the
+  convolutional policy head later (stage 5: the one change that makes our networks
+  unloadable by unmodified OpenSpiel — a Thud game is far easier to get accepted upstream
+  than a new network type), then a cloud GPU. Replay buffer stays at the default; notes
+  for later on growing the network (KataGo's recipe works without upstream changes) and
+  on when to enlarge the buffer. Evidence checked on the way: AlphaZero's network (19
+  residual blocks of 256 filters), KataGo's growth and playout caps (1.37x), the Gumbel
+  paper's warning about unvisited root moves, AlphaGo Zero's tree reuse, AlphaGo's
+  one-position-per-game value data.
+- **Tree-reuse potential** (new `thud/experiments/az_reuse.cc`, 45 minutes): a side's own
+  tree two plies later would inherit ~0% — only a tree shared by both sides is worth it.
+  Its shared-tree numbers are not usable for self-play: to cover all phases quickly it
+  started games after up to 200 random moves, and there the searches behave unlike
+  self-play's (the dwarfs concentrated their visits). Default now no prefix (source
+  changed; `build-shared/az_reuse` still to rebuild).
+- **The dwarfs' searches are pure breadth at 100 simulations** (new
+  `thud/experiments/az_buffer_stats.cc`, reading the trainer's saved replay buffer; the
+  clean 64 x 4 run): a median 99 of 100 simulations on different moves, the most visited
+  move 1% of the visits; the trolls' searches 5 moves, 44%. As the untried-move analysis
+  predicted. The same numbers give the real tree-reuse potential: the dwarfs would
+  inherit a median 44% of the trolls' visits, the trolls ~1% of the dwarfs'.
+- **Match program** (new `thud/experiments/az_match.cc`): pairs of battles from the same
+  random opening with sides swapped, deterministic searches, one batched evaluator per
+  network. Controls pass: a network against itself gives exactly 0 for every pair; two
+  different networks do not (after 11 learning steps against its own start, 6 pairs at 10
+  simulations: −6.3 points a pair, too little to mean anything).
+- `LoadBuffer` refuses a replay buffer saved with another maximum size, so enlarging the
+  buffer on resume needs the file rewritten first (noted in `PLAN.md`).
+- **The laptop paused ~18 minutes between 15:56 and 19:02** although sleep on mains power
+  is off (`/proc/uptime` against the wall clock); the lid action cannot be read with
+  `powercfg` here — closing the lid is the likely cause. Runs just pause and resume; the
+  pause detectors record it.
+- **Stage 1, run A started 2026-09-26 19:49** (the user away for 4-6 hours, asking for
+  easy experiments): `~/thud-runs/stage1_sims100/` (outside the repo), 64 x 4, 100
+  simulations, batched, our flagfile, one evaluator at 3 levels, every checkpoint kept,
+  6 hours of machine time (`timeout` counts only running time), pause detector
+  (`clock.log`) and a watcher recording the buffer statistics after every learning step
+  (`buffer_stats.jsonl`). Script: `~/thud-runs/stage1_sims100.sh`.
+
+- **Overnight 2026-09-26/27** (the user asleep, long experiments allowed until ~9:00):
+  run A finished at 01:55 (16 learning steps, no pause). It learned — its final network
+  beat its untrained start by +3.9 points a pair (95% interval +1.5 to +6.3), its
+  evaluation against MCTS improved in every cell — but then **regressed**: the step-8
+  network beat the final one by 5.1 points a pair (+1.8 to +8.4), in step with swings in
+  the self-play results. Details in `PLAN.md` Phase 6, *First training runs*. My first
+  evaluation-by-side count put 30 of 33 games on the trolls' side: the log rounds
+  AlphaZero's return to 2 decimals, so exact matching failed; with a tolerance the sides
+  split 34/34. Run B (400 simulations) started at 02:30 in `~/thud-runs/stage1_sims400/`.
+  Because the networks rise and fall, the plan after run B changed (I stopped
+  `stage1_overnight.sh` once run B was running; `stage1_after_b.sh` took over): A final
+  against B final, then B final against the common anchor (run A's untrained start), then
+  A step 8 against it; the 400-simulation match moved to later. Progress in
+  `~/thud-runs/stage1_matches/progress.log`.
+
+- **Run B finished at 08:30** (4 learning steps, no pause), the matches at 09:17
+  (`A_step8_vs_A_start` skipped: it was past 09:10). **At equal machine time 100
+  simulations beat 400, early in training**: A final beat B final by +2.9 points a pair
+  (95% interval +1.5 to +4.2; 15 pairs won, 14 drawn, 1 lost); against the anchor A final
+  +3.9 (+1.5 to +6.3), B final +1.9 (−4.2 to +8.1). Caveats in `PLAN.md` Phase 6: matches
+  at 100 simulations, run B learned only 4 times, 6 hours is early. The dwarfs lost by
+  19-32 points in every match; the dwarfs' searches were broad at 400 simulations too
+  (220 of 400 on different moves) once the network judged them lost.
+
+- **2026-09-27, with the user in the morning** (the user had lost track of some terms, so
+  they were explained again: stage 1's gate, the buffer-size trigger, the untried-move
+  fix, match noise). Decided: 100 simulations for now (revisit with playout caps); the
+  untried-move fix first in stage 3, as urgent (user: as the trolls improve, the dwarfs'
+  targets stay flat); the replay buffer to be increased (user: also needed to grow the
+  network and train other heads later) — tested 2x first as run A2 — and every position
+  archived from A2 on. The user noted that newer networks losing is not unusual (seen in
+  AlphaZero for Go); AlphaGo Zero indeed gated new networks ("a margin of 55%"),
+  AlphaZero did not. To fit the user's 4.5 hours away, the learning curve was cut to
+  steps 8, 12, 14 and run A2 to 4.5 hours, compared with A at equal positions.
+- **Run A's learning curve** (`stage1_curve_then_a2.sh`, 10:50-12:17): against the anchor
+  step 8 +18.9, step 12 +23.1, step 14 +26.1 (each 20 of 20 pairs), step 16 +3.9. I first
+  suspected the "final" checkpoint (`-1`) was not the last one; the code saves it at every
+  step (`alpha_zero.cc:428-432`) and its file time equals step 16's, so the measurements
+  stand: **learning works, then the dwarfs' play collapsed at steps 15-16** (as dwarfs +0.1
+  at step 14, −24.9 at 16), likely the loop of the dwarfs' breadth searches. The
+  morning's "regressed after about step 8" was wrong: it fell only at the end. The user
+  confirmed: stage 1's gate is met; the collapse is stage 3a's first problem. Run A2
+  started at 12:17. The user asked whether to give the dwarfs more simulations: yes, but
+  after 3a (until then extra simulations only widen a losing side's search), within 3b,
+  with the self-play tilt it causes measured (`PLAN.md` roadmap, 3b).
+- **Consistency check of the docs** (user: always wanted; now in `CLAUDE.md`, *Session
+  end*, and in memory): fixed superseded statements in `PLAN.md` (stage 1 marked done,
+  "regressed after about step 8", "gate only half met", "measure it in the small run",
+  the simulations setting, the untried-move entry, the settings summary, the breadth
+  paragraph) and the status block here (stage 1's result, the experiment programs, the
+  next steps, whose numbering had jumped).
+
+**Next step:** as recorded in `## Current status` — run A2 to its end and on past ~351,000
+positions tonight; stage 2 (our own copy) in the meantime.

@@ -1,0 +1,222 @@
+// Copyright 2026 The Thud-on-OpenSpiel authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+// Head-to-head matches between two OpenSpiel C++ AlphaZero networks, in Thud's own match
+// format: pairs of battles with the sides swapped, won on the summed margin.
+//
+// Each pair starts both battles from the same opening, a few uniformly random moves from
+// the initial position (so pairs differ); swapping sides cancels whatever advantage an
+// opening gives one side. Both networks search with upstream's MCTSBot (PUCT), the same
+// number of simulations, no root noise, and always play their most visited move. Each
+// network has its own batched evaluator. Prints one JSON line per pair, then a summary:
+// network A's summed margin per pair (in points), its mean with a 95% interval (normal
+// approximation), pairs won, drawn and lost, and each network's mean margin per side.
+//
+//   thud/experiments/build_az_program.sh az_match
+//   OMP_NUM_THREADS=4 build-shared/az_match a=RUN_DIR:STEP b=RUN_DIR:STEP sims=100 \
+//     pairs=50 [opening=4 threads=16 batch=16 seed=1]
+//
+// STEP is a checkpoint step of that run (-1: its most recent checkpoint).
+
+#include <algorithm>
+#include <atomic>
+#include <cmath>
+#include <cstdint>
+#include <iostream>
+#include <map>
+#include <memory>
+#include <mutex>
+#include <random>
+#include <string>
+#include <thread>
+#include <vector>
+
+#include "open_spiel/abseil-cpp/absl/strings/str_cat.h"
+#include "open_spiel/abseil-cpp/absl/strings/str_format.h"
+#include "open_spiel/algorithms/alpha_zero_torch/device_manager.h"
+#include "open_spiel/algorithms/alpha_zero_torch/vpevaluator.h"
+#include "open_spiel/algorithms/alpha_zero_torch/vpnet.h"
+#include "open_spiel/algorithms/mcts.h"
+#include "open_spiel/spiel.h"
+#include "open_spiel/spiel_utils.h"
+
+namespace {
+
+using open_spiel::Action;
+using open_spiel::algorithms::MCTSBot;
+using open_spiel::algorithms::torch_az::DeviceManager;
+using open_spiel::algorithms::torch_az::VPNetEvaluator;
+using open_spiel::algorithms::torch_az::VPNetModel;
+
+constexpr double kMaxMargin = 32;  // Thud's returns are the margin over 32.
+
+class Args {
+ public:
+  Args(int argc, char** argv) {
+    for (int i = 1; i < argc; ++i) {
+      std::string arg = argv[i];
+      const size_t eq = arg.find('=');
+      if (eq == std::string::npos) {
+        open_spiel::SpielFatalError(absl::StrCat("Expected key=value, got ", arg));
+      }
+      values_[arg.substr(0, eq)] = arg.substr(eq + 1);
+    }
+  }
+  std::string Get(const std::string& key, const std::string& fallback) {
+    used_.push_back(key);
+    return values_.count(key) ? values_[key] : fallback;
+  }
+  int GetInt(const std::string& key, int fallback) {
+    return std::stoi(Get(key, std::to_string(fallback)));
+  }
+  void CheckAllUsed() const {
+    for (const auto& [key, value] : values_) {
+      if (std::find(used_.begin(), used_.end(), key) == used_.end()) {
+        open_spiel::SpielFatalError(absl::StrCat("Unknown argument ", key));
+      }
+    }
+  }
+
+ private:
+  std::map<std::string, std::string> values_;
+  std::vector<std::string> used_;
+};
+
+// A network from a trainer's directory, "DIR:STEP" (STEP -1: the most recent).
+std::shared_ptr<VPNetEvaluator> LoadEvaluator(const open_spiel::Game& game,
+                                              const std::string& spec,
+                                              DeviceManager* devices, int batch,
+                                              int inference_threads) {
+  const size_t colon = spec.rfind(':');
+  if (colon == std::string::npos) {
+    open_spiel::SpielFatalError(absl::StrCat("Expected DIR:STEP, got ", spec));
+  }
+  VPNetModel model(game, spec.substr(0, colon), "vpnet.pb", "/cpu:0");
+  model.LoadCheckpoint(std::stoi(spec.substr(colon + 1)));
+  devices->AddDevice(std::move(model));
+  return std::make_shared<VPNetEvaluator>(devices, batch, inference_threads,
+                                          /*cache_size=*/1 << 18, /*cache_shards=*/1);
+}
+
+struct Battle {
+  double a_return;  // Network A's return, -1 to 1.
+  int moves;
+};
+
+// One battle from `opening`, network A playing `a_player`.
+Battle Play(const open_spiel::Game& game, const std::vector<Action>& opening,
+            MCTSBot* a, MCTSBot* b, int a_player) {
+  std::unique_ptr<open_spiel::State> state = game.NewInitialState();
+  for (Action action : opening) state->ApplyAction(action);
+  int moves = opening.size();
+  while (!state->IsTerminal()) {
+    MCTSBot* bot = state->CurrentPlayer() == a_player ? a : b;
+    state->ApplyAction(bot->MCTSearch(*state)->BestChild().action);
+    ++moves;
+  }
+  return {state->Returns()[a_player], moves};
+}
+
+}  // namespace
+
+int main(int argc, char** argv) {
+  Args args(argc, argv);
+  std::shared_ptr<const open_spiel::Game> game =
+      open_spiel::LoadGame(args.Get("game", "thud"));
+  const std::string spec_a = args.Get("a", ""), spec_b = args.Get("b", "");
+  const int sims = args.GetInt("sims", 100);
+  const int pairs = args.GetInt("pairs", 50);
+  const int opening_moves = args.GetInt("opening", 4);
+  const int threads = args.GetInt("threads", 16);
+  const int batch = args.GetInt("batch", 16);
+  const int inference_threads = args.GetInt("inference_threads", 1);
+  const int seed = args.GetInt("seed", 1);
+  args.CheckAllUsed();
+  if (spec_a.empty() || spec_b.empty()) {
+    std::cerr << "Usage: " << argv[0] << " a=DIR:STEP b=DIR:STEP [key=value ...]"
+              << std::endl;
+    return 1;
+  }
+
+  DeviceManager devices_a, devices_b;
+  auto eval_a = LoadEvaluator(*game, spec_a, &devices_a, batch, inference_threads);
+  auto eval_b = LoadEvaluator(*game, spec_b, &devices_b, batch, inference_threads);
+
+  // The openings, fixed by the seed so that reruns play the same pairs.
+  std::vector<std::vector<Action>> openings(pairs);
+  std::mt19937 rng(seed);
+  for (auto& opening : openings) {
+    std::unique_ptr<open_spiel::State> state = game->NewInitialState();
+    for (int i = 0; i < opening_moves && !state->IsTerminal(); ++i) {
+      std::vector<Action> legal = state->LegalActions();
+      opening.push_back(legal[std::uniform_int_distribution<int>(0, legal.size() - 1)(rng)]);
+      state->ApplyAction(opening.back());
+    }
+  }
+
+  std::vector<double> pair_margin(pairs), a_dwarfs(pairs), a_trolls(pairs);
+  std::atomic<int> next{0};
+  std::mutex out;
+  std::vector<std::thread> workers;
+  for (int t = 0; t < threads; ++t) {
+    workers.emplace_back([&, t]() {
+      auto make_bot = [&](std::shared_ptr<VPNetEvaluator> eval) {
+        return std::make_unique<MCTSBot>(
+            *game, eval, /*uct_c=*/2, sims, /*max_memory_mb=*/1000, /*solve=*/false,
+            /*seed=*/t, /*verbose=*/false,
+            open_spiel::algorithms::ChildSelectionPolicy::PUCT);
+      };
+      std::unique_ptr<MCTSBot> a = make_bot(eval_a), b = make_bot(eval_b);
+      for (int i = next++; i < pairs; i = next++) {
+        const Battle as_dwarfs = Play(*game, openings[i], a.get(), b.get(), 0);
+        const Battle as_trolls = Play(*game, openings[i], a.get(), b.get(), 1);
+        a_dwarfs[i] = as_dwarfs.a_return * kMaxMargin + 0.0;  // + 0.0: no "-0".
+        a_trolls[i] = as_trolls.a_return * kMaxMargin + 0.0;
+        pair_margin[i] = a_dwarfs[i] + a_trolls[i];
+        std::lock_guard<std::mutex> lock(out);
+        std::cout << absl::StrFormat(
+                         "{\"pair\": %d, \"a_as_dwarfs\": %.0f, \"a_as_trolls\": %.0f, "
+                         "\"a_pair_margin\": %.0f, \"moves\": [%d, %d]}",
+                         i, a_dwarfs[i], a_trolls[i], pair_margin[i], as_dwarfs.moves,
+                         as_trolls.moves)
+                  << std::endl;
+      }
+    });
+  }
+  for (std::thread& w : workers) w.join();
+
+  auto mean = [](const std::vector<double>& v) {
+    double sum = 0;
+    for (double x : v) sum += x;
+    return sum / v.size();
+  };
+  const double m = mean(pair_margin);
+  double var = 0;
+  for (double x : pair_margin) var += (x - m) * (x - m);
+  const double half_width =
+      pairs > 1 ? 1.96 * std::sqrt(var / (pairs - 1)) / std::sqrt(pairs) : 0;
+  int won = 0, drawn = 0, lost = 0;
+  for (double x : pair_margin) (x > 0 ? won : x < 0 ? lost : drawn) += 1;
+  std::cout << absl::StrFormat(
+                   "{\"summary\": true, \"a\": \"%s\", \"b\": \"%s\", \"sims\": %d, "
+                   "\"pairs\": %d, \"a_mean_pair_margin\": %.2f, \"ci95\": [%.2f, %.2f], "
+                   "\"a_pairs_won\": %d, \"drawn\": %d, \"lost\": %d, "
+                   "\"a_mean_as_dwarfs\": %.2f, \"a_mean_as_trolls\": %.2f, "
+                   "\"b_mean_as_dwarfs\": %.2f, \"b_mean_as_trolls\": %.2f}",
+                   spec_a, spec_b, sims, pairs, m, m - half_width, m + half_width, won,
+                   drawn, lost, mean(a_dwarfs), mean(a_trolls), -mean(a_trolls),
+                   -mean(a_dwarfs))
+            << std::endl;
+  return 0;
+}

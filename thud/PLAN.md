@@ -459,6 +459,77 @@ does, and AlphaZero's policy priors address that); on this machine's CPU until e
 works, then a cloud GPU; and **OpenSpiel's C++ AlphaZero** (`open_spiel/algorithms/alpha_zero_torch/`,
 built on LibTorch), not its Python one. Details and commands: `PROGRESS.md`, session 5.
 
+#### Phase 6 roadmap and decision log
+
+**This is the one place to look first**: the order of the work, what each stage must show
+before the next begins, what is decided, and what waits for later. The details and the
+evidence are in the sections below; update this list whenever a decision is made.
+
+**The rule for the order** (user, 2026-09-26): see learning work on unmodified OpenSpiel
+first; then change one thing at a time, each behind a switch whose default is upstream's
+behaviour, each with its own tests, and each checked against the version before it at
+equal machine time. Never stack changes that have not been shown to work.
+
+| Stage | What | Must show before the next stage |
+|---|---|---|
+| 0 — done | C++ AlphaZero builds (LibTorch from the pip wheel); tic-tac-toe control; Thud smoke test; C++ against Python layout control; throughput | — |
+| 1 — done 2026-09-27 | **Baseline learning with unmodified OpenSpiel**: 64 x 4, 100 against 400 simulations at equal machine time, with a **match program** (head-to-head, pairs of battles with sides swapped); with unchanged code, the **tree-reuse potential** and the dwarfs' **visit spread**. Result: learning works through step 14, then the dwarfs' play collapsed; 100 beat 400; the dwarfs' searches are pure breadth. Still running: run A2 (2x buffer) | Learning works: later networks beat earlier ones head-to-head, the evaluation per side improves. And which of 100 or 400 is better |
+| 2 — next | **Our own copy** of the C++ AlphaZero and its MCTS in `thud/`, first changed in nothing but its namespace (parameter names kept identical) | It behaves exactly like upstream: identical searches for fixed positions and seeds, the tic-tac-toe control, the layout check; and upstream's code loads a checkpoint written by our copy |
+| 3a | **Value of untried moves** (parent's value minus a reduction) — moved first (user, 2026-09-27: urgent). The dwarfs' searches spread over nearly every move once the network judges them lost (95-99 of 100 simulations on different moves; at 400, 62 moves untrained and 220 once they were judged lost), so their policy targets stay flat — and the better the trolls get, the worse it becomes | Same searches with the switch off; then beats run A (and A2, if the buffer changes) head-to-head at equal time, and the dwarfs' searches narrow |
+| 3b | **Playout cap randomisation**, with separate settings per side so the dwarfs get deep searches more often — or budgets scaled with the number of legal moves (user asked about more simulations for the dwarfs, 2026-09-27: after 3a, since until untried moves are valued differently extra simulations only widen a losing side's search; it tilts self-play towards the dwarfs, a bias to measure; the trolls' floor is ~100 simulations, as at 50 their ~60 moves would also get under one visit each; matches then fix the per-side budgets) | Beats the previous best setting head-to-head at equal time |
+| 3c | **Tree reuse, one tree shared by both sides** — only if the reusable share stays large (first reading: the dwarfs would inherit a median 44% of the trolls' visits, the trolls ~1% of the dwarfs'; own-tree reuse ~0) | Same searches with reuse off; beats 3b's setting head-to-head |
+| 4 | Settings: `uct_c`, root noise α (0.03 and 0.3 against 0.1), temperature drop | Each change beats the previous setting head-to-head |
+| 5 | **Convolutional policy head** (user, 2026-09-26: later in the roadmap) — first on the layout-check harness, with an exhaustive test of the action-to-plane map. It is the one planned change that makes our networks unloadable by unmodified OpenSpiel | Faster policy learning on the harness; then no worse in self-play head-to-head |
+| 6 | Cloud GPU, longer runs | Throughput measured there first |
+
+**Later, when a trigger fires** (details in *Notes for later*):
+
+- **Before publishing a network**: check that OpenSpiel's default LibTorch (2.3.0,
+  `global_variables.sh:89`) loads checkpoints saved with our 2.10, and remember that any
+  user needs our Thud implementation (this fork) — Thud is not upstream.
+
+- **Grow the network** (user: "will almost certainly be needed") — when improvement
+  flattens. KataGo's recipe, possible without changing upstream code.
+- ~~Enlarge the replay buffer~~ — **decided 2026-09-27** (the trigger fired: run A's step 8
+  beat its final network; user: also needed to grow the network and to train other heads
+  later): test 2x first as run A2, and archive every self-play position from now on
+  (*Notes for later*).
+- **Match-aware play** — after a strong single-battle agent (*Deferred decisions*).
+- **End-of-battle limits** — re-measure once the engine plays strongly (*Deferred
+  decisions*).
+- **Gumbel AlphaZero** — only if few-simulation search remains the bottleneck after 3b
+  and 3c; a large change.
+
+**Decided** (details and reasons in the sections named):
+
+| Date | Decision | By | Where |
+|---|---|---|---|
+| 2026-09-25 | AlphaZero-style learning with OpenSpiel's C++ AlphaZero; CPU first, then a cloud GPU | user | this phase |
+| 2026-09-25 | Single battle, margins as returns; match-aware play later | user | *Deferred decisions* |
+| 2026-09-25 | Resignation off | user | *Settings*, 5 |
+| 2026-09-26 | Root noise α = 0.1; 0.03 and 0.3 to test later | user | *Settings*, 2 |
+| 2026-09-26 | Defaults in `thud/experiments/az_thud.flags`, no upstream change | user | *Settings* |
+| 2026-09-26 | Batched inference (32 actors, batches of 32, 2 inference threads, `OMP_NUM_THREADS=4`) | measured | *Throughput* |
+| 2026-09-26 | Network 64 x 4 to start; grow later | user | *Settings*, 6 |
+| 2026-09-26 | First runs: 100 against 400 simulations at equal time, decided head-to-head | user | *First training runs* |
+| 2026-09-27 | Compare networks against a common anchor (run A's untrained start) as well, since they rise and fall | Claude, overnight | *First training runs* |
+| 2026-09-27 | 100 simulations for now; revisit with playout caps, not assumed good enough later | user | *First training runs* |
+| 2026-09-27 | The value of untried moves first in stage 3, as urgent | user | roadmap |
+| 2026-09-27 | Increase the replay buffer: test 2x first as run A2 (on unmodified OpenSpiel); archive every self-play position from now on, for growing the network and training other heads | user (archive: Claude's proposal) | *Notes for later* |
+| 2026-09-27 | Before stage 2: run A's learning curve (each checkpoint against the anchor) and the 400-simulation match, while the user is away | user | *First training runs* |
+| 2026-09-27 | Stage 1's gate met (learning works through step 14); the dwarfs' collapse at steps 15-16 is the first problem for stage 3a | user confirmed | *First training runs* |
+| 2026-09-26 | Replay buffer: default 65,536 positions for now | user | *Notes for later* |
+| 2026-09-26 | Untried moves: measure first | user | *Margins as the value target* |
+| 2026-09-26 | Our own copy of the C++ AlphaZero and its MCTS, for the changes of stage 3 | user | *Deferred decisions* |
+| 2026-09-26 | Convolutional head: later in the roadmap (stage 5), first on the layout-check harness — a Thud game is far easier to get accepted upstream than a new network type, so upstream compatibility matters | user | *Changes to the search and trainer* |
+
+**Considered and set aside** (with the reason): the Python AlphaZero (a layout bug, and
+slow; fallback note below); a 32 x 2 network (its convolutions see 11 x 11 squares);
+two tree levels, move then capture (7% fewer head weights, an extra network call);
+keeping every n-th position only (wastes two thirds of the searches; a large buffer is
+the usual remedy); a 3 GB buffer now (network updates every 70 minutes to 4.7 hours);
+resignation (fits margins badly).
+
 **Why C++, not Python:**
 
 - OpenSpiel's own docs: "The Python implementation uses one process per actor/evaluator,
@@ -588,67 +659,236 @@ first session, with no patch at all.**
   (different parallelism). There is no Python AlphaZero self-play run on Thud to compare
   against (too slow, above); for self-play the like-for-like comparison is the
   tic-tac-toe control.
-- [ ] Throughput on this CPU: simulations/s and games/hour for a few network sizes — the
-  numbers that decide when to move to the cloud. **First finding (2026-09-25): LibTorch's
-  threads oversubscribe the CPU.** Its OpenMP backend gives every caller 10 threads, and
-  each actor and evaluator calls the network itself (batch size 1, `vpevaluator.cc:103`).
-  The smoke test's network, 50 simulations, `alpha_zero_torch_game_example --verbose`
-  (which prints each search's speed; `alpha_zero_torch_example --verbose` prints nothing,
-  its flag is never passed on):
+- [x] **Throughput on this CPU — final report** (measured 2026-09-25 and -26): the
+  numbers that decide the network size, the simulations and when to move to the cloud.
 
-  | Searches at once | Default (10 threads each) | `OMP_NUM_THREADS=1` |
-  |---|---|---|
-  | 1 | 244 simulations/s | 163 simulations/s |
-  | 3 | 16 each, about 50 in total | 128 each, about 385 in total |
+  **Bottom line.** Thud's search is network-bound, and batched inference is what makes
+  this CPU usable: in the trainer itself, with the learner running, 100 simulations a
+  move, a 32 x 2 network makes ~4,260 simulations/s (~550 games an hour), 64 x 4 ~1,710
+  (~220 games an hour); a 128 x 6 network manages ~350 however it is run (~45 games an
+  hour, benchmark only). This CPU suits small networks and small runs; anything larger
+  belongs on a GPU.
 
-  In the trainer, the smoke test's settings with `OMP_NUM_THREADS=1` collected 3.0 and
-  6.4 states/s in its two steps, against 0.8 (428 s in all, against 1,700 s); the
-  training steps took 3-6 s either way at this size. So set `OMP_NUM_THREADS=1`, or batch
-  the inference (`--inference_batch_size`, `--inference_threads`).
+  **How it was measured.**
+  - The benchmark `thud/experiments/az_throughput.cc`, run by `az_throughput.sh`
+    (sections 1-7), uses upstream's own pieces, unmodified: `MCTSBot` with PUCT as the
+    actors use it, `VPNetEvaluator` with its shared cache (2^18 entries) and optional
+    batching, and `VPNetModel`, freshly initialised (the speed does not depend on the
+    weights). Each searcher plays its own random games and searches every third
+    position, so no position repeats; 100 simulations a search. Rates are timed with a
+    monotonic clock after a warm-up and split into two halves; that clock stops while the
+    machine sleeps, so sleep cannot distort them.
+  - The trainer (`alpha_zero_torch_example`, our flagfile, no evaluators, 8,192-position
+    buffer used 4 times, learning every 2,048 new positions) was measured from its actors'
+    logs, which record when each actor starts and when each game ends, with all its
+    moves: moves per second per actor, averaged, times the number of actors. Not from the
+    learner's steps, which see only whole games, in bursts. The trainer logs wall-clock
+    time, so these runs need a machine that does not sleep: the final runs had sleep off
+    and a pause detector alongside (wall clock against WSL's uptime every 10 s: no pause
+    in 90 minutes).
+  - Mains power, Windows power mode "best performance", 10 cores in WSL. Chess and
+    Connect Four were measured alongside, as no published figures compare (the AlphaZero
+    paper's are on TPUs with far larger networks).
 
-  **Measured 2026-09-25** with the new `thud/experiments/az_throughput.cc` (upstream's
-  `MCTSBot`, `VPNetEvaluator` and `VPNetModel`, fresh networks; each searcher plays its
-  own random games so no position repeats) and `az_throughput.sh`, 100 simulations a
-  search, on mains power:
+  **Where the time goes: the network, and for Thud a large fixed cost per call.**
 
-  | Network | Network alone, ms/position, 1 thread: one at a time / batches of 64 — Thud; chess; Connect Four | One search, 1 thread, simulations/s — Thud; chess; Connect Four |
+  | Network | Network alone, 1 thread, ms per position (one at a time / in batches of 64): Thud; chess; Connect Four | One search, 1 thread, simulations/s: Thud; chess; Connect Four |
   |---|---|---|
   | 32 x 2 | 5.5 / 0.63; 0.66 / 0.12; 0.18 / 0.06 | 180; 1,585; 10,400 |
   | 64 x 4 | 7.4 / 2.1; 1.2 / 0.51; 0.67 / 0.29 | 140; 835; 2,555 |
   | 128 x 6 | 14.9 / 9.3; 3.9 / 2.7; 3.1 / 1.6 | 65; 260; 450 |
 
-  - Thud's search time is almost all network time (180 simulations/s is 5.6 ms each: one
-    network call at a 15% cache-hit rate); the tree costs little despite ~200 legal moves.
-  - One at a time, Thud costs 8x chess with the small network but 4x with the large one;
-    in batches of 64 the large network's ratio is 3.5x, the board-size ratio (225 against
-    64 squares). That fits a large fixed cost per call — plausibly the policy head's
-    450 x 19,800 weights, 35.6 MB read for every call — which batching spreads.
-  - Scaling without batching, 1 to 10 searches at once: chess 64 x 4 grows smoothly (835
-    to 4,816 simulations/s at 10); Thud erratically, at most ~600 (32 x 2 peaks at 6
-    searches, then falls to 210 at 10; 64 x 4 gave 90 with 2 searches against 140 with
-    1). Single 20 s runs: how much is noise is not yet known.
-  - Batched inference (64 x 4): 1,600 simulations/s with 32 searchers, batches of 32, 2
-    inference threads with `OMP_NUM_THREADS=4` — 2.8x the best without batching. The
-    128 x 6 batched runs were too short to count (about one search per searcher in 20 s).
-  - The learner, 1,024 positions a step on 10 threads: 0.54 s (32 x 2), 1.9 s (64 x 4),
-    14.9 s (128 x 6).
+  - Thud's search is almost all network time: 180 simulations/s is 5.6 ms each, one
+    network call at a 15% cache-hit rate. The tree costs little despite ~200 legal moves.
+  - One position at a time, Thud costs 8x chess with the small network but 4x with the
+    large one; in batches of 64 the large network's ratio falls to 3.5x, the board-size
+    ratio (225 against 64 squares). That fits a large fixed cost per call — plausibly
+    the policy head's 450 x 19,800 weights, 35.6 MB read for every call — which batching
+    spreads over the batch.
+  - These are single-thread times, not comparable with `az_speed.py`'s Python figures
+    (JAX used all cores).
+
+  **Using all 10 cores.**
+  - LibTorch's OpenMP backend gives every caller 10 threads, so several callers
+    oversubscribe the cores: three searches at once ran at 16 simulations/s each by
+    default and 128 each with `OMP_NUM_THREADS=1` (the smoke test's network, 50
+    simulations, `alpha_zero_torch_game_example --verbose`).
+  - Without batching, one thread per search: chess 64 x 4 grows from 835 to 4,816
+    simulations/s at 10 searches (5.8x), Thud 64 x 4 from 140 to 620 (4.4x; 140, 267,
+    427, 620 for 1, 2, 4, 10). Single 20 s runs showed dips (2 searches slower than 1)
+    that 30 s reruns did not reproduce; their cause is unknown.
+  - **Batched inference**: searchers hand their positions to inference threads, which
+    evaluate up to a batch at once (waiting at most 1 ms for more,
+    `vpevaluator.cc:127-134`). One configuration was best for all three sizes: 32
+    searchers, batches of 32, 2 inference threads with `OMP_NUM_THREADS=4` — about 8
+    cores on the network, 2 for the searches' tree work:
+
+    | Network | Best without batching (10 searches) | Batched, 32 searchers, 2 x 4 threads | Gain |
+    |---|---|---|---|
+    | 32 x 2 | ~600 | 4,245 simulations/s | ~7x |
+    | 64 x 4 | 620 | 1,690 | 2.7x |
+    | 128 x 6 | 355 | ~350 (330-372 in every configuration) | none |
+
+    All 10 cores on inference (2 x 5) halves it; 4 x 2 and 3 x 3 are slower; 48
+    searchers add nothing steady. The large network gains nothing: batches cut its cost
+    per position only from 14.9 to 9.3 ms, as its convolutions dominate.
   - No throttling: 10 searches for 5 minutes gave 569 and 592 simulations/s in the two
     halves.
-  - Not comparable with `az_speed.py`'s Python network times: JAX used all cores.
 
-  **To do** (interrupted 2026-09-25, when the user needed the laptop): rerun sections 4
-  (batched inference, all three sizes, 40 s windows) and 7 (section 3's noise check) —
-  `thud/experiments/az_throughput.sh OUT.jsonl 4 7`, about 20 minutes with all cores busy
-  — then turn the best configuration per size into games per hour.
-- [ ] A small real training run on this CPU; read the evaluation against MCTS **per side**
-  (Phase 5: that opponent's strength differs greatly between dwarfs and trolls), as the
-  share of games won and the mean margin; and check how widely both sides' searches
-  spread their visits, and whether the dwarfs' policy sharpens (*Margins as the value
-  target*, below). OpenSpiel's evaluation does not record which side AlphaZero played
+  **In the trainer** (30 minutes each, 2026-09-26, no pauses):
+
+  | Configuration | Games finished (20 logged actors) | Moves/s per actor (range) | Simulations/s | Benchmark |
+  |---|---|---|---|---|
+  | 64 x 4, batched: 32 actors, batches of 32, 2 x 4 threads | 59 | 0.534 (0.514-0.565) | 1,707 | 1,690 |
+  | 64 x 4, unbatched: 10 actors, 1 thread each | 28 | 0.513 (0.502-0.530) | 513 | 620 |
+  | 32 x 2, batched, as above | 154 | 1.331 (1.317-1.349) | 4,259 | 4,245 |
+
+  - The batched benchmark carries over exactly, learner and all; unbatched loses ~17% to
+    the learner, whose single thread takes a core (its steps took 51-139 s). In the
+    trainer, batching gains 3.3x on 64 x 4.
+  - The learner, per 1,024 positions: alone on 10 idle threads 0.54 s (32 x 2), 1.9 s
+    (64 x 4), 14.9 s (128 x 6); in the batched trainer, beside the actors, ~0.9 s (32 x 2)
+    and ~4 s (64 x 4) — its steps (up to 8 batches) took ~7 and ~32 s, against a new step
+    every ~50 and ~120 s.
+  - Inference batches averaged 24-29 of 32 (64 x 4) and 28-31 (32 x 2); cache hits
+    12-28%. Self-play games ran 103-584 moves (medians 268-284).
+  - One CPU reading during an earlier batched run showed only about half to two thirds of
+    the CPU busy, yet the rate matched the benchmark: there may be headroom, not yet
+    explored.
+  - Stopping the trainer with SIGINT waits for every running game to finish, which takes
+    minutes; killing it loses nothing but the games in progress.
+
+  **What it means**, from the trainer's rates and ~275 moves a game:
+
+  | Network | Positions per hour | Games per hour | Games per day |
+  |---|---|---|---|
+  | 32 x 2 | ~153,000 | ~550 | ~13,000 |
+  | 64 x 4 | ~61,000 | ~220 | ~5,300 |
+  | 128 x 6 (benchmark) | ~12,600 | ~45 | ~1,100 |
+
+  AlphaZero's 800 simulations a move would cut these eightfold; game lengths will change
+  as play improves.
+
+  **Pitfalls met**, worth remembering:
+  - **Sleep freezes WSL.** This laptop was set to sleep after 5 minutes without input
+    even on mains power (the user set it to never on 2026-09-26). WSL's clocks stop
+    meanwhile and the wall clock jumps on resume. Monotonic-clock measurements survive;
+    wall-clock ones do not — a first trainer check lost ~39 and ~9 minutes to sleep, and
+    only its pause-free games could be used (they agreed with the final numbers), and the
+    benchmark follow-up's 82 minutes of wall time were probably mostly sleep, not the
+    overrunning searches I first blamed. Detect pauses by comparing `/proc/uptime` with
+    the wall clock.
+  - Single short runs are noisy; slow configurations need windows long enough for several
+    searches per searcher (the first 128 x 6 batched runs were not).
+  - `alpha_zero_torch_example --verbose` prints nothing: the flag is never passed on.
+  - `pkill -f`/`pgrep -f` with a pattern that also occurs in their own command line match
+    themselves; use `-x` with the process name.
+
+  **Still open:** whether the batched trainer's idle CPU can be used (more actors or
+  inference threads, measured in the trainer); 128 x 6 was not run in the trainer.
+- [ ] **First training runs on this CPU: 100 against 400 simulations a move** (user,
+  2026-09-26), 64 x 4 (user), batched inference, our flagfile, equal machine time for
+  both (for example 6 hours each: ~1,300 against ~330 games). Decided by **head-to-head
+  matches** between the two final networks, in Thud's match format (pairs of battles with
+  the sides swapped, margins summed), both searching with the same budget, ~50 matches to
+  start, more until the interval on the summed margin excludes 0 — with
+  `thud/experiments/az_match.cc` (written 2026-09-26; OpenSpiel's game example loads one
+  network only): both battles of a pair start from the same few random moves, searches
+  are deterministic, each network has its own batched evaluator. Controls: a network
+  against itself gives exactly 0 for every pair (each pair's second battle replays the
+  first with the roles swapped: equal lengths, opposite margins); two different networks
+  give non-zero pairs (the clean run's network after 11 steps against its own start, 6
+  pairs at 10 simulations: −6.3 points a pair, 95% interval −11.0 to −1.6 — too little to
+  conclude anything).
+  As diagnostics: the evaluation against MCTS **per side** (Phase 5: that opponent's
+  strength differs greatly between dwarfs and trolls), as the share of games won and the
+  mean margin; how widely both sides' searches spread their visits, and whether the
+  dwarfs' policy sharpens (*Margins as the value target*, below), read from the saved
+  replay buffers; the loss curves. OpenSpiel's evaluation does not record which side AlphaZero played
   (`EvalResults` averages per level only, `alpha_zero.cc:214-257`), but each evaluator
   log line pairs the game's returns (`Game N: Returns: r0 r1`) with AlphaZero's own
   (`AZ: a`), so its side is the player whose return is `a` — whenever the margin is not
   0; at 0 both sides scored 0 anyway.
+  **Run A (100 simulations), 2026-09-26 19:49 to 2026-09-27 01:55** (`~/thud-runs/
+  stage1_sims100/`): 6 hours of machine time without a pause, 16 learning steps
+  (21,845 new positions each), 365,611 positions (~16.9 a second), 17 checkpoints.
+  - Policy loss 4.78 → 4.09; value loss 0.03-0.32, rising while the games were close.
+  - Self-play results swung: the trolls won 494 of 496 games in steps 1-6, the dwarfs
+    137 of 256 in steps 7-9, the trolls 645 of 777 in steps 10-16; games got shorter
+    late (~300 → 143 moves).
+  - Searches (`buffer_stats.jsonl`): the dwarfs' stayed pure breadth throughout (95-99
+    of 100 simulations on different moves); the trolls' narrowed to 2-3 moves (most
+    visited ~0.7) while they won easily, and widened to 15-22 moves (~0.18) once games
+    were close — the untried-move rule reacting to values near 0.
+  - Evaluation against fixed MCTS (68 games, 5-6 per cell), mean margin for AlphaZero,
+    first half → second half: as dwarfs −16.2 → +1.2 (MCTS 100 simulations), −20.9 →
+    −1.2 (316), −23.2 → −7.4 (1,000); as trolls +13.5 → +26.7, +3.7 → +21.6, −9.2 →
+    +15.0. Every cell improved.
+  - Head-to-head (`az_match`, 100 simulations, 20 pairs, summed margin per pair for the
+    final network): **against its untrained start +3.9** (95% interval +1.5 to +6.3; 11
+    pairs won, 6 drawn, 3 lost; better on both sides by ~4 points); **against step 8
+    −5.1** (−8.4 to −1.8; 2 won, 6 drawn, 12 lost; worse on both sides by ~2.5 points).
+    So it learned, then its final network fell below step 8's — the learning curve
+    (below) shows the fall came only at steps 15-16, after a steady rise to step 14.
+    That is one of the triggers noted for the replay buffer (a newer network losing to an
+    older one): with 65,536 positions (~240 games, the last ~3 learning steps' worth) the
+    network trains only on its latest games. Other possible causes, untested: the
+    dwarfs' near-flat policy targets (breadth searches); the noise of 20-pair matches.
+  - Because the networks rise and fall, one final checkpoint against another is a noisy
+    comparison; so every network also plays a **common anchor**, run A's untrained start.
+
+  **Run B (400 simulations), 2026-09-27 02:30 to 08:30** (`~/thud-runs/stage1_sims400/`):
+  6 hours of machine time without a pause, **4 learning steps**, 88,078 positions (a
+  quarter of run A's: with the default buffer a learning step needs 21,845 new
+  positions). The trolls won all 339 self-play games. The dwarfs' searches, broad only at
+  first (62 of 400 simulations on different moves with the untrained network), spread to
+  220 of 400 moves (the most visited 3.8%) once the network judged the dwarfs lost — the
+  same untried-move effect as at 100. Its evaluation against MCTS (25 games; opponents of
+  400 to 4,000 simulations, so not comparable with run A's) was lost heavily as dwarfs.
+
+  **Stage 1 result: at equal machine time, 100 simulations beat 400 — early in training.**
+  All at 100 simulations, summed margin per pair for the first network named:
+
+  | Match | Pairs | Margin per pair (95% interval) | Pairs won / drawn / lost |
+  |---|---|---|---|
+  | A final vs B final | 30 | **+2.9** (+1.5 to +4.2) | 15 / 14 / 1 |
+  | A final vs the anchor (A's untrained start) | 20 | +3.9 (+1.5 to +6.3) | 11 / 6 / 3 |
+  | B final vs the anchor | 20 | +1.9 (−4.2 to +8.1) | 10 / 3 / 7 |
+  | A final vs A step 8 | 20 | −5.1 (−8.4 to −1.8) | 2 / 6 / 12 |
+
+  Limits: the matches searched with 100 simulations, which may suit run A's network (a
+  400-simulation match is still to run); run B learned only 4 times against 16; 6 hours
+  is early training. In every match the dwarfs lost by 19-32 points whichever network
+  played them: both sides improve slowly, and the trolls' side dominates the results.
+  Stage 1's gate looked only half met at this point (A's step 8 beats its final); run A's
+  learning curve, below, settled it: met (user confirmed).
+
+  **Run A's learning curve (2026-09-27): it learned steadily, then its dwarf play
+  collapsed in the last two steps.** Against the anchor (run A's untrained start), 100
+  simulations, 20 pairs each, summed margin per pair:
+
+  | Run A network | Against the anchor (95% interval) | Pairs won | As dwarfs | As trolls |
+  |---|---|---|---|---|
+  | step 8 | +18.9 (+15.8 to +22.1) | 20 of 20 | −4.0 | +22.9 |
+  | step 12 | +23.1 (+19.0 to +27.2) | 20 of 20 | −2.3 | +25.4 |
+  | step 14 | +26.1 (+23.0 to +29.3) | 20 of 20 | +0.1 | +26.0 |
+  | step 16 (final) | +3.9 (+1.5 to +6.3) | 11 of 20 | −24.9 | +28.8 |
+
+  "Final" really is step 16: the trainer saves `checkpoint--1` at every step next to the
+  numbered one (`alpha_zero.cc:428-432`), and both were written at 01:37:01. So the rise
+  is real and the collapse too — and it is **only the dwarfs' play**; the trolls' kept
+  improving. A plausible mechanism, not proven: the trolls win (self-play in steps 15-16:
+  260 of 285 games), the value network judges every dwarf position lost, the dwarfs'
+  searches spread one visit per move, their moves are chosen by nearly equal one-ply
+  values, they play worse, the trolls win more — the loop the user expected to keep the
+  dwarfs' policy flat, and the one the value of untried moves (stage 3a) targets.
+  Consequences: **stage 1's gate — learning works — is met** for steps 0-14; the
+  collapse is the first problem for stage 3a to solve. **100 simulations beat 400 even
+  more clearly** than the final-against-final match said: run B's final network scored
+  +1.9 against the anchor, run A's from step 8 on +18.9 to +26.1. Run A2 (2x buffer)
+  must run past A's step 16 (~5.8 hours, ~351,000 positions) to show whether a larger
+  buffer prevents the collapse.
+
 - [ ] Cloud GPU (x86 + NVIDIA): OpenSpiel's documented setup, whose default LibTorch
   download is the CUDA build (`global_variables.sh:89`).
 
@@ -690,12 +930,34 @@ combined margin (the match question is in *Deferred decisions*).
   (at v = −0.8 an untried move needs `14 * P` above 0.2, P above about 0.014). Other
   choices: KataGo uses the parent's value minus `0.2 * sqrt(prior mass of the moves already
   tried)` (arXiv 1902.10565, section 2); Leela Chess Zero offers a fixed value (default −1)
-  or the parent's value minus a reduction. **Measure it in the small run**: at the dwarfs'
-  and the trolls' roots, how many moves are tried and how the visits spread, and whether
-  the dwarfs' policy sharpens. No flag changes it; if it hurts, the fix is a small option
-  in `mcts.cc` (untried moves counted as losses, or the parent's value minus a reduction,
-  with today's behaviour as the default) — an upstream change, so raise it with the user
-  first.
+  or the parent's value minus a reduction. **Measured** (below, and in stage 1): the
+  dwarfs' searches spread one visit per move once the network judges them lost, at 100
+  and at 400 simulations. No flag changes it. **Decided** (user, 2026-09-27): the fix —
+  the parent's value minus a reduction, or a loss, behind a switch whose default is
+  today's behaviour — is stage 3a, the first change to our own copy of `mcts.cc`.
+
+**Measured 2026-09-26: at 100 simulations the dwarfs' searches are pure breadth.** From
+the replay buffer of the clean 64 x 4 trainer run (100 simulations, 11 small learning
+steps; `thud/experiments/az_buffer_stats.cc`, which reads the visit counts every position
+stores as its policy target):
+
+| Per search (median) | Dwarfs | Trolls |
+|---|---|---|
+| Legal moves | 265 | 48 |
+| Moves that got any visit | 99 of 100 simulations | 5 |
+| The most visited move's share | 1% | 44% |
+| Effective number of moves, exp(entropy) | 99 | 3.5 |
+
+Every simulation of a dwarf search goes to a new move — never a second look — so the
+dwarfs' policy targets are nearly flat, while the trolls' searches stay on their prior's
+favourites. As predicted from the formula: the dwarfs' values are below 0 (their mean
+return target was −0.125, losing by 4 points), so every untried move, counted as an even
+game, outranks every tried one. A slightly trained network at 100 simulations. **Stage 1
+showed it persists** (a watcher recorded these statistics after every learning step):
+through all 16 steps of run A the dwarfs' searches visited 95-99 of 100 moves, and in run
+B (400 simulations) 62 moves while untrained, 220 once the network judged the dwarfs lost.
+The trolls' searches narrowed to 2-3 moves while they won easily and widened when games
+were close.
 
 **Settings to determine empirically** (user asked, 2026-09-25). `alpha_zero_torch_example`
 defaults in brackets; the ones Thud makes most uncertain first:
@@ -723,7 +985,11 @@ defaults in brackets; the ones Thud makes most uncertain first:
    an option to set α = k / (number of legal moves) per position — the paper's rule, for
    any game, and a candidate upstream PR, but an upstream change, so ask first.
 3. `--max_simulations` (300): strength against cost; with 450 dwarf moves, few
-   simulations cannot cover the moves. Follows from the throughput step.
+   simulations cannot cover the moves. AlphaZero used 800 a move; KataGo recorded only
+   searches of 600-1,000; "AlphaZero can fail to improve its policy network, if not
+   visiting all actions at the root" (Danihelka et al., ICLR 2022, Gumbel AlphaZero).
+   **100 for now** (user, 2026-09-27): it beat 400 at equal machine time early in
+   training (stage 1); not assumed good enough later — revisit with playout caps (3b).
 4. `--temperature_drop` (10 moves sampled before playing the best; AlphaZero's
    pseudocode has `num_sampling_moves = 30`, as mirrored on GitHub by mikolajblaz): Thud
    always starts from the same position, and games here last 100-450 moves, so this and
@@ -743,8 +1009,11 @@ defaults in brackets; the ones Thud makes most uncertain first:
    turns in self-play (*Deferred decisions*, end-of-battle limits) — if it is large,
    lower the no-capture cap rather than resign. Off by default for us, without an
    upstream change, through our flagfile (below).
-6. Network size, `--nn_width` (128) and `--nn_depth` (10): capacity against speed —
-   throughput step.
+6. Network size, `--nn_width` (128) and `--nn_depth` (10): capacity against speed.
+   **Chosen to start: 64 x 4** (user, 2026-09-26). 32 x 2 recognised hurls (97.9% in the
+   layout control) but its convolutions see only 11 x 11 squares, 64 x 4's 19 x 19;
+   AlphaZero used 19 residual blocks of 256 filters, KataGo grew from 6 x 96 to 20 x 256.
+   Growing ours later: *Notes for later*, below.
 7. Training: `--learning_rate` (1e-4), `--weight_decay` (1e-4), `--train_batch_size`
    (1,024), `--replay_buffer_size` (65,536) and `--replay_buffer_reuse` (3), the ratio of
    training to self-play.
@@ -756,9 +1025,9 @@ random rollouts and the solver at `max_simulations * 10^(n/2)` simulations
 (`alpha_zero.cc:270-286`), so the default 7 levels at 300 simulations reach 300,000
 per move, far too slow for Thud; use fewer levels. Not flags: the value of untried moves (above) and
 the game's end-of-battle limits (*Deferred decisions*). There is not budget to tune all of
-these: set 2 and 4 from the game's numbers (2 is set, 5 stays off), then compare short
-runs on the most sensitive (1, 3, 6) at equal cost, read per side against a fixed
-opponent.
+these: set 2 and 4 from the game's numbers (2 is set to 0.1, 5 stays off), then compare
+short runs on the most sensitive (1, 3, 6) at equal cost, read per side against a fixed
+opponent. So far 3 is 100 and 6 is 64 x 4 to start (stage 1).
 
 **Our defaults live in `thud/experiments/az_thud.flags`**, passed with `--flagfile` (Abseil
 flags, no upstream change): `--game=thud`, `--cutoff_probability=0`, `--policy_alpha=0.1`.
@@ -766,6 +1035,94 @@ The last value of a flag wins, so flags after `--flagfile` override it; each run
 `config.json` records what it used (checked 2026-09-25, including that `#` comment lines
 are ignored). `OMP_NUM_THREADS=1` is an environment variable and goes on the command line.
 Add each setting here as it is decided.
+
+**Notes for later** (user, 2026-09-26):
+
+- **Grow the network once improvement flattens** — "this will almost certainly be needed"
+  (user). KataGo "began with small nets and progressively increased their size,
+  concurrently training the next larger size on the same data and switching when its
+  average loss caught up to the smaller size" (6 x 96 to 20 x 256; trained on the data,
+  not initialised from the smaller network's weights; arXiv 1902.10565, section 2).
+  Feasible without changing any upstream code: on resuming, the trainer takes the
+  network's shape from the run's `vpnet.pb` and reloads its checkpoint and replay buffer
+  (`alpha_zero.cc:321-322`, `:533-536`, `:592`; the buffer's format is the header-only
+  `utils/serializable_circular_buffer.h`). So: stop the run; a program of ours on the
+  shared-library route trains the larger network on the saved buffer and writes the new
+  `vpnet.pb` and checkpoint; resume. Needs one end-to-end test first.
+- **Replay buffer size: to be increased** (user, 2026-09-27; first kept at the default
+  65,536 positions, ~240 games). Run A's step 8 beat its final network, one of the
+  triggers below — though regressions are a known part of self-play: AlphaGo Zero let a
+  new network generate games only after it won "by a margin of 55%", while AlphaZero
+  "simply maintains a single neural network that is updated continually", as OpenSpiel
+  does (arXiv 1712.01815). Two jobs to keep apart: the **training window** (what the
+  running network learns from; run A2 tests 2x, 131,072 positions at reuse 3 — a learning
+  step every ~43 minutes, the learner's CPU share unchanged) and a **data archive** for
+  growing the network or training another head later, which must learn from far more
+  than the last ~240 games: the trainer rewrites its buffer file each step and replaces
+  the whole buffer every `reuse` steps, so copying the file every `reuse` steps keeps
+  every position once (~10 KB each, ~15 GB a day at 64 x 4). The notes from when the
+  default was kept:
+  OpenSpiel learns once every `buffer / reuse` new positions (`alpha_zero.cc:324`) and
+  rewrites the buffer file each time (`:403`, ~10.3 KB a position), so 3 GB (~290,000
+  positions) would update the network only every ~70 minutes at 100 simulations, ~4.7
+  hours at 400. Revisit it when: the value loss on new games, measured before they enter
+  the buffer, pulls away from the training loss (memorising a few hundred games); or a
+  newer network loses to an older checkpoint head-to-head (forgetting); or the evaluation
+  oscillates. OpenSpiel reports neither of the first two; a program of ours can compute
+  them from checkpoints and the saved buffer. Enlarging is a flag, but slows the updates
+  unless reuse rises — and resuming with another size fails: `LoadBuffer` refuses a file
+  saved with a different maximum size (`utils/serializable_circular_buffer.h`), so a
+  program of ours must rewrite the file's recorded size first (easy on the
+  shared-library route).
+
+**Changes to the search and trainer** (found 2026-09-26; each needs changed code, so each
+goes into our own copy, decided 2026-09-26 — stages 3 and 5 of the roadmap, one at a time):
+
+- **Playout cap randomisation** (KataGo): on a random 25% of turns a full search (e.g.
+  400-600), recorded for training; quick searches (e.g. 100) on the rest, not recorded.
+  KataGo measured it as 1.37x training efficiency, better than every fixed cap from 100
+  to 600 (arXiv 1902.10565, Table 2). Changes the trainer (`alpha_zero.cc`). With
+  separate settings per side (user, 2026-09-26), the dwarfs, with ~10x the trolls' moves,
+  can get full searches more often, or larger ones; since only full searches become
+  training targets, that also gives the dwarfs more targets. Caution: whatever changes
+  the sides' playing strength in self-play tilts its results, and so the value targets.
+- **Tree reuse**: the played move's subtree, with its statistics, becomes the next root
+  (AlphaGo Zero did this; OpenSpiel builds a fresh tree each move, `mcts.cc:356`, and
+  `RestartAt` does nothing, `mcts.h:173`). The dwarfs would profit through the trolls'
+  search (user): the trolls' few moves concentrate visits, and under the chosen one the
+  trolls' search has already explored the dwarfs' replies — so one tree shared by both
+  sides, not one per side as OpenSpiel's self-play has. The potential can be measured
+  with unchanged code first: the share of root visits in the move played, per side.
+  Root noise must be re-applied to the reused root. Changes the search and the trainer.
+  **Measured 2026-09-26** (`thud/experiments/az_reuse.cc`, 64 x 4, fresh and slightly
+  trained networks, 100 / 400 / 1,000 simulations): a side's own tree two plies later
+  would inherit almost nothing (0.0-0.4% of its visits in every configuration), so only a
+  tree shared by both sides is worth building. The program's absolute shares for the
+  shared tree (dwarfs 5-29%, trolls 8-14%, falling with more simulations) come from
+  positions after up to 200 random moves, and do not match self-play: there the dwarfs'
+  searches spread their visits one per move. The trainer's own buffers are the right
+  source — after the first 10 moves the played move is the most visited, so its share is
+  what the next search, by the other side, would inherit: in the clean 64 x 4 run's buffer
+  (100 simulations) the trolls' played move held a median 44% of the visits (what the
+  dwarfs would inherit, as the user expected), the dwarfs' 1% (the trolls would inherit
+  nothing). Stage 1's watcher records this after every learning step.
+- **A convolutional policy head**: 120 move planes (8 directions x 14 distances + 8
+  captures) over the board instead of the 450 x 19,800 linear layer — 64 x 4 would drop
+  from ~9.2 to ~0.3 million weights; speed gain modest when batched (roughly 15% for
+  64 x 4), larger one at a time; the hoped-for gain is faster policy learning, as
+  AlphaZero's heads were convolutional. Test first on the layout-check harness (policy
+  mass on hurls, 77.9% at step 1,500 with today's head), with an exhaustive test of the
+  action-to-plane map. **Compatibility:** a network with this head is a new model type,
+  which unmodified OpenSpiel cannot build or load (user asked, 2026-09-26); every other
+  planned change leaves the network file as upstream's. If that matters, publish our copy
+  with the network, or distil the final network into a standard resnet on our self-play
+  data (the machinery of network growing). Two tree levels (move, then capture yes/no)
+  would not help: 18,482 actions instead of 19,800, 7% fewer head weights, and an extra
+  network call per choice.
+- **The value of untried moves**: the parent's value minus a reduction (KataGo, Leela
+  Chess Zero) or a loss (AlphaZero) instead of OpenSpiel's 0. The first runs showed the
+  dwarfs' searches far too broad (*Margins as the value target*), so it is stage 3a,
+  first (user, 2026-09-27).
 
 **If we ever fall back to the Python route** (user, 2026-09-25): first **re-verify the
 layout-bug findings below**, then put the fix into **one concise PR, including experiments
@@ -896,5 +1253,6 @@ Recorded here so they are decided deliberately rather than by accident.
 | Local CPU training vs rented cloud GPU | **Direction 2026-09-25 (user): this CPU until everything works, then a cloud GPU.** When to switch follows from Phase 6's throughput step. For AlphaZero-style training the network, not the game, dominates the cost, and this machine has no CUDA GPU. |
 | ~~`OPEN_SPIEL_BUILD_WITH_LIBTORCH` on aarch64 (needed for C++ AlphaZero)~~ | **Works (2026-09-25)**, with LibTorch 2.10 from PyTorch's aarch64 pip wheel and no change to upstream code; the tic-tac-toe control learns — Phase 6. |
 | **Match-aware play** (raised 2026-09-25) | The single-battle agent first (**user, 2026-09-25**). A match is two battles with the sides swapped, won on the combined margin (`THUD_RULES.md` §9.5). Our agent maximises its **expected margin** in each battle, which maximises the expected match total, but not quite the chance of **winning the match**: in the second battle the right play depends on the margin carried over (leading by 10, the trolls only need to lose by less than 10, and should play safe). To learn that, the network needs the battle number and the carried margin as input — the battle number alone is not enough — for example as two constant observation planes. A separate network for the second battle would need the carried margin just the same. Two designs: (a) one OpenSpiel game per match, with the returns from the match result — exact, but twice as long, and the first battle learns from a target that includes the second's noise; (b) a single battle with the carried margin as a game parameter, sampled during self-play, as KataGo does with komi (its network input includes "Komi / 15.0 (current player's perspective)", arXiv 1902.10565, appendix A.1) — simpler, but the first battle is not strictly optimised for the match. A pure win/loss target drops any incentive to score once the match is decided, so a mix of the match result and a small score term is likely better (KataGo's search maximises the sum of a win utility and a bounded score utility, `u_score(x) = c_score * (2/π) * arctan((x - x_0) / b)` with `c_score` 0.5; same paper, appendix F). A rules and representation change, so decided with the user. |
+| ~~**Our own copy of OpenSpiel's C++ AlphaZero and its MCTS**~~ | **Decided 2026-09-26 (user): yes**, for stage 3 of the roadmap. Needed for any change inside the search or the trainer (*Changes to the search and trainer*, Phase 6), not for growing the network. About 2,400 lines of AlphaZero plus 714 of MCTS, copied into `thud/` under our own namespace (so they cannot clash with the originals inside `libopen_spiel.so`), their Apache headers kept with our change notices, built with `build_az_program.sh`; upstream stays untouched. Cost: we maintain it, and upstream fixes no longer flow in (the C++ AlphaZero is unmaintained upstream anyway). |
 | Whether to attempt upstreaming to OpenSpiel | Thud is commercially published; copyright question unresolved |
 | **End-of-battle limits** (`THUD_RULES.md` §6: no-capture cap and hard turn cap) — **re-evaluate once our engine plays strongly** | A strong engine of our own. The current defaults rest on proxies only (random play and hexparrot's heuristic AI; see `PROGRESS.md`, session 2), and strong play may stall in ways the proxies never do. Re-measure on our engine's self-play: how games end (rout, no legal move, no-capture cap, hard cap), the longest no-capture stretches, and the "dead tail" after the last capture. Lower the no-capture cap if games regularly sit out the whole cap; raise it if it cuts off real manoeuvring. Both are game parameters, so no code change is needed. |
