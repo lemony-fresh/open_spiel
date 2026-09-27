@@ -22,10 +22,16 @@
 # The last value of a flag wins, so flags after --flagfile override these. Each run's
 # config.json records the values it used.
 #
-# OMP_NUM_THREADS=1 is an environment variable, so it cannot go in this file. LibTorch
-# gives every caller 10 threads by default, and each actor and evaluator calls the network
-# itself, so they oversubscribe the 10 cores: three searches at once managed 16
-# simulations/s each with the default, 128 each with one thread (measured 2026-09-25).
+# OMP_NUM_THREADS is an environment variable, so it cannot go in this file. LibTorch
+# gives every caller 10 threads by default, so several callers oversubscribe the 10
+# cores: three searches at once managed 16 simulations/s each with the default, 128 each
+# with one thread (measured 2026-09-25). Without batched inference, every actor calls the
+# network itself: use 1, as above. On this machine batched inference is much faster for
+# Thud's small networks (2.7-7x): add --actors=32 --inference_batch_size=32
+# --inference_threads=2 and use OMP_NUM_THREADS=4 (measured with az_throughput and
+# confirmed in the trainer, 2026-09-26: 1,707 simulations/s on 64 x 4, 4,259 on 32 x 2;
+# thud/PLAN.md Phase 6, throughput). These depend on the machine, not on Thud, so they
+# stay on the command line.
 
 --game=thud
 

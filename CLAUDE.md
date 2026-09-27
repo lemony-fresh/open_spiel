@@ -36,6 +36,12 @@ each working session, without being asked:
    reality.
 3. If the roadmap itself changed — scope, phase order, a deferred decision now resolved —
    update `thud/PLAN.md` too. Do not record roadmap changes only in the session log.
+4. **Check the docs for consistency** — also before every commit that touches them (user,
+   2026-09-27: "I always want consistency checks"): statements superseded by newer
+   results, stale status lines, next steps already done, changed cross-references (stage
+   numbers, file names), numbers that differ between places. Fix superseded statements in
+   place in `thud/PLAN.md` and the status block; the session log stays chronological and
+   is corrected by later entries.
 
 Prefer concrete detail over summary. "Implemented hurl generation; blocked on whether a hurl
 onto an empty square is legal" is useful. "Worked on move generation" is not.
@@ -64,10 +70,26 @@ re-derive them.
   2026-09-25). OpenSpiel's C++ AlphaZero (`OPEN_SPIEL_BUILD_WITH_LIBTORCH=ON`) builds
   that way, unpatched, in its own folder `build-torch/` (below), and passes its tests and
   the tic-tac-toe control: `thud/PLAN.md` Phase 6.
-- **Run LibTorch programs with `OMP_NUM_THREADS=1`.** LibTorch gives every caller 10
-  OpenMP threads, and each AlphaZero actor and evaluator calls the network itself, so
-  several of them oversubscribe the 10 cores: three searches at once ran at 16
-  simulations/s each by default, 128 each with one thread (2026-09-25).
+- **Set `OMP_NUM_THREADS` for LibTorch programs to match the work split.** LibTorch
+  gives every caller 10 OpenMP threads, so several callers oversubscribe the 10 cores:
+  three searches at once ran at 16 simulations/s each by default, 128 each with one
+  thread (2026-09-25). Without batched inference every AlphaZero actor calls the network
+  itself: use `OMP_NUM_THREADS=1`. With batched inference, much faster for Thud's small
+  networks, only the inference threads call it: 2 inference threads with
+  `OMP_NUM_THREADS=4` was best for every network size tried, and matched in the trainer
+  (`thud/PLAN.md` Phase 6, throughput final report, 2026-09-26).
+- **Sleep freezes WSL**: nothing runs, WSL's clocks stop, and the wall clock jumps on
+  resume. The laptop used to sleep after 5 minutes without input even on mains power; on
+  2026-09-26 the user set sleep to never while plugged in (on battery it still sleeps
+  after 3 minutes). Before long runs, check from WSL with `powercfg.exe /query
+  SCHEME_CURRENT SUB_SLEEP` ("Sleep after", AC index 0 = never) and keep it plugged in
+  with the lid open — even with sleep off it paused ~18 minutes on 2026-09-26, most likely
+  from the lid (its setting cannot be read with `powercfg` here). The setting is Settings >
+  System > Power & battery, or `powercfg /change standby-timeout-ac 0`. Long runs keep a
+  pause detector (wall clock against `/proc/uptime` every 10 s) to prove they ran
+  unpaused. Time measurements with a
+  monotonic clock survive a pause; wall-clock times (the AlphaZero trainer's logs, `date`
+  differences) do not. A pause shows as `/proc/uptime` falling behind the wall clock.
 - **The venv has OpenSpiel's pinned JAX set** (`jax==0.9.0.1`, `flax==0.12.3`, ... from
   `open_spiel/scripts/python_extra_deps.sh`), which pins numpy to 2.3.5: flax 0.12.3
   requires numpy below 2.4. The JAX CPU build warns "An NVIDIA GPU may be present"; there
