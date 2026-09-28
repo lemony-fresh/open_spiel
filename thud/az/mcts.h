@@ -78,6 +78,26 @@
 namespace open_spiel {
 namespace thud_az {
 
+// How PUCT values a child that has not been visited yet ("first-play urgency"). Added
+// by the Thud-on-OpenSpiel authors (thud/PLAN.md Phase 6, roadmap stage 3a): upstream
+// counts such a child as 0, an even game, so a side whose tried moves are worth less
+// spends every simulation on a new move and never looks deeper.
+enum class UntriedMoveValue {
+  // Upstream OpenSpiel's rule: 0.
+  kUpstream,
+  // The visit-weighted mean value of the already visited siblings, minus
+  // reduction * sqrt(the prior mass of those siblings) — KataGo's rule (arXiv
+  // 1902.10565, section 2: V(parent) - c_FPU * sqrt(P_explored), c_FPU = 0.2), with the
+  // siblings' mean for the parent's value. While no sibling is visited it is 0; then all
+  // untried children tie on it and the prior decides.
+  kSiblingMeanMinusReduction,
+  // The game's minimum utility, a loss (AlphaZero's rule).
+  kLoss,
+};
+
+// "upstream", "sibling_mean_minus_reduction" or "loss".
+UntriedMoveValue UntriedMoveValueFromString(const std::string& name);
+
 enum class ChildSelectionPolicy {
   UCT,
   PUCT,
@@ -137,6 +157,9 @@ struct SearchNode {
 
   // The value as returned by the PUCT formula.
   double PUCTValue(int parent_explore_count, double uct_c) const;
+  // The same, valuing this child at `untried_value` while it is not visited yet.
+  double PUCTValue(int parent_explore_count, double uct_c,
+                   double untried_value) const;
 
   // The sort order for the BestChild.
   bool CompareFinal(const SearchNode& b) const;
@@ -173,13 +196,19 @@ class MCTSBot : public Bot {
       int seed, bool verbose,
       ChildSelectionPolicy child_selection_policy = ChildSelectionPolicy::UCT,
       double dirichlet_alpha = 0, double dirichlet_epsilon = 0,
-      bool dont_return_chance_node = false, double max_wall_clock_time = -1);
+      bool dont_return_chance_node = false, double max_wall_clock_time = -1,
+      UntriedMoveValue untried_move_value =
+          UntriedMoveValue::kSiblingMeanMinusReduction,
+      double untried_move_reduction = 0.2);
   ~MCTSBot() = default;
 
   void Restart() override {}
   void RestartAt(const State& state) override {}
   // Run MCTS for one step, choosing the action, and printing some information.
   Action Step(const State& state) override;
+
+  // The value PUCT gives the unvisited children of `node` (public for tests).
+  double UntriedValue(const SearchNode& node) const;
 
   // Implements StepWithPolicy. This is equivalent to calling Step, but wraps
   // the action as an ActionsAndProbs with 100% probability assigned to the
@@ -218,6 +247,9 @@ class MCTSBot : public Bot {
   bool verbose_;
   bool solve_;
   double max_utility_;
+  double min_utility_;
+  UntriedMoveValue untried_move_value_;
+  double untried_move_reduction_;
   double dirichlet_alpha_;
   double dirichlet_epsilon_;
   bool dont_return_chance_node_;

@@ -17,8 +17,9 @@ and a layout bug). **Stage 1 of the Phase 6 roadmap is done** (2026-09-27): lear
 on unmodified OpenSpiel — run A's network (64 x 4, 100 simulations) rose steadily against
 its untrained start to step 14 — then the dwarfs' play collapsed in its last two steps;
 100 simulations beat 400 at equal machine time; the dwarfs' searches are pure breadth
-(untried moves count as even games). **Next: stage 2**, our own copy of the C++
-AlphaZero, then stage 3a, the value of untried moves.
+(untried moves count as even games). **Stage 2 is done** — our own copy of the C++
+AlphaZero in `thud/az/`, proven identical to upstream — and **stage 3a is in progress**:
+the value of untried moves, implemented in the copy, with run C training on it tonight.
 
 **Where we stand:**
 
@@ -64,23 +65,31 @@ AlphaZero, then stage 3a, the value of untried moves.
 stage must show first, every decision so far and what waits for later are in **`PLAN.md`
 Phase 6, *Phase 6 roadmap and decision log*** — read it before choosing what to do.
 
-1. **Run A2 is running** (stage 1's last experiment; since 2026-09-27 12:17, ends ~16:50):
-   run A with a 2x replay buffer (`--replay_buffer_size=131072`, reuse 3), 4.5 hours of
-   machine time, in `~/thud-runs/stage1_sims100_buffer2x/`, archiving every position
-   (`~/thud-runs/archive_buffer.sh`). Compare it with run A **at equal numbers of
-   positions** (a bigger buffer does not change the self-play speed). Run A's dwarf play
-   collapsed only at steps 15-16 (~330,000-351,000 positions), which A2 does not reach in
-   4.5 hours, so **resume A2 tonight to run past ~351,000 positions** (this also tests
-   resuming, which growing the network needs). Then: A2's checkpoints against the anchor
-   (run A's untrained start), A2 against A at equal positions, and the 400-simulation
-   match postponed from the morning.
-2. **Stage 2, in progress** (`PLAN.md` Phase 6 roadmap): our own copy of the C++
-   AlphaZero and its MCTS in `thud/`, in our own namespace, proven identical to upstream
-   (identical searches for fixed positions and seeds, the tic-tac-toe control, the layout
-   check, upstream loading our checkpoint). Code while the machine runs; build at low
-   priority; run the identity checks when the CPU is free.
-3. **Stage 3a: the value of untried moves** (user: urgent) — the dwarfs' flat policy
-   targets, which get worse as the trolls improve; likely behind run A's collapse.
+1. **Run A2 finished** (2026-09-27 12:17-16:47, no pause; 5 learning steps, 219,092
+   positions, archive copy after step 3 in `archive/`): at equal positions its losses
+   fall more slowly than run A's (half as many learning steps), with the same kind of
+   self-play swings; no sign yet that the 2x buffer helps. To settle it: A2's
+   checkpoints against the anchor (run A's untrained start), A2 step 5 against A step 10
+   (equal positions), and **resume A2 past ~351,000 positions** (A's collapse came at
+   steps 15-16) — which also tests resuming — then compare there. And the
+   400-simulation match postponed from the morning.
+2. **Stage 2 is done** (`PLAN.md` roadmap): our copy in `thud/az/` passed textual
+   identity (`import_from_upstream.py --check`), `identity_check.cc` (outputs, searches
+   with and without noise and with rollouts and the solver, checkpoints, a learning
+   step, all equal; controls differ), and the tic-tac-toe control, which learned as
+   upstream's did. Resuming our copy is untested: test it before growing the network.
+   Before each stage-3 change, `--check` lists exactly the files we have changed.
+3. **Stage 3a, in progress: the value of untried moves.** Implemented in our copy
+   (`--untried_move_value`: `upstream`, `sibling_mean_minus_reduction` — the default —
+   or `loss`; `--untried_move_reduction` 0.2), tested (`thud/az/untried_move_check.cc`,
+   `identity_check.cc`). **Tonight's chain** (`~/thud-runs/night_2026-09-27.sh`, from
+   20:31, progress in `~/thud-runs/stage1_matches/progress.log`): **run C** — run A's
+   settings on our copy with the default rule, 6 hours, in `~/thud-runs/stage3a_sims100/`
+   — then C's steps 8, 12, 14, 16 against the anchor, C step 16 against A steps 16 and 14
+   (the last also with the new rule in the search), then run A2 resumed past ~351,000
+   positions with upstream's trainer (testing resuming) and its matches. Tomorrow: read
+   them — does C avoid A's collapse, do the dwarfs' searches narrow
+   (`buffer_stats.jsonl`), is C stronger at equal positions?
 4. Then the rest of the roadmap: playout caps with per-side settings (3b), tree reuse
    with one shared tree (3c), settings (4), the convolutional policy head (5), a cloud
    GPU (6).
@@ -1349,5 +1358,51 @@ instrumentation, and the pattern agreed for later, are in `PLAN.md` Phase 5).
   paragraph) and the status block here (stage 1's result, the experiment programs, the
   next steps, whose numbering had jumped).
 
-**Next step:** as recorded in `## Current status` — run A2 to its end and on past ~351,000
-positions tonight; stage 2 (our own copy) in the meantime.
+- **Committed and pushed** the stage-1 work after the consistency check: a40f2a0b.
+- **Stage 2 started** (the user: without taking much CPU from run A2): new `thud/az/`.
+  `import_from_upstream.py` copies OpenSpiel's C++ AlphaZero (trainer, network,
+  evaluator, device manager, the example's `main` as `az_trainer.cc`) and its MCTS from
+  upstream commit 540bba6e, renames the namespace to `open_spiel::thud_az`, points the
+  includes at the copies, renames the header guards and adds a change notice; its own
+  assertions caught my notice naming the upstream path (fixed by checking first).
+  `build.sh` builds on the shared-library route at `nice 19`; the first link failed —
+  `libopen_spiel.so` does not re-export Abseil's flag parsing — fixed by linking
+  Abseil's static libraries after it as one group. New `identity_check.cc` compares
+  upstream's code and ours on run A's step 14 (step 8 as the control), single-threaded:
+  equal network outputs on 50 positions, equal searches without and with root noise (50
+  of 50), a checkpoint of ours loads in upstream's code with equal outputs, one learning
+  step gives equal losses and outputs; the controls (another network, another noise
+  seed, before against after learning) all differ. 380 s at `nice 19`. The user asked
+  whether the tic-tac-toe control is the only remaining guard: the gate had four items,
+  and the question showed two gaps in my checks, both closed: `import_from_upstream.py
+  --check` proves the copies are textually a fresh import (a one-character change is
+  caught), covering code no test reaches; and the identity check now also compares the
+  evaluation games' search (UCT, random rollouts, the solver; 50 of 50 equal, another
+  seed changes all 50). Remaining: the tic-tac-toe control through `az_trainer`, queued
+  after run A2 (`~/thud-runs/stage2_ttt_control.sh`). Not yet committed.
+
+- **Run A2 finished at 16:47; the tic-tac-toe control through our copy (16:47-17:06)
+  learned as upstream's did — stage 2 is done** (numbers in `PLAN.md`'s roadmap).
+
+- **Stage 3a, with the user in the evening.** Decided: three rules for untried moves
+  behind a flag, defaulting to the siblings' mean minus 0.2 × √(their prior mass), at
+  every node; test against upstream too if quick (it was: 6 minutes). Implemented in
+  `thud/az/mcts.{h,cc}` (the rule, `UntriedValue`, a `PUCTValue` overload; upstream's
+  `PUCTValue` kept), `alpha_zero.{h,cc}` (config, `config.json` — a run from before the
+  setting resumes with upstream's rule) and `az_trainer.cc` (flags). `--check` now lists
+  exactly those five files. New `untried_move_check.cc`: the formula on a hand-built node
+  passes; on self-play positions of run A's step 14 the dwarfs' searches visit 99 moves
+  (upstream), 31 (default), 1 (`loss`, no root noise). My first version sampled every 8th
+  move and so only dwarf positions (the dwarfs move on even moves — the same mistake as
+  in the first layout check); now every 7th, with a control that both sides appear.
+  `identity_check.cc` passes with `upstream` explicit, plus a control that the default
+  changes the searches. `az_match.cc` moved onto our copy with `untried=`; with
+  upstream's rule it reproduced 4 of 4 earlier pairs exactly. Two bugs caught in the
+  night script before it ran: the pause-detector helper would have hung its `$(...)`,
+  and `$?` after `$(date)` again. Run C started at 20:31.
+- **Committed in two parts** (the user asked to commit): stage 2 as the pure import
+  with its scripts and the stage-2 identity check (4acaee09), then stage 3a on top, so
+  `git diff 4acaee09 -- thud/az` shows exactly what stage 3a changed in upstream's
+  code (6 files, +136 −9).
+
+**Next step:** as recorded in `## Current status` — read tonight's results with the user.

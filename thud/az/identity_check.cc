@@ -20,7 +20,8 @@
 //      on every position — values and priors must be equal;
 //   2. searches: upstream's MCTSBot and ours (PUCT, the trainer's settings) on every
 //      position, without root noise and with it — every root child's visits and total
-//      value must be equal;
+//      value must be equal. Ours runs with UntriedMoveValue::kUpstream: its default
+//      values untried moves differently (thud/az/mcts.h), which a control checks;
 //   3. checkpoints: a checkpoint saved by our copy, loaded by upstream's code, must give
 //      the same outputs;
 //   4. training: one learning step on the same batch must leave both networks with the
@@ -203,16 +204,31 @@ int main(int argc, char** argv) {
     up::MCTSBot up_bot(*game, up_eval, 2, 100, 10, false, /*seed=*/0, false,
                        up::ChildSelectionPolicy::PUCT, alpha, epsilon, true);
     ours::MCTSBot our_bot(*game, our_eval, 2, 100, 10, false, /*seed=*/0, false,
-                          ours::ChildSelectionPolicy::PUCT, alpha, epsilon, true);
+                          ours::ChildSelectionPolicy::PUCT, alpha, epsilon, true, -1,
+                          ours::UntriedMoveValue::kUpstream);
     int equal = 0;
     for (const auto& state : positions) {
       equal += Summary(*up_bot.MCTSearch(*state)) == Summary(*our_bot.MCTSearch(*state));
     }
     Expect(equal == count, absl::StrFormat("searches equal %s root noise: %d of %d",
                                            epsilon > 0 ? "with" : "without", equal, count));
+    if (epsilon == 0) {  // Control: our default rule for untried moves must differ.
+      ours::MCTSBot our_default(*game, our_eval, 2, 100, 10, false, /*seed=*/0, false,
+                                ours::ChildSelectionPolicy::PUCT, alpha, epsilon, true);
+      up::MCTSBot up_again(*game, up_eval, 2, 100, 10, false, /*seed=*/0, false,
+                           up::ChildSelectionPolicy::PUCT, alpha, epsilon, true);
+      int differ = 0;
+      for (const auto& state : positions) {
+        differ += Summary(*up_again.MCTSearch(*state)) !=
+                  Summary(*our_default.MCTSearch(*state));
+      }
+      Expect(differ > 0, absl::StrFormat("control: our default rule for untried moves "
+                                         "changes %d of %d searches", differ, count));
+    }
     if (epsilon > 0) {  // Control: another seed must change the noisy searches.
       ours::MCTSBot other_seed(*game, our_eval, 2, 100, 10, false, /*seed=*/1, false,
-                               ours::ChildSelectionPolicy::PUCT, alpha, epsilon, true);
+                               ours::ChildSelectionPolicy::PUCT, alpha, epsilon, true,
+                               -1, ours::UntriedMoveValue::kUpstream);
       up::MCTSBot up_again(*game, up_eval, 2, 100, 10, false, /*seed=*/0, false,
                            up::ChildSelectionPolicy::PUCT, alpha, epsilon, true);
       int differ = 0;
@@ -233,10 +249,12 @@ int main(int argc, char** argv) {
                        0, 0, true);
     ours::MCTSBot our_bot(*game, std::make_shared<ours::RandomRolloutEvaluator>(1, 3), 2,
                           100, 1000, /*solve=*/true, /*seed=*/3, false,
-                          ours::ChildSelectionPolicy::UCT, 0, 0, true);
+                          ours::ChildSelectionPolicy::UCT, 0, 0, true, -1,
+                          ours::UntriedMoveValue::kUpstream);
     ours::MCTSBot other_bot(*game, std::make_shared<ours::RandomRolloutEvaluator>(1, 4), 2,
                             100, 1000, /*solve=*/true, /*seed=*/4, false,
-                            ours::ChildSelectionPolicy::UCT, 0, 0, true);
+                            ours::ChildSelectionPolicy::UCT, 0, 0, true, -1,
+                            ours::UntriedMoveValue::kUpstream);
     for (const auto& state : positions) {
       up_rollouts.push_back(Summary(*up_bot.MCTSearch(*state)));
       our_rollouts.push_back(Summary(*our_bot.MCTSearch(*state)));

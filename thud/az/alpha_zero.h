@@ -59,6 +59,8 @@ struct AlphaZeroConfig {
   int max_simulations;
   double policy_alpha;
   double policy_epsilon;
+  std::string untried_move_value;  // Added: see UntriedMoveValue in thud/az/mcts.h.
+  double untried_move_reduction;
   double temperature;
   double temperature_drop;
   double cutoff_probability;
@@ -93,6 +95,8 @@ struct AlphaZeroConfig {
         {"max_simulations", max_simulations},
         {"policy_alpha", policy_alpha},
         {"policy_epsilon", policy_epsilon},
+        {"untried_move_value", untried_move_value},
+        {"untried_move_reduction", untried_move_reduction},
         {"temperature", temperature},
         {"temperature_drop", temperature_drop},
         {"cutoff_probability", cutoff_probability},
@@ -127,6 +131,14 @@ struct AlphaZeroConfig {
     max_simulations = config_json.at("max_simulations").GetInt();
     policy_alpha = config_json.at("policy_alpha").GetDouble();
     policy_epsilon = config_json.at("policy_epsilon").GetDouble();
+    // A run from before the setting existed searched as upstream does.
+    untried_move_value = config_json.count("untried_move_value")
+                             ? config_json.at("untried_move_value").GetString()
+                             : "upstream";
+    untried_move_reduction =
+        config_json.count("untried_move_reduction")
+            ? config_json.at("untried_move_reduction").GetDouble()
+            : 0.2;
     temperature = config_json.at("temperature").GetDouble();
     temperature_drop = config_json.at("temperature_drop").GetDouble();
     cutoff_probability = config_json.at("cutoff_probability").GetDouble();

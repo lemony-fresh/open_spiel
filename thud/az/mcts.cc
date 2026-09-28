@@ -118,6 +118,49 @@ double SearchNode::PUCTValue(int parent_explore_count, double uct_c) const {
               (explore_count + 1));
 }
 
+double SearchNode::PUCTValue(int parent_explore_count, double uct_c,
+                             double untried_value) const {
+  if (!outcome.empty()) {
+    return outcome[player];
+  }
+
+  return ((explore_count != 0 ? total_reward / explore_count : untried_value) +
+          uct_c * prior * std::sqrt(parent_explore_count) /
+              (explore_count + 1));
+}
+
+UntriedMoveValue UntriedMoveValueFromString(const std::string& name) {
+  if (name == "upstream") return UntriedMoveValue::kUpstream;
+  if (name == "sibling_mean_minus_reduction") {
+    return UntriedMoveValue::kSiblingMeanMinusReduction;
+  }
+  if (name == "loss") return UntriedMoveValue::kLoss;
+  SpielFatalError(absl::StrCat("Unknown untried move value: ", name,
+                               " (upstream, sibling_mean_minus_reduction, loss)"));
+}
+
+double MCTSBot::UntriedValue(const SearchNode& node) const {
+  switch (untried_move_value_) {
+    case UntriedMoveValue::kUpstream:
+      return 0;
+    case UntriedMoveValue::kLoss:
+      return min_utility_;
+    case UntriedMoveValue::kSiblingMeanMinusReduction: {
+      double reward = 0, prior_mass = 0;
+      int visits = 0;
+      for (const SearchNode& child : node.children) {
+        if (child.explore_count == 0) continue;
+        reward += child.total_reward;
+        visits += child.explore_count;
+        prior_mass += child.prior;
+      }
+      if (visits == 0) return 0;
+      return reward / visits - untried_move_reduction_ * std::sqrt(prior_mass);
+    }
+  }
+  SpielFatalError("Unknown untried move value");
+}
+
 bool SearchNode::CompareFinal(const SearchNode& b) const {
   double out = (player >= 0 && player < outcome.size() ? outcome[player] : 0);
   double out_b =
@@ -214,7 +257,9 @@ MCTSBot::MCTSBot(const Game& game, std::shared_ptr<Evaluator> evaluator,
                  bool solve, int seed, bool verbose,
                  ChildSelectionPolicy child_selection_policy,
                  double dirichlet_alpha, double dirichlet_epsilon,
-                 bool dont_return_chance_node, double max_wall_clock_time)
+                 bool dont_return_chance_node, double max_wall_clock_time,
+                 UntriedMoveValue untried_move_value,
+                 double untried_move_reduction)
     : uct_c_{uct_c},
       max_simulations_{max_simulations},
       max_wall_clock_time_{max_wall_clock_time},
@@ -224,6 +269,9 @@ MCTSBot::MCTSBot(const Game& game, std::shared_ptr<Evaluator> evaluator,
       verbose_(verbose),
       solve_(solve),
       max_utility_(game.MaxUtility()),
+      min_utility_(game.MinUtility()),
+      untried_move_value_(untried_move_value),
+      untried_move_reduction_(untried_move_reduction),
       dirichlet_alpha_(dirichlet_alpha),
       dirichlet_epsilon_(dirichlet_epsilon),
       dont_return_chance_node_(dont_return_chance_node),
@@ -330,6 +378,10 @@ std::unique_ptr<State> MCTSBot::ApplyTreePolicy(
       } else {
         // Otherwise choose node with largest UCT value.
         double max_value = -std::numeric_limits<double>::infinity();
+        const double untried_value =
+            child_selection_policy_ == ChildSelectionPolicy::PUCT
+                ? UntriedValue(*current_node)
+                : 0;
         for (SearchNode& child : current_node->children) {
           double val;
           switch (child_selection_policy_) {
@@ -337,7 +389,8 @@ std::unique_ptr<State> MCTSBot::ApplyTreePolicy(
               val = child.UCTValue(current_node->explore_count, uct_c_);
               break;
             case ChildSelectionPolicy::PUCT:
-              val = child.PUCTValue(current_node->explore_count, uct_c_);
+              val = child.PUCTValue(current_node->explore_count, uct_c_,
+                                    untried_value);
               break;
           }
           if (val > max_value) {

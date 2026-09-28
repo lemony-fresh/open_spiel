@@ -27,6 +27,7 @@
 #include "open_spiel/abseil-cpp/absl/flags/flag.h"
 #include "open_spiel/abseil-cpp/absl/flags/parse.h"
 #include "thud/az/alpha_zero.h"
+#include "thud/az/mcts.h"
 #include "open_spiel/spiel_utils.h"
 #include "open_spiel/utils/file.h"
 #include "open_spiel/utils/init.h"
@@ -56,6 +57,11 @@ ABSL_FLAG(double, learning_rate, 0.0001, "Learning rate.");
 ABSL_FLAG(double, weight_decay, 0.0001, "Weight decay.");
 ABSL_FLAG(double, policy_alpha, 1, "What dirichlet noise alpha to use.");
 ABSL_FLAG(double, policy_epsilon, 0.25, "What dirichlet noise epsilon to use.");
+ABSL_FLAG(std::string, untried_move_value, "sibling_mean_minus_reduction",
+          "How the search values a move it has not tried yet: upstream (0, an even "
+          "game), sibling_mean_minus_reduction (KataGo's rule) or loss (AlphaZero's).");
+ABSL_FLAG(double, untried_move_reduction, 0.2,
+          "The reduction of sibling_mean_minus_reduction.");
 ABSL_FLAG(int, replay_buffer_size, 1 << 16,
           "How many states to store in the replay buffer.");
 ABSL_FLAG(double, replay_buffer_reuse, 3,
@@ -159,6 +165,10 @@ int main(int argc, char** argv) {
     config.inference_cache = absl::GetFlag(FLAGS_inference_cache);
     config.policy_alpha = absl::GetFlag(FLAGS_policy_alpha);
     config.policy_epsilon = absl::GetFlag(FLAGS_policy_epsilon);
+    config.untried_move_value = absl::GetFlag(FLAGS_untried_move_value);
+    config.untried_move_reduction = absl::GetFlag(FLAGS_untried_move_reduction);
+    open_spiel::thud_az::UntriedMoveValueFromString(
+        config.untried_move_value);  // Fails early if unknown.
     config.temperature = absl::GetFlag(FLAGS_temperature);
     config.temperature_drop = absl::GetFlag(FLAGS_temperature_drop);
     config.cutoff_probability = absl::GetFlag(FLAGS_cutoff_probability);

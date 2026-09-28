@@ -17,15 +17,17 @@
 //
 // Each pair starts both battles from the same opening, a few uniformly random moves from
 // the initial position (so pairs differ); swapping sides cancels whatever advantage an
-// opening gives one side. Both networks search with upstream's MCTSBot (PUCT), the same
-// number of simulations, no root noise, and always play their most visited move. Each
-// network has its own batched evaluator. Prints one JSON line per pair, then a summary:
+// opening gives one side. Both networks search with our copy of OpenSpiel's MCTSBot
+// (PUCT; thud/az/), the same number of simulations and the same rule for untried moves
+// (`untried`, default upstream's — with it our copy searches exactly as upstream's does,
+// thud/az/identity_check.cc), no root noise, and always play their most visited move.
+// Each network has its own batched evaluator. Prints one JSON line per pair, then a summary:
 // network A's summed margin per pair (in points), its mean with a 95% interval (normal
 // approximation), pairs won, drawn and lost, and each network's mean margin per side.
 //
-//   thud/experiments/build_az_program.sh az_match
+//   thud/az/build.sh thud/experiments/az_match.cc
 //   OMP_NUM_THREADS=4 build-shared/az_match a=RUN_DIR:STEP b=RUN_DIR:STEP sims=100 \
-//     pairs=50 [opening=4 threads=16 batch=16 seed=1]
+//     pairs=50 [opening=4 threads=16 batch=16 seed=1 untried=upstream]
 //
 // STEP is a checkpoint step of that run (-1: its most recent checkpoint).
 
@@ -44,20 +46,20 @@
 
 #include "open_spiel/abseil-cpp/absl/strings/str_cat.h"
 #include "open_spiel/abseil-cpp/absl/strings/str_format.h"
-#include "open_spiel/algorithms/alpha_zero_torch/device_manager.h"
-#include "open_spiel/algorithms/alpha_zero_torch/vpevaluator.h"
-#include "open_spiel/algorithms/alpha_zero_torch/vpnet.h"
-#include "open_spiel/algorithms/mcts.h"
 #include "open_spiel/spiel.h"
 #include "open_spiel/spiel_utils.h"
+#include "thud/az/device_manager.h"
+#include "thud/az/mcts.h"
+#include "thud/az/vpevaluator.h"
+#include "thud/az/vpnet.h"
 
 namespace {
 
 using open_spiel::Action;
-using open_spiel::algorithms::MCTSBot;
-using open_spiel::algorithms::torch_az::DeviceManager;
-using open_spiel::algorithms::torch_az::VPNetEvaluator;
-using open_spiel::algorithms::torch_az::VPNetModel;
+using open_spiel::thud_az::MCTSBot;
+using open_spiel::thud_az::torch_az::DeviceManager;
+using open_spiel::thud_az::torch_az::VPNetEvaluator;
+using open_spiel::thud_az::torch_az::VPNetModel;
 
 constexpr double kMaxMargin = 32;  // Thud's returns are the margin over 32.
 
@@ -142,6 +144,9 @@ int main(int argc, char** argv) {
   const int batch = args.GetInt("batch", 16);
   const int inference_threads = args.GetInt("inference_threads", 1);
   const int seed = args.GetInt("seed", 1);
+  const std::string untried = args.Get("untried", "upstream");
+  const open_spiel::thud_az::UntriedMoveValue untried_rule =
+      open_spiel::thud_az::UntriedMoveValueFromString(untried);
   args.CheckAllUsed();
   if (spec_a.empty() || spec_b.empty()) {
     std::cerr << "Usage: " << argv[0] << " a=DIR:STEP b=DIR:STEP [key=value ...]"
@@ -175,7 +180,8 @@ int main(int argc, char** argv) {
         return std::make_unique<MCTSBot>(
             *game, eval, /*uct_c=*/2, sims, /*max_memory_mb=*/1000, /*solve=*/false,
             /*seed=*/t, /*verbose=*/false,
-            open_spiel::algorithms::ChildSelectionPolicy::PUCT);
+            open_spiel::thud_az::ChildSelectionPolicy::PUCT, 0, 0,
+            /*dont_return_chance_node=*/false, /*max_wall_clock_time=*/-1, untried_rule);
       };
       std::unique_ptr<MCTSBot> a = make_bot(eval_a), b = make_bot(eval_b);
       for (int i = next++; i < pairs; i = next++) {
@@ -209,12 +215,12 @@ int main(int argc, char** argv) {
   int won = 0, drawn = 0, lost = 0;
   for (double x : pair_margin) (x > 0 ? won : x < 0 ? lost : drawn) += 1;
   std::cout << absl::StrFormat(
-                   "{\"summary\": true, \"a\": \"%s\", \"b\": \"%s\", \"sims\": %d, "
+                   "{\"summary\": true, \"a\": \"%s\", \"b\": \"%s\", \"untried\": \"%s\", \"sims\": %d, "
                    "\"pairs\": %d, \"a_mean_pair_margin\": %.2f, \"ci95\": [%.2f, %.2f], "
                    "\"a_pairs_won\": %d, \"drawn\": %d, \"lost\": %d, "
                    "\"a_mean_as_dwarfs\": %.2f, \"a_mean_as_trolls\": %.2f, "
                    "\"b_mean_as_dwarfs\": %.2f, \"b_mean_as_trolls\": %.2f}",
-                   spec_a, spec_b, sims, pairs, m, m - half_width, m + half_width, won,
+                   spec_a, spec_b, untried, sims, pairs, m, m - half_width, m + half_width, won,
                    drawn, lost, mean(a_dwarfs), mean(a_trolls), -mean(a_trolls),
                    -mean(a_dwarfs))
             << std::endl;

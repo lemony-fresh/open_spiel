@@ -168,11 +168,17 @@ cmake warns "static library kineto_LIBRARY-NOTFOUND not found" (a profiling libr
 the wheel does not ship); the build does not need it. Our AlphaZero defaults for Thud
 are in `thud/experiments/az_thud.flags` (`--flagfile`).
 
-Our own C++ programs that use the AlphaZero model (so far `az_layout_check.cc`) link
-against OpenSpiel built as a shared library, as `docs/library.md` describes, in
-`build-shared/`, so no upstream CMake file changes: `build-torch/`'s configure plus
-`BUILD_SHARED_LIB=ON`, then `make -j10 open_spiel` (~2.5 min). The commands, and the
-compiler flags copied from CMake, are in `thud/experiments/build_az_program.sh`.
+Our own C++ programs that use the AlphaZero model link against OpenSpiel built as a
+shared library, as `docs/library.md` describes, in `build-shared/`, so no upstream CMake
+file changes: `build-torch/`'s configure plus `BUILD_SHARED_LIB=ON`, then `make -j10
+open_spiel` (~2.5 min). The commands, and the compiler flags copied from CMake, are in
+`thud/experiments/build_az_program.sh`, which builds the programs on upstream's
+AlphaZero (`az_layout_check`, `az_throughput`, `az_reuse`, `az_buffer_stats`). Programs on
+**our copy** (`thud/az/`: the trainer `az_trainer` — upstream's example plus
+`--untried_move_value` and `--untried_move_reduction` — `identity_check`,
+`untried_move_check`, and `az_match` from `thud/experiments/`) are built by
+`thud/az/build.sh MAIN.cc`, which also links Abseil's static libraries (the flag parsing
+`libopen_spiel.so` does not re-export) and runs at `nice 19`.
 
 **Now that JAX and PyTorch are in the venv, the next cmake run in `build/` adds their
 Python tests** (OpenSpiel detects both when `OPEN_SPIEL_ENABLE_JAX`/`_PYTORCH` are
@@ -225,7 +231,11 @@ OpenSpiel is Apache License 2.0, and we keep Apache 2.0 for our own files too.
 - **Every new file** we add carries an Apache 2.0 header with our own copyright line.
 - **Every upstream file we modify** must carry a prominent notice stating that we changed it.
   Apache 2.0 section 4(b) requires this. Currently that means `open_spiel/games/CMakeLists.txt`
-  and `open_spiel/python/tests/pyspiel_test.py`.
+  and `open_spiel/python/tests/pyspiel_test.py` — and our **copies** of upstream files in
+  `thud/az/` (OpenSpiel's C++ AlphaZero and MCTS, our namespace `open_spiel::thud_az`), which
+  keep their original headers and get a change notice from `thud/az/import_from_upstream.py`.
+  Rerun that script only to re-import from upstream: it overwrites the copies, and with them
+  any change we made later.
 - **Never** remove or alter existing copyright notices, and never touch `LICENSE`.
 
 Note that Thud itself is a commercially published game. Upstreaming our implementation to
