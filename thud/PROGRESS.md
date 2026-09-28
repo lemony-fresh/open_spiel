@@ -18,8 +18,10 @@ on unmodified OpenSpiel — run A's network (64 x 4, 100 simulations) rose stead
 its untrained start to step 14 — then the dwarfs' play collapsed in its last two steps;
 100 simulations beat 400 at equal machine time; the dwarfs' searches are pure breadth
 (untried moves count as even games). **Stage 2 is done** — our own copy of the C++
-AlphaZero in `thud/az/`, proven identical to upstream — and **stage 3a is in progress**:
-the value of untried moves, implemented in the copy, with run C training on it tonight.
+AlphaZero in `thud/az/`, proven identical to upstream — and so is **stage 3a**: valuing
+untried moves at their visited siblings' mean minus a reduction (now our default) kept the
+dwarfs' searches narrow, stopped run A's collapse and made the dwarf play far stronger
+(run C, 2026-09-28). **Next: stage 3b**, playout caps with per-side settings.
 
 **Where we stand:**
 
@@ -65,35 +67,24 @@ the value of untried moves, implemented in the copy, with run C training on it t
 stage must show first, every decision so far and what waits for later are in **`PLAN.md`
 Phase 6, *Phase 6 roadmap and decision log*** — read it before choosing what to do.
 
-1. **Run A2 finished** (2026-09-27 12:17-16:47, no pause; 5 learning steps, 219,092
-   positions, archive copy after step 3 in `archive/`): at equal positions its losses
-   fall more slowly than run A's (half as many learning steps), with the same kind of
-   self-play swings; no sign yet that the 2x buffer helps. To settle it: A2's
-   checkpoints against the anchor (run A's untrained start), A2 step 5 against A step 10
-   (equal positions), and **resume A2 past ~351,000 positions** (A's collapse came at
-   steps 15-16) — which also tests resuming — then compare there. And the
-   400-simulation match postponed from the morning.
-2. **Stage 2 is done** (`PLAN.md` roadmap): our copy in `thud/az/` passed textual
-   identity (`import_from_upstream.py --check`), `identity_check.cc` (outputs, searches
-   with and without noise and with rollouts and the solver, checkpoints, a learning
-   step, all equal; controls differ), and the tic-tac-toe control, which learned as
-   upstream's did. Resuming our copy is untested: test it before growing the network.
-   Before each stage-3 change, `--check` lists exactly the files we have changed.
-3. **Stage 3a, in progress: the value of untried moves.** Implemented in our copy
-   (`--untried_move_value`: `upstream`, `sibling_mean_minus_reduction` — the default —
-   or `loss`; `--untried_move_reduction` 0.2), tested (`thud/az/untried_move_check.cc`,
-   `identity_check.cc`). **Tonight's chain** (`~/thud-runs/night_2026-09-27.sh`, from
-   20:31, progress in `~/thud-runs/stage1_matches/progress.log`): **run C** — run A's
-   settings on our copy with the default rule, 6 hours, in `~/thud-runs/stage3a_sims100/`
-   — then C's steps 8, 12, 14, 16 against the anchor, C step 16 against A steps 16 and 14
-   (the last also with the new rule in the search), then run A2 resumed past ~351,000
-   positions with upstream's trainer (testing resuming) and its matches. Tomorrow: read
-   them — does C avoid A's collapse, do the dwarfs' searches narrow
-   (`buffer_stats.jsonl`), is C stronger at equal positions?
-4. Then the rest of the roadmap: playout caps with per-side settings (3b), tree reuse
-   with one shared tree (3c), settings (4), the convolutional policy head (5), a cloud
-   GPU (6).
-5. **If we ever fall back to the Python route** (user, 2026-09-25): first re-verify the
+1. **Run C resumed** (user, 2026-09-28; since 12:27, `~/thud-runs/stage3a_resume.sh`):
+   6 hours of machine time with our copy's trainer from `config.json`, at `nice 19` and
+   `OMP_NUM_THREADS=3` so the user keeps ~3 cores; comparisons are by learning steps, so
+   the slower pace costs nothing. Then, automatically: C's new final network against A's
+   best (step 14, 100 pairs, ~1 hour — 20 pairs can only show differences above ~5
+   points), against C's step 16 (40 pairs), against the anchor (20 pairs); progress in
+   `~/thud-runs/stage1_matches/progress.log`. Checks: does C keep improving without
+   collapsing; does resuming work in our copy (the buffer reloaded at step 17); how the
+   shared-tree share develops (`buffer_stats.jsonl`). The buffer stays as it is (user);
+   its retest triggers, with caveats, are in `PLAN.md`, *Notes for later*.
+2. **Stage 3b: playout cap randomisation** in our copy, with per-side settings so the
+   dwarfs get deep searches more often (`PLAN.md` roadmap, 3b), behind a switch; tested
+   as 3a was (formula, identity with the switch off, behaviour), then a run against C at
+   equal positions, decided head-to-head.
+3. Then tree reuse with one shared tree (3c), the settings (4), the convolutional head
+   (5), a cloud GPU (6). Resuming works in upstream's trainer (A2); run it once in our
+   copy before growing the network.
+4. **If we ever fall back to the Python route** (user, 2026-09-25): first re-verify the
    layout-bug findings (`PLAN.md` Phase 6), then fix it in **one concise PR with
    experiments verifying correctness, for example on tic-tac-toe, chess and Thud**; the
    uncompiled inference needs its own fix.
@@ -1405,4 +1396,43 @@ instrumentation, and the pattern agreed for later, are in `PLAN.md` Phase 5).
   `git diff 4acaee09 -- thud/az` shows exactly what stage 3a changed in upstream's
   code (6 files, +136 −9).
 
-**Next step:** as recorded in `## Current status` — read tonight's results with the user.
+- **The night of 2026-09-27/28** (`~/thud-runs/night_2026-09-27.sh`, no pause in either
+  run): **run C** (the new rule, run A's settings) 20:31-02:32, 16 learning steps, 352,553
+  positions. Its dwarf searches visited a median 19 moves at every step (run A: 95-99).
+  Against the anchor: step 8 +10.4, 12 +43.5, 14 +40.1, 16 +46.4 — no collapse — and at
+  step 16 +21.6 as dwarfs (run A's step 16: −24.9). Head-to-head C step 16 against A step
+  16 +20.9 a pair (20 of 20 pairs); against A's best (step 14) −1.2 (−6.6 to +4.1) with
+  upstream's rule in the search, +3.9 (+0.1 to +7.6) with the new one. **Run A2 resumed**
+  04:35-07:16 with upstream's trainer: continued at step 6 with its model and full buffer
+  — resuming works — to step 8; against the anchor step 5 +9.4, step 8 +16.6 (run A at
+  equal positions: ~+19 to +23 before its collapse, +3.9 after). Conclusions and caveats
+  (one run each; the anchor stops ranking strong networks) in `PLAN.md`. My results loop
+  missed A2's step 8 (a name list); read from its file.
+
+- **The user asked how sure we are, whether a longer run is needed, about the buffer and
+  about tree reuse (2026-09-28 morning).** Match intervals had used the normal factor
+  1.96; with 20 pairs Student's t (2.09) is right: C step 16 against A's best with the new
+  rule is +3.9 (−0.2 to +7.9), not significant (reported as +0.1 to +7.6). `az_match` now
+  uses t. Certain: the rule narrows the dwarfs' searches, and C's final far outplays A's
+  final; not shown: C beats A's best, nor — with one run per rule — that the rule trains
+  better. Proposed: resume run C ~6 hours (stability, and resuming in our copy). Buffer:
+  left as is; retest when learning stalls and before training a bigger network from a
+  smaller one's games (user). Tree reuse: with the new rule the move played holds ~13-17%
+  of the visits for both sides (run C's buffer statistics) — roughly 15% more
+  simulations per search, modest.
+
+- **Later that morning**: the user asked how long C against A's best takes (20 pairs:
+  12 minutes with upstream's rule in the search, 27 with the new one; ~100 pairs to see
+  a 2-3 point difference), agreed to resume run C with most cores while working, asked
+  for more buffer triggers — with caveats, since some happen in healthy training (a newer
+  network losing to an older one): now in `PLAN.md` as event triggers and signal
+  triggers, the latter counting only when pronounced and persistent against a fixed
+  reference. Tree reuse: the user expects its gain to grow as searches focus, and noted
+  that with per-side budgets the dwarfs' extra simulations also serve the trolls, and
+  with equal budgets the more focused side helps the other — all in `PLAN.md`. Its
+  priority stays after 3b (~15% more simulations today against playout caps' 1.37x; the
+  larger change), to move up if the share passes ~30% or when 3b is done. Run C resumed
+  at 12:27.
+
+**Next step:** as recorded in `## Current status` — run C's resumed results, then stage
+3b.

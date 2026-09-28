@@ -22,8 +22,8 @@
 // (`untried`, default upstream's — with it our copy searches exactly as upstream's does,
 // thud/az/identity_check.cc), no root noise, and always play their most visited move.
 // Each network has its own batched evaluator. Prints one JSON line per pair, then a summary:
-// network A's summed margin per pair (in points), its mean with a 95% interval (normal
-// approximation), pairs won, drawn and lost, and each network's mean margin per side.
+// network A's summed margin per pair (in points), its mean with a 95% interval (Student's
+// t), pairs won, drawn and lost, and each network's mean margin per side.
 //
 //   thud/az/build.sh thud/experiments/az_match.cc
 //   OMP_NUM_THREADS=4 build-shared/az_match a=RUN_DIR:STEP b=RUN_DIR:STEP sims=100 \
@@ -210,8 +210,13 @@ int main(int argc, char** argv) {
   const double m = mean(pair_margin);
   double var = 0;
   for (double x : pair_margin) var += (x - m) * (x - m);
-  const double half_width =
-      pairs > 1 ? 1.96 * std::sqrt(var / (pairs - 1)) / std::sqrt(pairs) : 0;
+  // Student's t for pairs - 1 degrees of freedom (Cornish-Fisher expansion around 1.96;
+  // 2.093 for 19). Until 2026-09-28 this used 1.96, slightly too narrow for 20 pairs.
+  const double z = 1.959964, df = pairs - 1;
+  const double t = df > 0 ? z + (z * z * z + z) / (4 * df) +
+                                (5 * std::pow(z, 5) + 16 * z * z * z + 3 * z) / (96 * df * df)
+                          : 0;
+  const double half_width = pairs > 1 ? t * std::sqrt(var / df) / std::sqrt(pairs) : 0;
   int won = 0, drawn = 0, lost = 0;
   for (double x : pair_margin) (x > 0 ? won : x < 0 ? lost : drawn) += 1;
   std::cout << absl::StrFormat(
