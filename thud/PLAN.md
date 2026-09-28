@@ -474,10 +474,10 @@ equal machine time. Never stack changes that have not been shown to work.
 |---|---|---|
 | 0 — done | C++ AlphaZero builds (LibTorch from the pip wheel); tic-tac-toe control; Thud smoke test; C++ against Python layout control; throughput | — |
 | 1 — done 2026-09-27 | **Baseline learning with unmodified OpenSpiel**: 64 x 4, 100 against 400 simulations at equal machine time, with a **match program** (head-to-head, pairs of battles with sides swapped); with unchanged code, the **tree-reuse potential** and the dwarfs' **visit spread**. Result: learning works through step 14, then the dwarfs' play collapsed; 100 beat 400; the dwarfs' searches are pure breadth. Still running: run A2 (2x buffer) | Learning works: later networks beat earlier ones head-to-head, the evaluation per side improves. And which of 100 or 400 is better |
-| 2 — done 2026-09-27 | **Our own copy** of the C++ AlphaZero and its MCTS in `thud/az/`, changed in nothing but its namespace (`open_spiel::thud_az`; parameter names identical) — made by `import_from_upstream.py` from upstream commit 540bba6e, built by `thud/az/build.sh`. Passed: (1) **textual identity** — `import_from_upstream.py --check`: all 12 copies are exactly a fresh import (a one-character change is caught), which covers code no test reaches (the batching queue, the trainer's threads, resuming); (2) **`identity_check.cc`** against upstream's code: equal network outputs, equal searches without and with root noise and with random rollouts and the solver (50 of 50 positions each), a checkpoint of ours loads in upstream's code with equal outputs, an equal learning step; every control differs — which covers the layout check; (3) the **tic-tac-toe control** through `az_trainer` (session 5's settings, 19 minutes): losses 1.55 / 0.50 → 1.27 / 0.07 → 0.96 / 0.04 at steps 1, 17, 26 (upstream's copy: 1.56 / 0.47 → 1.27 / 0.07 → 0.95 / 0.05), self-play draws 38% → 86% (upstream 41% → 83%), against MCTS at 40 / 126 / 400 simulations +0.36 / +0.26 / +0.12 at the end (upstream +0.34 / +0.38 / +0.06), draws against stronger MCTS. Resuming our copy is untested by any run — test it before growing the network | Textual identity; identical outputs, searches, training step; upstream loads our checkpoint; the tic-tac-toe control learns as upstream's did |
-| 3a — in progress (2026-09-27) | **Value of untried moves** — urgent (user): the dwarfs' searches spread over nearly every move once the network judges them lost, so their policy targets stay flat, and the better the trolls get, the worse it becomes. **Implemented** in our copy (`thud/az/mcts.{h,cc}`, passed through the trainer as `--untried_move_value` and `--untried_move_reduction`, saved in `config.json`): three rules — `upstream` (0), `sibling_mean_minus_reduction` (the visit-weighted mean of the visited siblings minus 0.2 × √(their prior mass), KataGo's rule with the siblings' mean for the parent's value), `loss` (AlphaZero's) — at every node, **defaulting to sibling_mean_minus_reduction** (user, 2026-09-27; an exception to the upstream-default rule above). Tests: `untried_move_check.cc` (the formula on a hand-built node; on 85 self-play positions of run A's step 14 at 100 simulations the dwarfs' searches visit a median 99 moves with upstream's rule, 31 with the default, 1 with `loss`, which without root noise never leaves its first move; the trolls' 17, 23, 1); `identity_check.cc` still passes with `upstream`, and the default changes 50 of 50 searches. **Run C** (run A's settings with the default rule, 6 hours) started 2026-09-27 20:31 | Beats run A head-to-head at equal positions, and the dwarfs' searches narrow |
-| 3b | **Playout cap randomisation**, with separate settings per side so the dwarfs get deep searches more often — or budgets scaled with the number of legal moves (user asked about more simulations for the dwarfs, 2026-09-27: after 3a, since until untried moves are valued differently extra simulations only widen a losing side's search; it tilts self-play towards the dwarfs, a bias to measure; the trolls' floor is ~100 simulations, as at 50 their ~60 moves would also get under one visit each; matches then fix the per-side budgets) | Beats the previous best setting head-to-head at equal time |
-| 3c | **Tree reuse, one tree shared by both sides** — only if the reusable share stays large (first reading: the dwarfs would inherit a median 44% of the trolls' visits, the trolls ~1% of the dwarfs'; own-tree reuse ~0) | Same searches with reuse off; beats 3b's setting head-to-head |
+| 2 — done 2026-09-27 | **Our own copy** of the C++ AlphaZero and its MCTS in `thud/az/`, changed in nothing but its namespace (`open_spiel::thud_az`; parameter names identical) — made by `import_from_upstream.py` from upstream commit 540bba6e, built by `thud/az/build.sh`. Passed: (1) **textual identity** — `import_from_upstream.py --check`: all 12 copies are exactly a fresh import (a one-character change is caught), which covers code no test reaches (the batching queue, the trainer's threads, resuming); (2) **`identity_check.cc`** against upstream's code: equal network outputs, equal searches without and with root noise and with random rollouts and the solver (50 of 50 positions each), a checkpoint of ours loads in upstream's code with equal outputs, an equal learning step; every control differs — which covers the layout check; (3) the **tic-tac-toe control** through `az_trainer` (session 5's settings, 19 minutes): losses 1.55 / 0.50 → 1.27 / 0.07 → 0.96 / 0.04 at steps 1, 17, 26 (upstream's copy: 1.56 / 0.47 → 1.27 / 0.07 → 0.95 / 0.05), self-play draws 38% → 86% (upstream 41% → 83%), against MCTS at 40 / 126 / 400 simulations +0.36 / +0.26 / +0.12 at the end (upstream +0.34 / +0.38 / +0.06), draws against stronger MCTS. Resuming works in upstream's trainer (run A2, 2026-09-28); our copy's resume code is textually upstream's plus the two new settings in `config.json`, which a run from before resumes as `upstream` — run it once before growing the network | Textual identity; identical outputs, searches, training step; upstream loads our checkpoint; the tic-tac-toe control learns as upstream's did |
+| 3a — done 2026-09-28 | **Value of untried moves** — urgent (user): the dwarfs' searches spread over nearly every move once the network judges them lost, so their policy targets stay flat, and the better the trolls get, the worse it becomes. **Implemented** in our copy (`thud/az/mcts.{h,cc}`, passed through the trainer as `--untried_move_value` and `--untried_move_reduction`, saved in `config.json`): three rules — `upstream` (0), `sibling_mean_minus_reduction` (the visit-weighted mean of the visited siblings minus 0.2 × √(their prior mass), KataGo's rule with the siblings' mean for the parent's value), `loss` (AlphaZero's) — at every node, **defaulting to sibling_mean_minus_reduction** (user, 2026-09-27; an exception to the upstream-default rule above). Tests: `untried_move_check.cc` (the formula on a hand-built node; on 85 self-play positions of run A's step 14 at 100 simulations the dwarfs' searches visit a median 99 moves with upstream's rule, 31 with the default, 1 with `loss`, which without root noise never leaves its first move; the trolls' 17, 23, 1); `identity_check.cc` still passes with `upstream`, and the default changes 50 of 50 searches. **Run C** (run A's settings with the default rule, 6 hours, 2026-09-27 20:31 to 2026-09-28 02:32): **no collapse, and much stronger dwarf play** — against the anchor step 8 +10.4, 12 +43.5, 14 +40.1, 16 +46.4 (run A: +18.9, +23.1, +26.1, +3.9); at step 16 as dwarfs +21.6 (A: −24.9); the dwarfs' searches visited a median 19 moves at every step (A: 95-99). Head-to-head at equal positions, C step 16 against A step 16: **+20.9** a pair (+17.3 to +24.4, 20 of 20 pairs); against A's best, step 14: −1.2 (−6.9 to +4.4) searching with upstream's rule, +3.9 (−0.2 to +7.9) with the new one — neither significant. Details in *First training runs* | Beats run A head-to-head at equal positions, and the dwarfs' searches narrow |
+| 3b — next | **Playout cap randomisation**, with separate settings per side so the dwarfs get deep searches more often — or budgets scaled with the number of legal moves (user asked about more simulations for the dwarfs, 2026-09-27: after 3a, since until untried moves are valued differently extra simulations only widen a losing side's search; it tilts self-play towards the dwarfs, a bias to measure; the trolls' floor is ~100 simulations, as at 50 their ~60 moves would also get under one visit each; matches then fix the per-side budgets) | Beats the previous best setting head-to-head at equal time |
+| 3c | **Tree reuse, one tree shared by both sides** — only if the reusable share stays large (own-tree reuse ~0. Shared-tree share = the most visited move's share, from the buffer statistics: with upstream's rule the dwarfs' 1-3%, the trolls' 57-77% while they won easily, then 17-20% (run A); **with the new rule ~13-14% for the dwarfs and ~13-17% for the trolls at 100 simulations (run C) — roughly 15% more simulations per search, modest against playout caps' 1.37x**; re-read as the policy sharpens, since the watcher records it every step). **Priority** (user asked, 2026-09-28): kept after 3b — today it buys ~15% more simulations a search, playout caps 1.37x in KataGo's measurement, and it is the larger change (a tree kept across moves and shared by both sides, root noise re-applied, a larger memory limit than the trainer's 10 MB); 3b's budget semantics (new simulations, or topping up to N visits) are chosen with reuse in mind. **Move it up** if the shared-tree share rises above ~30% for either side in the watcher's statistics, or when 3b is done | Same searches with reuse off; beats 3b's setting head-to-head |
 | 4 | Settings: `uct_c`, root noise α (0.03 and 0.3 against 0.1), temperature drop | Each change beats the previous setting head-to-head |
 | 5 | **Convolutional policy head** (user, 2026-09-26: later in the roadmap) — first on the layout-check harness, with an exhaustive test of the action-to-plane map. It is the one planned change that makes our networks unloadable by unmodified OpenSpiel | Faster policy learning on the harness; then no worse in self-play head-to-head |
 | 6 | Cloud GPU, longer runs | Throughput measured there first |
@@ -490,10 +490,13 @@ equal machine time. Never stack changes that have not been shown to work.
 
 - **Grow the network** (user: "will almost certainly be needed") — when improvement
   flattens. KataGo's recipe, possible without changing upstream code.
-- ~~Enlarge the replay buffer~~ — **decided 2026-09-27** (the trigger fired: run A's step 8
-  beat its final network; user: also needed to grow the network and to train other heads
-  later): test 2x first as run A2, and archive every self-play position from now on
-  (*Notes for later*).
+- **The replay buffer** — tested 2x as run A2 (2026-09-27/28: slower learning, no collapse
+  by 351,000 positions, weak evidence); left at the default for now (user, 2026-09-28).
+  Retest on the triggers in *Notes for later*: events (before growing the network, faster
+  self-play, playout caps, a change of reuse or learning rate) and — only when pronounced
+  and persistent against a fixed reference — signals (stalled learning, a newer network
+  losing, swinging results, a growing gap between fresh and training loss, game length).
+  Every self-play position is archived.
 - **Match-aware play** — after a strong single-battle agent (*Deferred decisions*).
 - **End-of-battle limits** — re-measure once the engine plays strongly (*Deferred
   decisions*).
@@ -521,6 +524,9 @@ equal machine time. Never stack changes that have not been shown to work.
 | 2026-09-27 | Stage 2 done: our copy in `thud/az/`, proven identical (textual check, identity check, tic-tac-toe control) | measured | roadmap |
 | 2026-09-27 | Untried moves: three rules (upstream, siblings' mean minus reduction, loss) behind a flag, **default siblings' mean minus 0.2 × √(prior mass)**, applied at every node; test identity with upstream's rule too | user | roadmap, 3a |
 | 2026-09-27 | Matches search with our copy (`az_match`, `untried=`, default upstream's rule, which reproduces the earlier matches exactly) | Claude | *First training runs* |
+| 2026-09-28 | Stage 3a done: the siblings' mean minus a reduction stops run A's collapse and strengthens the dwarfs (run C) | measured, for the user to confirm | roadmap, 3a |
+| 2026-09-28 | Replay buffer: leave it for now; retest when learning stalls and before training a bigger network from a smaller one's games | user | *Notes for later* |
+| 2026-09-28 | Match intervals use Student's t (1.96 before: slightly too narrow) | Claude | *First training runs* |
 | 2026-09-26 | Replay buffer: default 65,536 positions for now | user | *Notes for later* |
 | 2026-09-26 | Untried moves: measure first | user | *Margins as the value target* |
 | 2026-09-26 | Our own copy of the C++ AlphaZero and its MCTS, for the changes of stage 3 | user | *Deferred decisions* |
@@ -837,8 +843,10 @@ first session, with no patch at all.**
     (below) shows the fall came only at steps 15-16, after a steady rise to step 14.
     That is one of the triggers noted for the replay buffer (a newer network losing to an
     older one): with 65,536 positions (~240 games, the last ~3 learning steps' worth) the
-    network trains only on its latest games. Other possible causes, untested: the
-    dwarfs' near-flat policy targets (breadth searches); the noise of 20-pair matches.
+    network trains only on its latest games. Other possible causes: the dwarfs'
+    near-flat policy targets (breadth searches) — since tested: run C, which fixed them,
+    did not collapse, and the 2x buffer alone (A2) changed less — and the noise of
+    20-pair matches.
   - Because the networks rise and fall, one final checkpoint against another is a noisy
     comparison; so every network also plays a **common anchor**, run A's untrained start.
 
@@ -893,6 +901,60 @@ first session, with no patch at all.**
   +1.9 against the anchor, run A's from step 8 on +18.9 to +26.1. Run A2 (2x buffer)
   must run past A's step 16 (~5.8 hours, ~351,000 positions) to show whether a larger
   buffer prevents the collapse.
+
+  **Run C (stage 3a: untried moves valued at the siblings' mean minus 0.2 × √(their
+  prior mass)), 2026-09-27 20:31 to 2026-09-28 02:32** (`~/thud-runs/stage3a_sims100/`,
+  our copy's `az_trainer`, run A's settings otherwise): 6 hours without a pause, 16
+  learning steps, 352,553 positions (run A: 350,988). Its dwarf searches visited a median
+  19 moves at every step (the most visited 13-32%), run A's 95-99 (1-3%). Policy loss
+  4.77 → 4.05 (A: 4.78 → 4.09). Self-play stayed the trolls' (the dwarfs won at most 8
+  games a step), without run A's swings. Matches, 100 simulations, 20 pairs, the
+  searches using upstream's rule unless noted:
+
+  | Match | Margin per pair (95% interval) | Pairs won / drawn / lost | First network as dwarfs / as trolls |
+  |---|---|---|---|
+  | C step 8 vs the anchor | +10.4 (+5.2 to +15.6) | 15 / 1 / 4 | +3.1 / +7.3 |
+  | C step 12 vs the anchor | +43.5 (+40.0 to +46.9) | 20 / 0 / 0 | +19.9 / +23.6 |
+  | C step 14 vs the anchor | +40.1 (+36.9 to +43.3) | 20 / 0 / 0 | +12.5 / +27.6 |
+  | C step 16 vs the anchor | +46.4 (+42.8 to +50.0) | 20 / 0 / 0 | +21.6 / +24.8 |
+  | C step 16 vs A step 16 (equal positions) | **+20.9** (+17.3 to +24.4) | 20 / 0 / 0 | −3.4 / +24.2 |
+  | C step 16 vs A step 14 (A's best) | −1.2 (−6.6 to +4.1) | 6 / 2 / 12 | −2.4 / +1.1 |
+  | the same, both searching with the new rule | +3.9 (−0.2 to +7.9) | 14 / 0 / 6 | −12.3 / +16.2 |
+
+  **How sure** (the user asked, 2026-09-28): certain that the rule changes the search as
+  intended (19 moves visited against 95-99, at every step); certain that C's final
+  network is far stronger than A's final (+20.9, t-interval +17.0 to +24.7); **not shown**
+  that C beats A's best checkpoint (−1.2, −6.9 to +4.4; with the new rule in both
+  searches +3.9, −0.2 to +7.9 — first reported as +0.1 to +7.6 with the normal factor
+  1.96, see below). And none of these intervals covers the variation between training
+  runs: one run per rule cannot show that the rule trains better — run A's collapse may
+  have been bad luck. The evidence is consistent with the rule and with its mechanism,
+  and AlphaZero and KataGo both avoid valuing untried moves as even games, so it stays
+  the default. **Run C resumed** (user, 2026-09-28 12:27) for another ~6 hours — does it
+  keep improving without collapsing, and does resuming work in our copy (needed before
+  growing the network) — as the baseline for stage 3b, then played against A's best in
+  100 pairs; replicates of runs A and C (6 hours each) would settle the causal question,
+  and are skipped unless it matters.
+
+  **Match intervals until 2026-09-28 used the normal factor 1.96**; with 20 pairs Student's
+  t (2.09 for 19 degrees of freedom) is right, about 7% wider. `az_match` uses t since.
+  Recomputed: C step 16 against A step 16 +17.0 to +24.7; against the anchor +42.5 to
+  +50.3; A step 14 against the anchor +22.8 to +29.5. No conclusion changed except that
+  the new-rule match against A's best is no longer significant.
+  Against the anchor C scored far more than A's best (+46 against +26) yet only matched it
+  head-to-head: the anchor measures how badly a network beats an untrained one, which
+  stops ranking strong networks — head-to-head matches are the measure between them.
+  One run each: the regression might also have been avoided by chance.
+
+  **Run A2 (2x buffer) resumed, 2026-09-28 04:35 to 07:16** with upstream's trainer from
+  its `config.json`: it continued at step 6 from 263,020 positions with the full buffer
+  and the latest model loaded — **resuming works** — to step 8 (step 9 was cut off by the
+  time limit); no pause. Against the anchor: step 5 (219,092 positions) +9.4 (+5.5 to
+  +13.4), step 8 (350,867) +16.6 (+11.5 to +21.7; as dwarfs −13.2, as trolls +29.8). At
+  equal positions run A scored +18.9 at 176,000 and +23.1 at 264,000, but +3.9 at 351,000
+  (the collapse). So the 2x buffer learned more slowly, and did not collapse by 351,000;
+  one run, so weak evidence that the buffer helps stability — the untried-move rule
+  changed far more.
 
 - [ ] Cloud GPU (x86 + NVIDIA): OpenSpiel's documented setup, whose default LibTorch
   download is the CUDA build (`global_variables.sh:89`).
@@ -1054,6 +1116,45 @@ Add each setting here as it is decided.
   `utils/serializable_circular_buffer.h`). So: stop the run; a program of ours on the
   shared-library route trains the larger network on the saved buffer and writes the new
   `vpnet.pb` and checkpoint; resume. Needs one end-to-end test first.
+- **Replay buffer: reconsider later** (user, 2026-09-28: leave it for now). Run A2 (2x)
+  alone learned more slowly and had not collapsed by 351,000 positions; every position
+  is archived from A2 on. The triggers for a retest come in two kinds (user, 2026-09-28:
+  some happen in healthy training too, so they need caveats):
+
+  **Event triggers** — a change we make; act when it happens, nothing to misread:
+  - **Before training a bigger network from a smaller one's games** (user): the new
+    network learns from stored positions, so how many, and from how many network
+    versions, matters (the archive keeps them all).
+  - **Much faster self-play**, e.g. a GPU: the same number of positions then covers far
+    less playing time and fewer network versions; rescale the buffer to keep its span.
+  - **Playout caps** (stage 3b): only full-search positions are recorded, so the same
+    buffer spans more games.
+  - **A change of reuse, learning rate or batch size**: in OpenSpiel these are tied to the
+    buffer (a learning step every `buffer / reuse` new positions).
+
+  **Signal triggers** — measurements that also move in healthy training; each counts
+  only if the effect is **pronounced and persistent**, measured against a fixed
+  reference (the anchor, or a ladder of past checkpoints) with intervals, over several
+  learning steps — never one match or one step:
+  - **Learning stalls** (user): plateaus come and go in healthy training. Counts if
+    several consecutive checkpoints show no gain head-to-head against earlier ones, and
+    after ruling out other causes (learning rate, capacity, the search).
+  - **A newer network loses to an older one** (user's caveat): happens in healthy
+    training — noise, and cycling between strategies, as AlphaGo Zero's gating assumed.
+    Counts if the drop is large (the interval well clear of 0) and lasts, several
+    checkpoints below an earlier peak; run A's collapse (+26.1 at step 14 against the
+    anchor, +3.9 at step 16) was large, though seen over only two steps.
+  - **Swinging self-play results**: win shares swing naturally, as one side's
+    improvement shifts them until the other adapts. Counts if large swings recur without
+    net progress against the fixed reference.
+  - **The value loss on fresh games pulling away from the training loss**: some gap is
+    normal (the training loss is on seen positions). Counts if the gap grows steadily
+    over several steps while the fresh-game loss rises. Needs a program of ours (the
+    trainer does not report it).
+  - **Game length changing a lot**: lengths fluctuate with style from step to step (run
+    A: 143-310 moves). Counts if the change is large (say a third) and lasts, since the
+    buffer then holds correspondingly more or fewer games.
+
 - **Replay buffer size: to be increased** (user, 2026-09-27; first kept at the default
   65,536 positions, ~240 games). Run A's step 8 beat its final network, one of the
   triggers below — though regressions are a known part of self-play: AlphaGo Zero let a
@@ -1065,8 +1166,10 @@ Add each setting here as it is decided.
   growing the network or training another head later, which must learn from far more
   than the last ~240 games: the trainer rewrites its buffer file each step and replaces
   the whole buffer every `reuse` steps, so copying the file every `reuse` steps keeps
-  every position once (~10 KB each, ~15 GB a day at 64 x 4). The notes from when the
-  default was kept:
+  every position once (~10 KB each, ~15 GB a day at 64 x 4). **Run A2 (2x) result,
+  2026-09-28**: it learned more slowly per position (half as many learning steps) and had
+  not collapsed by 351,000 positions, where run A did — weak evidence, one run each; the
+  untried-move rule changed far more (run C). The notes from when the default was kept:
   OpenSpiel learns once every `buffer / reuse` new positions (`alpha_zero.cc:324`) and
   rewrites the buffer file each time (`:403`, ~10.3 KB a position), so 3 GB (~290,000
   positions) would update the network only every ~70 minutes at 100 simulations, ~4.7
@@ -1099,6 +1202,13 @@ goes into our own copy, decided 2026-09-26 — stages 3 and 5 of the roadmap, on
   sides, not one per side as OpenSpiel's self-play has. The potential can be measured
   with unchanged code first: the share of root visits in the move played, per side.
   Root noise must be re-applied to the reused root. Changes the search and the trainer.
+  Expected (user, 2026-09-28): the share grows as the policy sharpens (seen once: run A's
+  trolls held 57-77% while winning easily; run C held 13-17% throughout, not yet); with
+  per-side budgets (3b) the dwarfs' extra simulations also serve the trolls' next search
+  (their subtree holds the dwarfs' exploration of the trolls' replies: at 300 dwarf
+  simulations and 14%, ~42 inherited); with equal budgets, the side whose search is more
+  focused helps the other. A design choice decides what reuse buys: "N new simulations
+  per search" adds visits, "top up to N visits" (AlphaGo Zero's style) saves compute.
   **Measured 2026-09-26** (`thud/experiments/az_reuse.cc`, 64 x 4, fresh and slightly
   trained networks, 100 / 400 / 1,000 simulations): a side's own tree two plies later
   would inherit almost nothing (0.0-0.4% of its visits in every configuration), so only a
