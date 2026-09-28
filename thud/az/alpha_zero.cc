@@ -185,7 +185,9 @@ std::unique_ptr<MCTSBot> InitAZBot(const AlphaZeroConfig& config,
       /*verbose=*/false, ChildSelectionPolicy::PUCT,
       evaluation ? 0 : config.policy_alpha,
       evaluation ? 0 : config.policy_epsilon,
-      /*dont_return_chance_node*/ true);
+      /*dont_return_chance_node*/ true, /*max_wall_clock_time=*/-1,
+      UntriedMoveValueFromString(config.untried_move_value),
+      config.untried_move_reduction);
 }
 
 // An actor thread runner that generates games and returns trajectories.
