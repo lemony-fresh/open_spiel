@@ -74,13 +74,16 @@ Phase 6, *Phase 6 roadmap and decision log*** — read it before choosing what t
    best (step 14, 100 pairs, ~1 hour — 20 pairs can only show differences above ~5
    points), against C's step 16 (40 pairs), against the anchor (20 pairs); progress in
    `~/thud-runs/stage1_matches/progress.log`. Checks: does C keep improving without
-   collapsing; does resuming work in our copy (the buffer reloaded at step 17); how the
-   shared-tree share develops (`buffer_stats.jsonl`). The buffer stays as it is (user);
+   collapsing; how the shared-tree share develops (`buffer_stats.jsonl`). **Resuming
+   works in our copy**: step 17 (12:53) continued from 352,553 positions with the full
+   buffer reloaded. The buffer stays as it is (user);
    its retest triggers, with caveats, are in `PLAN.md`, *Notes for later*.
 2. **Stage 3b: playout cap randomisation** in our copy, with per-side settings so the
-   dwarfs get deep searches more often (`PLAN.md` roadmap, 3b), behind a switch; tested
-   as 3a was (formula, identity with the switch off, behaviour), then a run against C at
-   equal positions, decided head-to-head.
+   dwarfs get deep searches more often. **A proposal is written up** (`PLAN.md`, *Changes
+   to the search and trainer*, playout caps: `p` 0.25 trolls / 0.5 dwarfs, `N` 400, `n`
+   100, quick searches unrecorded and without root noise, a switch off by default,
+   judged against run C at equal machine time) — to decide with the user, then
+   implement and test as 3a was.
 3. Then tree reuse with one shared tree (3c), the settings (4), the convolutional head
    (5), a cloud GPU (6). Resuming works in upstream's trainer (A2); run it once in our
    copy before growing the network.
