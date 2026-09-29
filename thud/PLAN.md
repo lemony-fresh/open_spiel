@@ -476,8 +476,8 @@ equal machine time. Never stack changes that have not been shown to work.
 | 1 — done 2026-09-27 | **Baseline learning with unmodified OpenSpiel**: 64 x 4, 100 against 400 simulations at equal machine time, with a **match program** (head-to-head, pairs of battles with sides swapped); with unchanged code, the **tree-reuse potential** and the dwarfs' **visit spread**. Result: learning works through step 14, then the dwarfs' play collapsed; 100 beat 400; the dwarfs' searches are pure breadth. Still running: run A2 (2x buffer) | Learning works: later networks beat earlier ones head-to-head, the evaluation per side improves. And which of 100 or 400 is better |
 | 2 — done 2026-09-27 | **Our own copy** of the C++ AlphaZero and its MCTS in `thud/az/`, changed in nothing but its namespace (`open_spiel::thud_az`; parameter names identical) — made by `import_from_upstream.py` from upstream commit 540bba6e, built by `thud/az/build.sh`. Passed: (1) **textual identity** — `import_from_upstream.py --check`: all 12 copies are exactly a fresh import (a one-character change is caught), which covers code no test reaches (the batching queue, the trainer's threads, resuming); (2) **`identity_check.cc`** against upstream's code: equal network outputs, equal searches without and with root noise and with random rollouts and the solver (50 of 50 positions each), a checkpoint of ours loads in upstream's code with equal outputs, an equal learning step; every control differs — which covers the layout check; (3) the **tic-tac-toe control** through `az_trainer` (session 5's settings, 19 minutes): losses 1.55 / 0.50 → 1.27 / 0.07 → 0.96 / 0.04 at steps 1, 17, 26 (upstream's copy: 1.56 / 0.47 → 1.27 / 0.07 → 0.95 / 0.05), self-play draws 38% → 86% (upstream 41% → 83%), against MCTS at 40 / 126 / 400 simulations +0.36 / +0.26 / +0.12 at the end (upstream +0.34 / +0.38 / +0.06), draws against stronger MCTS. **Resuming works** in upstream's trainer (run A2) and in our copy (run C resumed 2026-09-28: step 17 continued from 352,553 positions with the full buffer and the latest model reloaded) | Textual identity; identical outputs, searches, training step; upstream loads our checkpoint; the tic-tac-toe control learns as upstream's did |
 | 3a — done 2026-09-28 | **Value of untried moves** — urgent (user): the dwarfs' searches spread over nearly every move once the network judges them lost, so their policy targets stay flat, and the better the trolls get, the worse it becomes. **Implemented** in our copy (`thud/az/mcts.{h,cc}`, passed through the trainer as `--untried_move_value` and `--untried_move_reduction`, saved in `config.json`): three rules — `upstream` (0), `sibling_mean_minus_reduction` (the visit-weighted mean of the visited siblings minus 0.2 × √(their prior mass), KataGo's rule with the siblings' mean for the parent's value), `loss` (AlphaZero's) — at every node, **defaulting to sibling_mean_minus_reduction** (user, 2026-09-27; an exception to the upstream-default rule above). Tests: `untried_move_check.cc` (the formula on a hand-built node; on 85 self-play positions of run A's step 14 at 100 simulations the dwarfs' searches visit a median 99 moves with upstream's rule, 31 with the default, 1 with `loss`, which without root noise never leaves its first move; the trolls' 17, 23, 1); `identity_check.cc` still passes with `upstream`, and the default changes 50 of 50 searches. **Run C** (run A's settings with the default rule, 6 hours, 2026-09-27 20:31 to 2026-09-28 02:32): **no collapse, and much stronger dwarf play** — against the anchor step 8 +10.4, 12 +43.5, 14 +40.1, 16 +46.4 (run A: +18.9, +23.1, +26.1, +3.9); at step 16 as dwarfs +21.6 (A: −24.9); the dwarfs' searches visited a median 19 moves at every step (A: 95-99). Head-to-head at equal positions, C step 16 against A step 16: **+20.9** a pair (+17.3 to +24.4, 20 of 20 pairs); against A's best, step 14: −1.2 (−6.9 to +4.4) searching with upstream's rule, +3.9 (−0.2 to +7.9) with the new one — neither significant. Details in *First training runs* | Beats run A head-to-head at equal positions, and the dwarfs' searches narrow |
-| 3b — next | **Playout cap randomisation**, with separate settings per side so the dwarfs get deep searches more often — or budgets scaled with the number of legal moves (user asked about more simulations for the dwarfs, 2026-09-27: after 3a, since until untried moves are valued differently extra simulations only widen a losing side's search; it tilts self-play towards the dwarfs, a bias to measure; the trolls' floor is ~100 simulations, as at 50 their ~60 moves would also get under one visit each; matches then fix the per-side budgets) | Beats the previous best setting head-to-head at equal time |
-| 3c | **Tree reuse, one tree shared by both sides** — only if the reusable share stays large (own-tree reuse ~0. Shared-tree share = the most visited move's share, from the buffer statistics: with upstream's rule the dwarfs' 1-3%, the trolls' 57-77% while they won easily, then 17-20% (run A); **with the new rule ~13-14% for the dwarfs and ~13-17% for the trolls at 100 simulations (run C) — roughly 15% more simulations per search, modest against playout caps' 1.37x**; re-read as the policy sharpens, since the watcher records it every step). **Priority** (user asked, 2026-09-28): kept after 3b — today it buys ~15% more simulations a search, playout caps 1.37x in KataGo's measurement, and it is the larger change (a tree kept across moves and shared by both sides, root noise re-applied, a larger memory limit than the trainer's 10 MB); 3b's budget semantics (new simulations, or topping up to N visits) are chosen with reuse in mind. **Move it up** if the shared-tree share rises above ~30% for either side in the watcher's statistics, or when 3b is done | Same searches with reuse off; beats 3b's setting head-to-head |
+| 3b — next | **Playout cap randomisation**, with settings per side in the code but **equal to start** (proposal in *Changes to the search and trainer*) — unless the **uneven match** (C's final network against itself, 400 against 100 simulations, to run after run C's continuation) shows that extra simulations gain the dwarfs clearly more than the trolls; then the dwarfs get full searches more often, or budgets scale with the number of legal moves. (User asked about more simulations for the dwarfs, 2026-09-27. The case for them was upstream's rule, which spread the dwarfs' searches over every move; since 3a their searches are about as focused as the trolls' — but over 7-11% of their legal moves, the trolls' over 34-78% (medians in run C's buffers), so whether more simulations help them more is measured, not assumed. Unequal budgets tilt self-play towards the dwarfs, a bias to measure. The trolls' floor of ~100 simulations came from upstream's rule, under which a search visits every move once before any twice; it no longer applies.) | Beats the previous best setting head-to-head at equal time |
+| 3c | **Tree reuse, one tree shared by both sides** — only if the reusable share stays large (own-tree reuse ~0. Shared-tree share = the most visited move's share, from the buffer statistics: with upstream's rule the dwarfs' 1-3%, the trolls' 57-77% while they won easily, then 17-20% (run A); **with the new rule ~13-14% for the dwarfs and ~13-17% for the trolls at 100 simulations through step 16 (run C), rising to 18-20% for both by step 23 in its continuation — roughly 15-20% more simulations per search, modest against playout caps' 1.37x**; re-read as the policy sharpens, since the watcher records it every step). **Priority** (user asked, 2026-09-28): kept after 3b — today it buys ~15-20% more simulations a search, playout caps 1.37x in KataGo's measurement, and it is the larger change (a tree kept across moves and shared by both sides, root noise re-applied, a larger memory limit than the trainer's 10 MB); 3b's budget semantics (new simulations, or topping up to N visits) are chosen with reuse in mind. **Move it up** if the shared-tree share rises above ~30% for either side in the watcher's statistics, or when 3b is done | Same searches with reuse off; beats 3b's setting head-to-head |
 | 4 | Settings: `uct_c`, root noise α (0.03 and 0.3 against 0.1), temperature drop | Each change beats the previous setting head-to-head |
 | 5 | **Convolutional policy head** (user, 2026-09-26: later in the roadmap) — first on the layout-check harness, with an exhaustive test of the action-to-plane map. It is the one planned change that makes our networks unloadable by unmodified OpenSpiel | Faster policy learning on the harness; then no worse in self-play head-to-head |
 | 6 | Cloud GPU, longer runs | Throughput measured there first |
@@ -527,6 +527,7 @@ equal machine time. Never stack changes that have not been shown to work.
 | 2026-09-28 | Stage 3a done: the siblings' mean minus a reduction stops run A's collapse and strengthens the dwarfs (run C) | measured, for the user to confirm | roadmap, 3a |
 | 2026-09-28 | Replay buffer: leave it for now; retest when learning stalls and before training a bigger network from a smaller one's games | user | *Notes for later* |
 | 2026-09-28 | Match intervals use Student's t (1.96 before: slightly too narrow) | Claude | *First training runs* |
+| 2026-09-28 | Playout caps: settings per side in the code, equal to start (`p` 0.25); the dwarfs get more only if the uneven match shows that extra simulations gain them clearly more than the trolls | Claude's recommendation, recorded at the user's request | roadmap, 3b; *Changes to the search and trainer* |
 | 2026-09-26 | Replay buffer: default 65,536 positions for now | user | *Notes for later* |
 | 2026-09-26 | Untried moves: measure first | user | *Margins as the value target* |
 | 2026-09-26 | Our own copy of the C++ AlphaZero and its MCTS, for the changes of stage 3 | user | *Deferred decisions* |
@@ -810,7 +811,13 @@ first session, with no patch at all.**
   first with the roles swapped: equal lengths, opposite margins); two different networks
   give non-zero pairs (the clean run's network after 11 steps against its own start, 6
   pairs at 10 simulations: −6.3 points a pair, 95% interval −11.0 to −1.6 — too little to
-  conclude anything).
+  conclude anything). Since 2026-09-28 `sims_a` and `sims_b` give each network its own
+  number of simulations (default `sims`; for the uneven match, stage 3b): with the
+  defaults, and with both set to 100, it plays exactly the earlier binary's games (C
+  step 16 against A step 14, 2 pairs), and a 400/100 match mirrors exactly when the
+  networks swap, its games differing from the 100/100 ones. That which network gets
+  which budget is right is read from the code; the uneven match, where the 400 side
+  should win, shows it again.
   As diagnostics: the evaluation against MCTS **per side** (Phase 5: that opponent's
   strength differs greatly between dwarfs and trolls), as the share of games won and the
   mean margin; how widely both sides' searches spread their visits, and whether the
@@ -1190,8 +1197,9 @@ goes into our own copy, decided 2026-09-26 — stages 3 and 5 of the roadmap, on
   400-600), recorded for training; quick searches (e.g. 100) on the rest, not recorded.
   KataGo measured it as 1.37x training efficiency, better than every fixed cap from 100
   to 600 (arXiv 1902.10565, Table 2). Changes the trainer (`alpha_zero.cc`). With
-  separate settings per side (user, 2026-09-26), the dwarfs, with ~10x the trolls' moves,
-  can get full searches more often, or larger ones; since only full searches become
+  separate settings per side (user, 2026-09-26), the dwarfs, with 4-9x the trolls' legal
+  moves in run C's self-play (medians 156-273 against 18-64), can get full searches more
+  often, or larger ones; since only full searches become
   training targets, that also gives the dwarfs more targets. Caution: whatever changes
   the sides' playing strength in self-play tilts its results, and so the value targets.
   KataGo also turns root noise off in quick searches: "For fast searches, we also disable
@@ -1204,10 +1212,27 @@ goes into our own copy, decided 2026-09-26 — stages 3 and 5 of the roadmap, on
      quick search of `n` simulations, not recorded, without root noise. Moves chosen as
      now after either (sampled from the visits for the first 10 moves, then the most
      visited), keeping the openings varied.
-  2. Settings per side; start: trolls `p` 0.25, dwarfs `p` 0.5 (more targets for the side
-     with ~300 moves), `N` 400 and `n` 100 for both — KataGo's `p` and `n`, `N` below its
-     600 for this CPU. About 2.1x run C's simulations per move, so ~half the games an
-     hour, and ~38% of positions recorded. A cheaper variant: `N` 300, `n` 50 (~1.4x).
+  2. Settings per side in the code (two values instead of one), but **equal to start**:
+     `p` 0.25 for both, `N` 400 and `n` 100 — KataGo's `p` and `n`, `N` below its 600
+     for this CPU. About 1.75x run C's simulations per move, so ~57% of its games an
+     hour, and 25% of positions recorded. A cheaper variant: `N` 300, `n` 50 (~1.1x).
+     First proposed with the dwarfs' `p` at 0.5 (~2.1x, ~38% recorded); changed
+     2026-09-28, because the reason for it has gone. The dwarfs needed more simulations
+     under upstream's rule, which spread their searches over every move; since 3a their
+     searches are about as focused as the trolls' (run C after step 22: a median 17 moves
+     visited, the most visited holding 0.18; the trolls 14 and 0.19). But focus is not
+     search quality: the dwarfs' 17 are ~11% of their 156 legal moves, the trolls' 14 are
+     ~64% of their 22. A good dwarf move the network overlooks is rarely found at 100
+     simulations, so more simulations may still help the dwarfs more. **The uneven
+     match** measures it (to run after run C's continuation,
+     `~/thud-runs/night_2026-09-28.sh`): C's final network at 400 simulations against
+     itself at 100 (pairs with sides swapped; `az_match`'s `sims_a` and `sims_b`), then
+     100 against 100 on the same 100 openings, both with the new rule.
+     `thud/experiments/az_sims_gain.py` takes per opening the dwarfs' gain (their
+     margin with 400 minus the baseline's) and the trolls', with 95% t intervals on
+     each and on their difference; battles in C's new-rule match spread ~5 points, so
+     that interval should be about ±2.5 points or narrower. The dwarfs get a larger `p`
+     only if their gain is clearly larger.
   3. A switch, off by default (every search full and recorded: today's behaviour), like
      the roadmap's rule — unless the user prefers otherwise, as for 3a.
   4. Budget semantics: without tree reuse a search's budget is its new simulations; when
@@ -1229,7 +1254,8 @@ goes into our own copy, decided 2026-09-26 — stages 3 and 5 of the roadmap, on
   with unchanged code first: the share of root visits in the move played, per side.
   Root noise must be re-applied to the reused root. Changes the search and the trainer.
   Expected (user, 2026-09-28): the share grows as the policy sharpens (seen once: run A's
-  trolls held 57-77% while winning easily; run C held 13-17% throughout, not yet); with
+  trolls held 57-77% while winning easily; run C held 13-17% through step 16, then
+  18-20% by step 23 in its continuation); with
   per-side budgets (3b) the dwarfs' extra simulations also serve the trolls' next search
   (their subtree holds the dwarfs' exploration of the trolls' replies: at 300 dwarf
   simulations and 14%, ~42 inherited); with equal budgets, the side whose search is more
