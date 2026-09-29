@@ -21,9 +21,11 @@ its untrained start to step 14 — then the dwarfs' play collapsed in its last t
 AlphaZero in `thud/az/`, proven identical to upstream — and so is **stage 3a**: valuing
 untried moves at their visited siblings' mean minus a reduction (now our default) kept the
 dwarfs' searches narrow, stopped run A's collapse and made the dwarf play far stronger
-(run C, 2026-09-28). **Next: stage 3b**, playout caps — settings per side in the code,
-equal to start unless the uneven match shows that extra simulations gain the dwarfs
-clearly more than the trolls.
+(run C, 2026-09-28) — through step 16; continued to step 29, its dwarf play fell far
+against other networks (unresolved: forgetting, or the evaluation's search rule).
+**Next: stage 3b**, playout caps — settings per side in the code, equal to start unless
+the uneven match shows that extra simulations gain the dwarfs clearly more than the
+trolls.
 
 **Where we stand:**
 
@@ -86,14 +88,34 @@ Phase 6, *Phase 6 roadmap and decision log*** — read it before choosing what t
    machine time used, checkpoint 25 and its buffer complete, step 26's self-play lost.
    **Restarted 2026-09-29** on the user's green light: first the last control of
    `az_match`'s `sims_a`/`sims_b` (passed: a 400/100 match mirrors exactly when the
-   networks swap), then from 08:12 `~/thud-runs/stage3a_resume2.sh` — the remaining
-   6,960 s of training at `OMP_NUM_THREADS=3` and `nice 19` while the user works. The
-   three matches above (~2 hours) and the uneven match (item 2, ~8 hours) follow with
-   `~/thud-runs/stage3a_matches2.sh`, **on the user's green light**. The buffer stays
+   networks swap), then 08:12-10:08 `~/thud-runs/stage3a_resume2.sh` — the remaining
+   6,960 s of training at `OMP_NUM_THREADS=3` and `nice 19`, no pause. **Training is
+   done: the final network is step 29** (step 30's self-play finished, its learning was
+   cut off; its buffer is archived as `archive/replay_buffer_step30.data`). Steps
+   26-29: the dwarfs' searches narrowed further (a median 11 moves visited, the most
+   visited holding 0.30 — the ~30% mark for tree reuse, one reading so far; the trolls
+   15 and 0.18), and the dwarfs did worse in self-play (mean return target −0.13 at
+   step 25, −0.40 at step 29; game length 376 → 219 moves) — whether C's play weakens
+   or its trolls strengthen, only the matches against fixed networks can tell. **The
+   three matches above started at 10:25** (`~/thud-runs/stage3a_matches2.sh`,
+   `OMP_NUM_THREADS=3`, `nice 19`; the first took 2:14, its games a median 315 moves);
+   the uneven match (item 2) waits for the user's word. **C step 29 against A step 14:
+   −11.5 a pair (−13.1 to −9.9), 95 of 100 pairs lost** — as dwarfs −20.0 (C step 16:
+   −2.4), as trolls +8.5 (C step 16: +1.1): its troll play grew stronger, its dwarf play
+   much weaker against the same opponent. Caveat: these matches search with upstream's
+   rule, which spreads a losing side's search, and step 29 judges the dwarfs' positions
+   worse than step 16 did. **Backlog** (user, 2026-09-29, for later): the same match
+   with the new rule in both searches (~3-4 hours with the laptop in use). **The other
+   two:** C step 29 against C step 16 +1.1 (−1.9 to +4.0, 20 of 40 pairs); against the
+   anchor +21.2 (+16.6 to +25.7; step 16: +46.4) — as dwarfs −4.5 (step 16: +21.6), as
+   trolls +25.7 (+24.8). Its dwarfs beat C step 16's trolls by 5.5 but lose to the
+   upstream-trained networks: not transitive. Forgetting or the evaluation's rule, see
+   `PLAN.md`, *First training runs*; a cheap check is the dwarfs' search breadth under
+   upstream's rule for steps 16 and 29 (`untried_move_check`). The buffer stays
    as it is (user); its retest triggers, with caveats, are in `PLAN.md`, *Notes for
    later*.
-2. **The uneven match** (`~/thud-runs/night_2026-09-28.sh`, run by `stage3a_matches2.sh`
-   after run C's matches): C's final network at 400 simulations against itself at 100,
+2. **The uneven match** (`~/thud-runs/night_2026-09-28.sh`, **on the user's word**;
+   waiting since 2026-09-29): C's final network at 400 simulations against itself at 100,
    then 100 against 100 on the same 100 openings, both with the new rule; ~8 hours, and
    it may run past 9am (user, 2026-09-28: fine for experiments whose timing does not matter).
    `thud/experiments/az_sims_gain.py` then gives each side's gain from the extra
@@ -1499,7 +1521,21 @@ instrumentation, and the pattern agreed for later, are in `PLAN.md` Phase 5).
   to `stage3a_matches2.sh`, to start on the user's word. The last control passed (C
   step 16 at 400 against A step 14 at 100, 2 pairs, and the same with the networks
   swapped: identical games mirrored, margins and lengths; they differ from the 100/100
-  games); training started at 08:12.
+  games); training started at 08:12 and ended at 10:08 after step 29, unpaused. Its
+  final buffer (steps 28-30) is archived too. Asked which experiments were left, the
+  user chose run C's matches now (started 10:25), the uneven match later, and dropped
+  the 400-simulation match (A final against B final searching at 400) for the time
+  being — playout caps revisit the budget anyway. C step 29 against A step 14 lost
+  −11.5 a pair (95 of 100 pairs; its dwarfs −20.0 against step 16's −2.4); the user
+  put the same match with the new rule in both searches into the backlog, and asked
+  whether dwarf play is simply harder to learn (the trolls start in lines of three and
+  can shove at once; the dwarfs must line up first). It fits the trolls' faster start
+  and the self-play results, not a decline against a fixed opponent; supporting: the
+  dwarfs' 4-9x moves, run A's trolls focusing first, plain MCTS dwarfs needing deep
+  searches. The other matches (done 13:54): against C step 16 +1.1 (even), against the
+  anchor +21.2 (step 16: +46.4; as dwarfs −4.5 against +21.6). Its dwarfs beat step
+  16's trolls but lose to the upstream-trained networks — not transitive; forgetting or
+  the evaluation's rule, unresolved (`PLAN.md`, *First training runs*).
 
 **Next step:** as recorded in `## Current status` — run C's resumed results and the
 uneven match, then stage 3b.
