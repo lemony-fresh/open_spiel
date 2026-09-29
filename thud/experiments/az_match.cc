@@ -18,16 +18,18 @@
 // Each pair starts both battles from the same opening, a few uniformly random moves from
 // the initial position (so pairs differ); swapping sides cancels whatever advantage an
 // opening gives one side. Both networks search with our copy of OpenSpiel's MCTSBot
-// (PUCT; thud/az/), the same number of simulations and the same rule for untried moves
-// (`untried`, default upstream's — with it our copy searches exactly as upstream's does,
-// thud/az/identity_check.cc), no root noise, and always play their most visited move.
+// (PUCT; thud/az/), the same number of simulations (`sims`; `sims_a` and `sims_b` give
+// each network its own, e.g. to measure what more simulations gain on each side) and the
+// same rule for untried moves (`untried`, default upstream's — with it our copy searches
+// exactly as upstream's does, thud/az/identity_check.cc), no root noise, and always play
+// their most visited move.
 // Each network has its own batched evaluator. Prints one JSON line per pair, then a summary:
 // network A's summed margin per pair (in points), its mean with a 95% interval (Student's
 // t), pairs won, drawn and lost, and each network's mean margin per side.
 //
 //   thud/az/build.sh thud/experiments/az_match.cc
 //   OMP_NUM_THREADS=4 build-shared/az_match a=RUN_DIR:STEP b=RUN_DIR:STEP sims=100 \
-//     pairs=50 [opening=4 threads=16 batch=16 seed=1 untried=upstream]
+//     pairs=50 [sims_a=SIMS sims_b=SIMS opening=4 threads=16 batch=16 seed=1 untried=upstream]
 //
 // STEP is a checkpoint step of that run (-1: its most recent checkpoint).
 
@@ -138,6 +140,7 @@ int main(int argc, char** argv) {
       open_spiel::LoadGame(args.Get("game", "thud"));
   const std::string spec_a = args.Get("a", ""), spec_b = args.Get("b", "");
   const int sims = args.GetInt("sims", 100);
+  const int sims_a = args.GetInt("sims_a", sims), sims_b = args.GetInt("sims_b", sims);
   const int pairs = args.GetInt("pairs", 50);
   const int opening_moves = args.GetInt("opening", 4);
   const int threads = args.GetInt("threads", 16);
@@ -176,14 +179,14 @@ int main(int argc, char** argv) {
   std::vector<std::thread> workers;
   for (int t = 0; t < threads; ++t) {
     workers.emplace_back([&, t]() {
-      auto make_bot = [&](std::shared_ptr<VPNetEvaluator> eval) {
+      auto make_bot = [&](std::shared_ptr<VPNetEvaluator> eval, int simulations) {
         return std::make_unique<MCTSBot>(
-            *game, eval, /*uct_c=*/2, sims, /*max_memory_mb=*/1000, /*solve=*/false,
+            *game, eval, /*uct_c=*/2, simulations, /*max_memory_mb=*/1000, /*solve=*/false,
             /*seed=*/t, /*verbose=*/false,
             open_spiel::thud_az::ChildSelectionPolicy::PUCT, 0, 0,
             /*dont_return_chance_node=*/false, /*max_wall_clock_time=*/-1, untried_rule);
       };
-      std::unique_ptr<MCTSBot> a = make_bot(eval_a), b = make_bot(eval_b);
+      std::unique_ptr<MCTSBot> a = make_bot(eval_a, sims_a), b = make_bot(eval_b, sims_b);
       for (int i = next++; i < pairs; i = next++) {
         const Battle as_dwarfs = Play(*game, openings[i], a.get(), b.get(), 0);
         const Battle as_trolls = Play(*game, openings[i], a.get(), b.get(), 1);
@@ -220,14 +223,15 @@ int main(int argc, char** argv) {
   int won = 0, drawn = 0, lost = 0;
   for (double x : pair_margin) (x > 0 ? won : x < 0 ? lost : drawn) += 1;
   std::cout << absl::StrFormat(
-                   "{\"summary\": true, \"a\": \"%s\", \"b\": \"%s\", \"untried\": \"%s\", \"sims\": %d, "
+                   "{\"summary\": true, \"a\": \"%s\", \"b\": \"%s\", \"untried\": \"%s\", "
+                   "\"sims_a\": %d, \"sims_b\": %d, "
                    "\"pairs\": %d, \"a_mean_pair_margin\": %.2f, \"ci95\": [%.2f, %.2f], "
                    "\"a_pairs_won\": %d, \"drawn\": %d, \"lost\": %d, "
                    "\"a_mean_as_dwarfs\": %.2f, \"a_mean_as_trolls\": %.2f, "
                    "\"b_mean_as_dwarfs\": %.2f, \"b_mean_as_trolls\": %.2f}",
-                   spec_a, spec_b, untried, sims, pairs, m, m - half_width, m + half_width, won,
-                   drawn, lost, mean(a_dwarfs), mean(a_trolls), -mean(a_trolls),
-                   -mean(a_dwarfs))
+                   spec_a, spec_b, untried, sims_a, sims_b, pairs, m, m - half_width,
+                   m + half_width, won, drawn, lost, mean(a_dwarfs), mean(a_trolls),
+                   -mean(a_trolls), -mean(a_dwarfs))
             << std::endl;
   return 0;
 }

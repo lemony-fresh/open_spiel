@@ -21,7 +21,9 @@ its untrained start to step 14 — then the dwarfs' play collapsed in its last t
 AlphaZero in `thud/az/`, proven identical to upstream — and so is **stage 3a**: valuing
 untried moves at their visited siblings' mean minus a reduction (now our default) kept the
 dwarfs' searches narrow, stopped run A's collapse and made the dwarf play far stronger
-(run C, 2026-09-28). **Next: stage 3b**, playout caps with per-side settings.
+(run C, 2026-09-28). **Next: stage 3b**, playout caps — settings per side in the code,
+equal to start unless the uneven match shows that extra simulations gain the dwarfs
+clearly more than the trolls.
 
 **Where we stand:**
 
@@ -51,10 +53,12 @@ dwarfs' searches narrow, stopped run A's collapse and made the dwarf play far st
   `crosscheck_tests.py`, `move_kinds_sim.py`, `limits_sim.py`) run hexparrot/thudgame;
   `random_endings.py` and `mcts_games.py` need only pyspiel; `az_layout_check.py` and
   `az_speed.py` need pyspiel and the JAX set. The C++ programs — `az_layout_check.cc`
-  (the layout control), `az_throughput.cc` (with `az_throughput.sh`), `az_reuse.cc`,
-  `az_match.cc` (head-to-head matches) and `az_buffer_stats.cc` (search breadth from a
-  saved replay buffer) — are built by `build_az_program.sh PROGRAM` against
-  `build-shared/libopen_spiel.so`; `az_thud.flags` holds our trainer defaults. Training
+  (the layout control), `az_throughput.cc` (with `az_throughput.sh`), `az_reuse.cc` and
+  `az_buffer_stats.cc` (search breadth from a saved replay buffer) — are built by
+  `build_az_program.sh PROGRAM` against `build-shared/libopen_spiel.so`; `az_match.cc`
+  (head-to-head matches, searching with our copy; `sims_a`/`sims_b` for uneven matches)
+  by `thud/az/build.sh`, and `az_sims_gain.py` analyses an uneven match against its
+  baseline; `az_thud.flags` holds our trainer defaults. Training
   runs, their scripts and match results live outside the repo in `~/thud-runs/`.
   hexparrot runs from a clone
   outside the repo, by default
@@ -67,27 +71,41 @@ dwarfs' searches narrow, stopped run A's collapse and made the dwarf play far st
 stage must show first, every decision so far and what waits for later are in **`PLAN.md`
 Phase 6, *Phase 6 roadmap and decision log*** — read it before choosing what to do.
 
-1. **Run C resumed** (user, 2026-09-28; since 12:27, `~/thud-runs/stage3a_resume.sh`):
+1. **Run C resumed** (user, 2026-09-28; 12:27-18:28, `~/thud-runs/stage3a_resume.sh`):
    6 hours of machine time with our copy's trainer from `config.json`, at `nice 19` and
    `OMP_NUM_THREADS=3` so the user keeps ~3 cores; comparisons are by learning steps, so
    the slower pace costs nothing. Then, automatically: C's new final network against A's
    best (step 14, 100 pairs, ~1 hour — 20 pairs can only show differences above ~5
    points), against C's step 16 (40 pairs), against the anchor (20 pairs); progress in
    `~/thud-runs/stage1_matches/progress.log`. Checks: does C keep improving without
-   collapsing; how the shared-tree share develops (`buffer_stats.jsonl`). **Resuming
-   works in our copy**: step 17 (12:53) continued from 352,553 positions with the full
-   buffer reloaded. The buffer stays as it is (user);
-   its retest triggers, with caveats, are in `PLAN.md`, *Notes for later*.
-2. **Stage 3b: playout cap randomisation** in our copy, with per-side settings so the
-   dwarfs get deep searches more often. **A proposal is written up** (`PLAN.md`, *Changes
-   to the search and trainer*, playout caps: `p` 0.25 trolls / 0.5 dwarfs, `N` 400, `n`
-   100, quick searches unrecorded and without root noise, a switch off by default,
-   judged against run C at equal machine time) — to decide with the user, then
-   implement and test as 3a was.
-3. Then tree reuse with one shared tree (3c), the settings (4), the convolutional head
-   (5), a cloud GPU (6). Resuming works in upstream's trainer (A2); run it once in our
-   copy before growing the network.
-4. **If we ever fall back to the Python route** (user, 2026-09-25): first re-verify the
+   collapsing; how the shared-tree share develops (`buffer_stats.jsonl`: 18-20% for both
+   sides by step 23, up from 13-17%). **Resuming works in our copy**: step 17 (12:53)
+   continued from 352,553 positions with the full buffer reloaded. It paused ~2 hours
+   (15:04-17:01) while the laptop ran on battery (the 6 hours count machine time), and
+   **was stopped at 18:28 after step 25** because the user needed the computer: 4:04 of
+   machine time used, checkpoint 25 and its buffer complete, step 26's self-play lost.
+   **Restarted 2026-09-29** on the user's green light: first the last control of
+   `az_match`'s `sims_a`/`sims_b` (passed: a 400/100 match mirrors exactly when the
+   networks swap), then from 08:12 `~/thud-runs/stage3a_resume2.sh` — the remaining
+   6,960 s of training at `OMP_NUM_THREADS=3` and `nice 19` while the user works. The
+   three matches above (~2 hours) and the uneven match (item 2, ~8 hours) follow with
+   `~/thud-runs/stage3a_matches2.sh`, **on the user's green light**. The buffer stays
+   as it is (user); its retest triggers, with caveats, are in `PLAN.md`, *Notes for
+   later*.
+2. **The uneven match** (`~/thud-runs/night_2026-09-28.sh`, run by `stage3a_matches2.sh`
+   after run C's matches): C's final network at 400 simulations against itself at 100,
+   then 100 against 100 on the same 100 openings, both with the new rule; ~8 hours, and
+   it may run past 9am (user, 2026-09-28: fine for experiments whose timing does not matter).
+   `thud/experiments/az_sims_gain.py` then gives each side's gain from the extra
+   simulations — whether the dwarfs gain clearly more decides 3b's per-side `p`.
+3. **Stage 3b: playout cap randomisation** in our copy. **A proposal is written up**
+   (`PLAN.md`, *Changes to the search and trainer*, playout caps: `p` 0.25 for both
+   sides unless the uneven match says otherwise, `N` 400, `n` 100, quick searches
+   unrecorded and without root noise, a switch off by default, judged against run C at
+   equal machine time) — to decide with the user, then implement and test as 3a was.
+4. Then tree reuse with one shared tree (3c), the settings (4), the convolutional head
+   (5), a cloud GPU (6).
+5. **If we ever fall back to the Python route** (user, 2026-09-25): first re-verify the
    layout-bug findings (`PLAN.md` Phase 6), then fix it in **one concise PR with
    experiments verifying correctness, for example on tic-tac-toe, chess and Thud**; the
    uncompiled inference needs its own fix.
@@ -1437,5 +1455,51 @@ instrumentation, and the pattern agreed for later, are in `PLAN.md` Phase 5).
   larger change), to move up if the share passes ~30% or when 3b is done. Run C resumed
   at 12:27.
 
-**Next step:** as recorded in `## Current status` — run C's resumed results, then stage
-3b.
+- **Afternoon**: resuming works in our copy (step 17 at 12:53 continued from 352,553
+  positions with the full buffer); KataGo's quick searches turn root noise off (checked
+  at the source); a proposal for stage 3b written into `PLAN.md` (f2833b5d).
+
+- **Evening (2026-09-28).** Run C's continuation paused ~2 hours (15:04-17:01, pause
+  detector: the laptop was on battery, 72%), so training ends ~20:25; its 6 hours are
+  machine time. By step 23 the dwarfs' searches visit a median 17 of 156 legal moves, the
+  trolls' 14 of 18-22, and the most visited move holds 18-20% for both (13-17% through
+  step 16). The user asked whether, with the dwarfs' searches now about as focused as the
+  trolls', per-side simulation numbers are still needed. Mostly not for the original
+  reason (upstream's rule spread the dwarfs' searches over every move), but focus is not
+  search quality: the dwarfs' searches cover ~11% of their legal moves, the trolls'
+  ~64%, so a good dwarf move the network overlooks is rarely found. Recommended, and put
+  into `PLAN.md` at the user's request: settings per side in the code, equal to start
+  (`p` 0.25: ~1.75x run C's simulations, not 2.1x), and an **uneven match** to decide —
+  C's final network at 400 simulations against itself at 100, then 100 against 100 on
+  the same openings. `az_match` got `sims_a` and `sims_b` (default: `sims`);
+  `thud/experiments/az_sims_gain.py` (new, with a self-test) turns the two matches into
+  each side's gain with t intervals. The night script `~/thud-runs/night_2026-09-28.sh`
+  plays both after run C (100 openings, ~8 hours). Controls: with the default and with
+  explicit equal settings the new `az_match` plays exactly the old binary's games (2
+  pairs); the 400/100 match mirrored when the networks swap is still to run. The user
+  asked to rename `sims_a`/`sims_b` to `sims_dwarfs`/`sims_trolls`; per-side budgets
+  would need a third match (with one network on both sides, a pair's second battle
+  replays its first, so 400/100 and 100/400 become separate matches: ~13.5 hours instead
+  of ~8), and the user withdrew the request: the budgets stay per network. At 18:28 the
+  user needed the computer for the evening: run C stopped after step 25 (4:04 of its 6
+  hours of machine time used; step 26's self-play lost), and everything waits for the
+  user's green light — `~/thud-runs/stage3a_resume2.sh` then trains the remaining 6,960
+  s, plays run C's matches and the uneven match. The user: experiments
+  whose timing does not matter may run past 9am (saved as a memory; equal-time
+  comparisons still should not). Corrected in `PLAN.md`: the dwarfs have 4-9x the
+  trolls' legal moves in run C's self-play, not ~10x; ~300 moves was stale; the trolls'
+  floor of ~100 simulations was upstream's rule's. In the status block: `az_match` is
+  built by `thud/az/build.sh`, and resuming in our copy is done.
+
+- **2026-09-29 morning.** The user forgot the green light, so nothing ran overnight;
+  asked which experiments were planned and how long each takes (the check ~20 minutes,
+  training ~2 hours, run C's matches ~2 hours, the uneven match ~8 hours), then for the
+  check and the training only. `stage3a_resume2.sh` now trains only, at
+  `OMP_NUM_THREADS=3` while the user works; run C's matches and the uneven match moved
+  to `stage3a_matches2.sh`, to start on the user's word. The last control passed (C
+  step 16 at 400 against A step 14 at 100, 2 pairs, and the same with the networks
+  swapped: identical games mirrored, margins and lengths; they differ from the 100/100
+  games); training started at 08:12.
+
+**Next step:** as recorded in `## Current status` — run C's resumed results and the
+uneven match, then stage 3b.
