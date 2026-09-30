@@ -21,20 +21,25 @@
 // (PUCT; thud/az/), the same number of simulations (`sims`; `sims_a` and `sims_b` give
 // each network its own, e.g. to measure what more simulations gain on each side) and the
 // same rule for untried moves (`untried`, default upstream's — with it our copy searches
-// exactly as upstream's does, thud/az/identity_check.cc), no root noise, and always play
+// exactly as upstream's does, thud/az/identity_check.cc; `untried_a` and `untried_b` give
+// each network its own, e.g. the rule it was trained with), no root noise, and always play
 // their most visited move.
 // Each network has its own batched evaluator. Prints one JSON line per pair, then a summary:
 // network A's summed margin per pair (in points), its mean with a 95% interval (Student's
-// t), pairs won, drawn and lost, and each network's mean margin per side.
+// t), pairs won, drawn and lost, and each network's mean margin per side. With `progress`,
+// it also reports the simulations per second to stderr every `progress` seconds — a
+// throughput measure that needs no finished pairs.
 //
 //   thud/az/build.sh thud/experiments/az_match.cc
 //   OMP_NUM_THREADS=4 build-shared/az_match a=RUN_DIR:STEP b=RUN_DIR:STEP sims=100 \
-//     pairs=50 [sims_a=SIMS sims_b=SIMS opening=4 threads=16 batch=16 seed=1 untried=upstream]
+//     pairs=50 [sims_a=SIMS sims_b=SIMS opening=4 threads=16 batch=16 seed=1 \
+//     untried=upstream untried_a=UNTRIED untried_b=UNTRIED progress=0]
 //
 // STEP is a checkpoint step of that run (-1: its most recent checkpoint).
 
 #include <algorithm>
 #include <atomic>
+#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <iostream>
@@ -59,11 +64,14 @@ namespace {
 
 using open_spiel::Action;
 using open_spiel::thud_az::MCTSBot;
+using open_spiel::thud_az::SearchNode;
 using open_spiel::thud_az::torch_az::DeviceManager;
 using open_spiel::thud_az::torch_az::VPNetEvaluator;
 using open_spiel::thud_az::torch_az::VPNetModel;
 
 constexpr double kMaxMargin = 32;  // Thud's returns are the margin over 32.
+
+std::atomic<int64_t> simulations_done{0};  // For the progress reports.
 
 class Args {
  public:
@@ -126,7 +134,9 @@ Battle Play(const open_spiel::Game& game, const std::vector<Action>& opening,
   int moves = opening.size();
   while (!state->IsTerminal()) {
     MCTSBot* bot = state->CurrentPlayer() == a_player ? a : b;
-    state->ApplyAction(bot->MCTSearch(*state)->BestChild().action);
+    std::unique_ptr<SearchNode> root = bot->MCTSearch(*state);
+    simulations_done += root->explore_count;
+    state->ApplyAction(root->BestChild().action);
     ++moves;
   }
   return {state->Returns()[a_player], moves};
@@ -148,8 +158,13 @@ int main(int argc, char** argv) {
   const int inference_threads = args.GetInt("inference_threads", 1);
   const int seed = args.GetInt("seed", 1);
   const std::string untried = args.Get("untried", "upstream");
-  const open_spiel::thud_az::UntriedMoveValue untried_rule =
-      open_spiel::thud_az::UntriedMoveValueFromString(untried);
+  const std::string untried_a = args.Get("untried_a", untried);
+  const std::string untried_b = args.Get("untried_b", untried);
+  const open_spiel::thud_az::UntriedMoveValue rule_a =
+      open_spiel::thud_az::UntriedMoveValueFromString(untried_a);
+  const open_spiel::thud_az::UntriedMoveValue rule_b =
+      open_spiel::thud_az::UntriedMoveValueFromString(untried_b);
+  const int progress = args.GetInt("progress", 0);
   args.CheckAllUsed();
   if (spec_a.empty() || spec_b.empty()) {
     std::cerr << "Usage: " << argv[0] << " a=DIR:STEP b=DIR:STEP [key=value ...]"
@@ -173,20 +188,48 @@ int main(int argc, char** argv) {
     }
   }
 
+  std::atomic<bool> finished{false};
+  std::thread reporter;
+  if (progress > 0) {
+    reporter = std::thread([&]() {
+      using Clock = std::chrono::steady_clock;
+      const Clock::time_point start = Clock::now();
+      Clock::time_point last = start;
+      int64_t last_count = 0;
+      while (!finished) {
+        for (int i = 0; i < progress * 10 && !finished; ++i) {
+          std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        }
+        const Clock::time_point now = Clock::now();
+        const int64_t count = simulations_done;
+        std::cerr << absl::StrFormat(
+                         "progress: %.0f s, %d simulations, %.0f simulations/s\n",
+                         std::chrono::duration<double>(now - start).count(), count,
+                         (count - last_count) /
+                             std::chrono::duration<double>(now - last).count())
+                  << std::flush;
+        last = now;
+        last_count = count;
+      }
+    });
+  }
+
   std::vector<double> pair_margin(pairs), a_dwarfs(pairs), a_trolls(pairs);
   std::atomic<int> next{0};
   std::mutex out;
   std::vector<std::thread> workers;
   for (int t = 0; t < threads; ++t) {
     workers.emplace_back([&, t]() {
-      auto make_bot = [&](std::shared_ptr<VPNetEvaluator> eval, int simulations) {
+      auto make_bot = [&](std::shared_ptr<VPNetEvaluator> eval, int simulations,
+                          open_spiel::thud_az::UntriedMoveValue untried_rule) {
         return std::make_unique<MCTSBot>(
             *game, eval, /*uct_c=*/2, simulations, /*max_memory_mb=*/1000, /*solve=*/false,
             /*seed=*/t, /*verbose=*/false,
             open_spiel::thud_az::ChildSelectionPolicy::PUCT, 0, 0,
             /*dont_return_chance_node=*/false, /*max_wall_clock_time=*/-1, untried_rule);
       };
-      std::unique_ptr<MCTSBot> a = make_bot(eval_a, sims_a), b = make_bot(eval_b, sims_b);
+      std::unique_ptr<MCTSBot> a = make_bot(eval_a, sims_a, rule_a),
+                               b = make_bot(eval_b, sims_b, rule_b);
       for (int i = next++; i < pairs; i = next++) {
         const Battle as_dwarfs = Play(*game, openings[i], a.get(), b.get(), 0);
         const Battle as_trolls = Play(*game, openings[i], a.get(), b.get(), 1);
@@ -204,6 +247,8 @@ int main(int argc, char** argv) {
     });
   }
   for (std::thread& w : workers) w.join();
+  finished = true;
+  if (reporter.joinable()) reporter.join();
 
   auto mean = [](const std::vector<double>& v) {
     double sum = 0;
@@ -223,14 +268,15 @@ int main(int argc, char** argv) {
   int won = 0, drawn = 0, lost = 0;
   for (double x : pair_margin) (x > 0 ? won : x < 0 ? lost : drawn) += 1;
   std::cout << absl::StrFormat(
-                   "{\"summary\": true, \"a\": \"%s\", \"b\": \"%s\", \"untried\": \"%s\", "
+                   "{\"summary\": true, \"a\": \"%s\", \"b\": \"%s\", "
+                   "\"untried_a\": \"%s\", \"untried_b\": \"%s\", "
                    "\"sims_a\": %d, \"sims_b\": %d, "
                    "\"pairs\": %d, \"a_mean_pair_margin\": %.2f, \"ci95\": [%.2f, %.2f], "
                    "\"a_pairs_won\": %d, \"drawn\": %d, \"lost\": %d, "
                    "\"a_mean_as_dwarfs\": %.2f, \"a_mean_as_trolls\": %.2f, "
                    "\"b_mean_as_dwarfs\": %.2f, \"b_mean_as_trolls\": %.2f}",
-                   spec_a, spec_b, untried, sims_a, sims_b, pairs, m, m - half_width,
-                   m + half_width, won, drawn, lost, mean(a_dwarfs), mean(a_trolls),
+                   spec_a, spec_b, untried_a, untried_b, sims_a, sims_b, pairs, m,
+                   m - half_width, m + half_width, won, drawn, lost, mean(a_dwarfs), mean(a_trolls),
                    -mean(a_trolls), -mean(a_dwarfs))
             << std::endl;
   return 0;

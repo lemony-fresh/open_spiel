@@ -23,9 +23,8 @@ untried moves at their visited siblings' mean minus a reduction (now our default
 dwarfs' searches narrow, stopped run A's collapse and made the dwarf play far stronger
 (run C, 2026-09-28) — through step 16; continued to step 29, its dwarf play fell far
 against other networks (unresolved: forgetting, or the evaluation's search rule).
-**Next: stage 3b**, playout caps — settings per side in the code, equal to start unless
-the uneven match shows that extra simulations gain the dwarfs clearly more than the
-trolls.
+**Next: Step 1 of verifying the untried-move rule** — every network evaluated as it was
+trained — then stage 3b, playout caps.
 
 **Where we stand:**
 
@@ -73,60 +72,52 @@ trolls.
 stage must show first, every decision so far and what waits for later are in **`PLAN.md`
 Phase 6, *Phase 6 roadmap and decision log*** — read it before choosing what to do.
 
-1. **Run C resumed** (user, 2026-09-28; 12:27-18:28, `~/thud-runs/stage3a_resume.sh`):
-   6 hours of machine time with our copy's trainer from `config.json`, at `nice 19` and
-   `OMP_NUM_THREADS=3` so the user keeps ~3 cores; comparisons are by learning steps, so
-   the slower pace costs nothing. Then, automatically: C's new final network against A's
-   best (step 14, 100 pairs, ~1 hour — 20 pairs can only show differences above ~5
-   points), against C's step 16 (40 pairs), against the anchor (20 pairs); progress in
-   `~/thud-runs/stage1_matches/progress.log`. Checks: does C keep improving without
-   collapsing; how the shared-tree share develops (`buffer_stats.jsonl`: 18-20% for both
-   sides by step 23, up from 13-17%). **Resuming works in our copy**: step 17 (12:53)
-   continued from 352,553 positions with the full buffer reloaded. It paused ~2 hours
-   (15:04-17:01) while the laptop ran on battery (the 6 hours count machine time), and
-   **was stopped at 18:28 after step 25** because the user needed the computer: 4:04 of
-   machine time used, checkpoint 25 and its buffer complete, step 26's self-play lost.
-   **Restarted 2026-09-29** on the user's green light: first the last control of
-   `az_match`'s `sims_a`/`sims_b` (passed: a 400/100 match mirrors exactly when the
-   networks swap), then 08:12-10:08 `~/thud-runs/stage3a_resume2.sh` — the remaining
-   6,960 s of training at `OMP_NUM_THREADS=3` and `nice 19`, no pause. **Training is
-   done: the final network is step 29** (step 30's self-play finished, its learning was
-   cut off; its buffer is archived as `archive/replay_buffer_step30.data`). Steps
-   26-29: the dwarfs' searches narrowed further (a median 11 moves visited, the most
-   visited holding 0.30 — the ~30% mark for tree reuse, one reading so far; the trolls
-   15 and 0.18), and the dwarfs did worse in self-play (mean return target −0.13 at
-   step 25, −0.40 at step 29; game length 376 → 219 moves) — whether C's play weakens
-   or its trolls strengthen, only the matches against fixed networks can tell. **The
-   three matches above started at 10:25** (`~/thud-runs/stage3a_matches2.sh`,
-   `OMP_NUM_THREADS=3`, `nice 19`; the first took 2:14, its games a median 315 moves);
-   the uneven match (item 2) waits for the user's word. **C step 29 against A step 14:
-   −11.5 a pair (−13.1 to −9.9), 95 of 100 pairs lost** — as dwarfs −20.0 (C step 16:
-   −2.4), as trolls +8.5 (C step 16: +1.1): its troll play grew stronger, its dwarf play
-   much weaker against the same opponent. Caveat: these matches search with upstream's
-   rule, which spreads a losing side's search, and step 29 judges the dwarfs' positions
-   worse than step 16 did. **Backlog** (user, 2026-09-29, for later): the same match
-   with the new rule in both searches (~3-4 hours with the laptop in use). **The other
-   two:** C step 29 against C step 16 +1.1 (−1.9 to +4.0, 20 of 40 pairs); against the
-   anchor +21.2 (+16.6 to +25.7; step 16: +46.4) — as dwarfs −4.5 (step 16: +21.6), as
-   trolls +25.7 (+24.8). Its dwarfs beat C step 16's trolls by 5.5 but lose to the
-   upstream-trained networks: not transitive. Forgetting or the evaluation's rule, see
-   `PLAN.md`, *First training runs*; a cheap check is the dwarfs' search breadth under
-   upstream's rule for steps 16 and 29 (`untried_move_check`). The buffer stays
-   as it is (user); its retest triggers, with caveats, are in `PLAN.md`, *Notes for
-   later*.
-2. **The uneven match** (`~/thud-runs/night_2026-09-28.sh`, **on the user's word**;
-   waiting since 2026-09-29): C's final network at 400 simulations against itself at 100,
-   then 100 against 100 on the same 100 openings, both with the new rule; ~8 hours, and
-   it may run past 9am (user, 2026-09-28: fine for experiments whose timing does not matter).
-   `thud/experiments/az_sims_gain.py` then gives each side's gain from the extra
-   simulations — whether the dwarfs gain clearly more decides 3b's per-side `p`.
-3. **Stage 3b: playout cap randomisation** in our copy. **A proposal is written up**
-   (`PLAN.md`, *Changes to the search and trainer*, playout caps: `p` 0.25 for both
-   sides unless the uneven match says otherwise, `N` 400, `n` 100, quick searches
-   unrecorded and without root noise, a switch off by default, judged against run C at
-   equal machine time) — to decide with the user, then implement and test as 3a was.
-4. Then tree reuse with one shared tree (3c), the settings (4), the convolutional head
-   (5), a cloud GPU (6).
+1. **Run C is done** (2026-09-27 to 2026-09-29, 12 hours of machine time over three
+   sessions: stopped once for the user's evening, paused ~2 hours once on battery;
+   resuming works in our copy). Final network step 29; `buffer_stats.jsonl`: the dwarfs'
+   searches narrowed to a median 11 moves visited, the most visited holding 0.30 (the
+   ~30% mark for tree reuse, one reading); in self-play the dwarfs did worse (mean return
+   target −0.13 at step 25, −0.40 at step 29). Matches searching with upstream's rule:
+   against C step 16 +1.1 (even); against A step 14 −11.5 (95 of 100 pairs lost; as
+   dwarfs −20.0, step 16 −2.4); against the anchor +21.2 (step 16 +46.4; as dwarfs −4.5,
+   step 16 +21.6). But under upstream's rule neither C network plays the dwarfs as
+   trained (`untried_move_check`: their searches spread over 99 and 76 moves, so the
+   move is picked by one evaluation each). Details: `PLAN.md`, *First training runs*.
+2. **Verify the untried-move rule and solve the dwarf collapse** (user, 2026-09-29): run
+   A's collapse is certain (evaluated as trained); run C's decline was seen only in
+   matches where its dwarfs did not play as trained. **Step 1 — every network as
+   trained**, ready in `~/thud-runs/step1_as_trained.sh` (~3.5 hours), **to start on the
+   user's word**: C's networks search with the new rule, A's and the anchor with
+   upstream's (`az_match`'s `untried_a`/`untried_b`, 2026-09-29). The decisive matches
+   first — C29 against C16 (40 pairs), C16 and C29 against the anchor (20 each; answered
+   after ~1.3 hours) — then C8, C12, C20, C24 against the anchor and C29 against A14 (60
+   pairs). Up to 3 matches at once, `OMP_NUM_THREADS=1`, threads = pairs (the tuning
+   of 2026-09-29, `PLAN.md`, *First training runs*). If C's dwarfs hold up: the rule prevented the collapse for about twice as
+   many positions as run A lasted — 3a confirmed (the user decides), and the per-side
+   curve against the anchor becomes a health check at the end of every run. **Step 2,
+   only if they decline as trained:** the replay buffer as the second cause — an
+   optional ~10-minute check first (does C29 predict older archived positions worse than
+   C16?), then a branch from C's last healthy checkpoint with a 4x buffer (our copy must
+   learn to resume with a different buffer size; the buffer size also sets how often the
+   network learns and the work per learning step), trained to C29's number of positions
+   and evaluated as in Step 1. If it is not the buffer: the value targets (the dwarfs'
+   are nearly all losses) or the user's asymmetry hypothesis.
+3. **Proposed step back** (Claude, 2026-09-29; for the user to decide): on this CPU only
+   "does it work" questions — correctness, learning against fixed opponents, no
+   collapse; "which setting is best" waits for the GPU, since one run per setting cannot
+   tell a better setting from a luckier run. Before the GPU: Steps 1-2, playout caps
+   (3b) with equal settings per side and a no-worse run, the convolutional policy head
+   (5), a GPU throughput test; tree reuse (3c), the settings (4), network growth and the
+   buffer then on the GPU.
+4. **Stage 3b: playout cap randomisation** in our copy, after Step 1. A proposal is
+   written up (`PLAN.md`, *Changes to the search and trainer*, playout caps: `p` 0.25
+   for both sides, `N` 400, `n` 100, quick searches unrecorded and without root noise,
+   a switch off by default, judged against run C at equal machine time) — to decide
+   with the user, then implement and test as 3a was.
+   **Parked:** the uneven match (`~/thud-runs/night_2026-09-28.sh`, ~8 hours; per-side
+   settings become a setting to tune later); the 400-simulation match (dropped for now);
+   replicates of runs A and C (skipped); the backlog match with the new rule in both
+   searches (replaced by Step 1's C29 against A14, each as trained).
 5. **If we ever fall back to the Python route** (user, 2026-09-25): first re-verify the
    layout-bug findings (`PLAN.md` Phase 6), then fix it in **one concise PR with
    experiments verifying correctness, for example on tic-tac-toe, chess and Thud**; the
@@ -1535,7 +1526,28 @@ instrumentation, and the pattern agreed for later, are in `PLAN.md` Phase 5).
   searches. The other matches (done 13:54): against C step 16 +1.1 (even), against the
   anchor +21.2 (step 16: +46.4; as dwarfs −4.5 against +21.6). Its dwarfs beat step
   16's trolls but lose to the upstream-trained networks — not transitive; forgetting or
-  the evaluation's rule, unresolved (`PLAN.md`, *First training runs*).
+  the evaluation's rule, unresolved (`PLAN.md`, *First training runs*). The user asked
+  for the cheap check: under upstream's rule the dwarfs' searches spread for both step
+  16 (a median 99 moves) and step 29 (76), so the drop is not step 29 spreading where 16
+  did not; with every move visited about once, both pick the dwarfs' move by a single
+  evaluation (`CompareFinal`), so these matches test the value head, not the trained
+  play. Its control "upstream's rule spreads the dwarfs' searches (90+)" fails for step
+  29 (76): written for run A, a result here, not a fault.
 
-**Next step:** as recorded in `## Current status` — run C's resumed results and the
-uneven match, then stage 3b.
+- **Afternoon and evening: a step back.** The user felt we were getting lost in small
+  experiments. Listed: six defined experiments and five stages, more than 10 nights of
+  machine time. Proposed (open): on this CPU only "does it work" questions, "which
+  setting is best" on the GPU. Inventory: beyond the game and OpenSpiel's training, one
+  change to the AI (the untried-move rule, ~110 lines; 7 of the 12 copied files still
+  byte-identical to upstream) plus two settings; everything else measures. The user,
+  mostly convinced the rule works, wants the dwarf collapse solved: the plan is Step 1
+  (every network as trained) and Step 2 (the buffer) only if needed; the uneven match
+  parked. `az_match` got `untried_a`/`untried_b` and `progress=` (controls passed:
+  default games identical with and without the reports, mixed rules mirror when the
+  networks swap, the rule takes effect). Tuning, 18:11-19:00, other programs ~1%: 1,315
+  → 1,923 simulations/s with 64 threads and batch 32; 1,720 for 3 matches at once with
+  OMP 1; whole matches had averaged ~1,050, their tails idle. `step1_as_trained.sh` is
+  ready (~3.5 hours, the decisive answer after ~1.3), waiting for the user's word.
+
+**Next step:** as recorded in `## Current status` — Step 1 (every network as trained),
+then Step 2 only if needed, then stage 3b.

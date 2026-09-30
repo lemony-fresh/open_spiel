@@ -77,7 +77,12 @@ re-derive them.
   itself: use `OMP_NUM_THREADS=1`. With batched inference, much faster for Thud's small
   networks, only the inference threads call it: 2 inference threads with
   `OMP_NUM_THREADS=4` was best for every network size tried, and matched in the trainer
-  (`thud/PLAN.md` Phase 6, throughput final report, 2026-09-26).
+  (`thud/PLAN.md` Phase 6, throughput final report, 2026-09-26). For matches
+  (`az_match`, one evaluator per network; games are identical whatever these settings):
+  a match of 64+ pairs alone with `threads=64 batch=32` and `OMP_NUM_THREADS=4` (1,923
+  simulations/s for 64 x 4); smaller matches up to 3 at once with `OMP_NUM_THREADS=1`
+  and threads = pairs (1,720) — against ~1,050 for one match at a time with its default
+  16 threads, whose last long pairs leave most threads idle (2026-09-29).
 - **Sleep freezes WSL**: nothing runs, WSL's clocks stop, and the wall clock jumps on
   resume. The laptop used to sleep after 5 minutes without input even on mains power; on
   2026-09-26 the user set sleep to never while plugged in (on battery it still sleeps
