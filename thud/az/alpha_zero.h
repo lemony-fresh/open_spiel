@@ -52,6 +52,10 @@ struct AlphaZeroConfig {
   int inference_cache;
   int replay_buffer_size;
   int replay_buffer_reuse;
+  // Added: the batches each learning step trains on; 0 is upstream's one pass over the
+  // buffer (its size / train_batch_size). Separates how much the network remembers
+  // (the buffer) from how much it trains per step (thud/PLAN.md Phase 6, Step 2).
+  int learner_batches;
   int checkpoint_freq;
   int evaluation_window;
 
@@ -89,6 +93,7 @@ struct AlphaZeroConfig {
         {"inference_cache", inference_cache},
         {"replay_buffer_size", replay_buffer_size},
         {"replay_buffer_reuse", replay_buffer_reuse},
+        {"learner_batches", learner_batches},
         {"checkpoint_freq", checkpoint_freq},
         {"evaluation_window", evaluation_window},
         {"uct_c", uct_c},
@@ -125,6 +130,10 @@ struct AlphaZeroConfig {
     inference_cache = config_json.at("inference_cache").GetInt();
     replay_buffer_size = config_json.at("replay_buffer_size").GetInt();
     replay_buffer_reuse = config_json.at("replay_buffer_reuse").GetInt();
+    // A run from before the setting existed trained as upstream does.
+    learner_batches = config_json.count("learner_batches")
+                          ? config_json.at("learner_batches").GetInt()
+                          : 0;
     checkpoint_freq = config_json.at("checkpoint_freq").GetInt();
     evaluation_window = config_json.at("evaluation_window").GetInt();
     uct_c = config_json.at("uct_c").GetDouble();

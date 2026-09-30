@@ -22,6 +22,7 @@
 #ifndef THUD_AZ_VPEVALUATOR_H_
 #define THUD_AZ_VPEVALUATOR_H_
 
+#include <atomic>
 #include <future>  // NOLINT
 #include <vector>
 
@@ -54,12 +55,23 @@ class VPNetEvaluator : public Evaluator {
   void ClearCache();
   LRUCacheInfo CacheInfo();
 
+  // Requests by kind, to measure what the cache saves (thud/PLAN.md Phase 6): a
+  // position's value when the search first reaches it (Evaluate), and its move
+  // probabilities when the search expands it on a later visit (Prior). The network
+  // computes both at once, so the second hits the cache while the first is still in it.
+  // Counted with or without a cache (a cache_size of 0 turns it off).
+  struct RequestCounts {
+    int64_t value_hits = 0, value_misses = 0, prior_hits = 0, prior_misses = 0;
+  };
+  RequestCounts GetRequestCounts() const;
+  void ResetRequestCounts();
+
   void ResetBatchSizeStats();
   open_spiel::BasicStats BatchSizeStats();
   open_spiel::HistogramNumbered BatchSizeHistogram();
 
  private:
-  VPNetModel::InferenceOutputs Inference(const State& state);
+  VPNetModel::InferenceOutputs Inference(const State& state, bool for_prior);
 
   void Runner();
 
@@ -67,6 +79,8 @@ class VPNetEvaluator : public Evaluator {
   std::vector<std::unique_ptr<LRUCache<uint64_t, VPNetModel::InferenceOutputs>>>
       cache_;
   const int batch_size_;
+  std::atomic<int64_t> value_hits_{0}, value_misses_{0}, prior_hits_{0},
+      prior_misses_{0};
 
   struct QueueItem {
     VPNetModel::InferenceInputs inputs;

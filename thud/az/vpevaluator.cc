@@ -39,11 +39,14 @@ VPNetEvaluator::VPNetEvaluator(DeviceManager* device_manager, int batch_size,
       queue_(batch_size * threads * 4),
       batch_size_hist_(batch_size + 1) {
   cache_shards = std::max(1, cache_shards);
-  cache_.reserve(cache_shards);
-  for (int i = 0; i < cache_shards; ++i) {
-    cache_.push_back(
-        std::make_unique<LRUCache<uint64_t, VPNetModel::InferenceOutputs>>(
-            cache_size / cache_shards));
+  // A cache_size of 0 turns the cache off (LRUCache keeps at least 4 entries).
+  if (cache_size > 0) {
+    cache_.reserve(cache_shards);
+    for (int i = 0; i < cache_shards; ++i) {
+      cache_.push_back(
+          std::make_unique<LRUCache<uint64_t, VPNetModel::InferenceOutputs>>(
+              cache_size / cache_shards));
+    }
   }
   if (batch_size_ <= 1) {
     threads = 0;
@@ -69,6 +72,22 @@ void VPNetEvaluator::ClearCache() {
   }
 }
 
+VPNetEvaluator::RequestCounts VPNetEvaluator::GetRequestCounts() const {
+  RequestCounts counts;
+  counts.value_hits = value_hits_;
+  counts.value_misses = value_misses_;
+  counts.prior_hits = prior_hits_;
+  counts.prior_misses = prior_misses_;
+  return counts;
+}
+
+void VPNetEvaluator::ResetRequestCounts() {
+  value_hits_ = 0;
+  value_misses_ = 0;
+  prior_hits_ = 0;
+  prior_misses_ = 0;
+}
+
 LRUCacheInfo VPNetEvaluator::CacheInfo() {
   LRUCacheInfo info;
   for (auto& c : cache_) {
@@ -79,7 +98,7 @@ LRUCacheInfo VPNetEvaluator::CacheInfo() {
 
 std::vector<double> VPNetEvaluator::Evaluate(const State& state) {
   // TODO(author5): currently assumes zero-sum.
-  double p0value = Inference(state).value;
+  double p0value = Inference(state, /*for_prior=*/false).value;
   return {p0value, -p0value};
 }
 
@@ -87,11 +106,12 @@ open_spiel::ActionsAndProbs VPNetEvaluator::Prior(const State& state) {
   if (state.IsChanceNode()) {
     return state.ChanceOutcomes();
   } else {
-    return Inference(state).policy;
+    return Inference(state, /*for_prior=*/true).policy;
   }
 }
 
-VPNetModel::InferenceOutputs VPNetEvaluator::Inference(const State& state) {
+VPNetModel::InferenceOutputs VPNetEvaluator::Inference(const State& state,
+                                                       bool for_prior) {
   VPNetModel::InferenceInputs inputs = {state.LegalActions(),
                                         state.ObservationTensor()};
 
@@ -103,9 +123,11 @@ VPNetModel::InferenceOutputs VPNetEvaluator::Inference(const State& state) {
     absl::optional<const VPNetModel::InferenceOutputs> opt_outputs =
         cache_[cache_shard]->Get(key);
     if (opt_outputs) {
+      ++(for_prior ? prior_hits_ : value_hits_);
       return *opt_outputs;
     }
   }
+  ++(for_prior ? prior_misses_ : value_misses_);
   VPNetModel::InferenceOutputs outputs;
   if (batch_size_ <= 1) {
     outputs = device_manager_.Get(1)->Inference(std::vector{inputs})[0];

@@ -21,10 +21,12 @@ its untrained start to step 14 — then the dwarfs' play collapsed in its last t
 AlphaZero in `thud/az/`, proven identical to upstream — and so is **stage 3a**: valuing
 untried moves at their visited siblings' mean minus a reduction (now our default) kept the
 dwarfs' searches narrow, stopped run A's collapse and made the dwarf play far stronger
-(run C, 2026-09-28) — through step 16; continued to step 29, its dwarf play fell far
-against other networks (unresolved: forgetting, or the evaluation's search rule).
-**Next: Step 1 of verifying the untried-move rule** — every network evaluated as it was
-trained — then stage 3b, playout caps.
+(run C, 2026-09-28) — through step 16; continued to step 29 and evaluated as trained, no
+collapse but a drift: it beats step 16, loses to A step 14, and its dwarfs' move
+probabilities narrowed (forgetting, by the quick check; Step 2 tests a longer memory).
+**Now running: Step 2 of the plan to solve the dwarfs' decline** — run D, run C branched
+at step 15 with a 4x memory (2026-09-30), then its evaluation; then stage 3b, playout
+caps.
 
 **Where we stand:**
 
@@ -83,32 +85,38 @@ Phase 6, *Phase 6 roadmap and decision log*** — read it before choosing what t
    step 16 +21.6). But under upstream's rule neither C network plays the dwarfs as
    trained (`untried_move_check`: their searches spread over 99 and 76 moves, so the
    move is picked by one evaluation each). Details: `PLAN.md`, *First training runs*.
-2. **Verify the untried-move rule and solve the dwarf collapse** (user, 2026-09-29): run
-   A's collapse is certain (evaluated as trained); run C's decline was seen only in
-   matches where its dwarfs did not play as trained. **Step 1 — every network as
-   trained**, ready in `~/thud-runs/step1_as_trained.sh` (~3.5 hours), **to start on the
-   user's word**: C's networks search with the new rule, A's and the anchor with
-   upstream's (`az_match`'s `untried_a`/`untried_b`, 2026-09-29). The decisive matches
-   first — C29 against C16 (40 pairs), C16 and C29 against the anchor (20 each; answered
-   after ~1.3 hours) — then C8, C12, C20, C24 against the anchor and C29 against A14 (60
-   pairs). Up to 3 matches at once, `OMP_NUM_THREADS=1`, threads = pairs (the tuning
-   of 2026-09-29, `PLAN.md`, *First training runs*). If C's dwarfs hold up: the rule prevented the collapse for about twice as
-   many positions as run A lasted — 3a confirmed (the user decides), and the per-side
-   curve against the anchor becomes a health check at the end of every run. **Step 2,
-   only if they decline as trained:** the replay buffer as the second cause — an
-   optional ~10-minute check first (does C29 predict older archived positions worse than
-   C16?), then a branch from C's last healthy checkpoint with a 4x buffer (our copy must
-   learn to resume with a different buffer size; the buffer size also sets how often the
-   network learns and the work per learning step), trained to C29's number of positions
-   and evaluated as in Step 1. If it is not the buffer: the value targets (the dwarfs'
-   are nearly all losses) or the user's asymmetry hypothesis.
+2. **Verify the untried-move rule and solve the dwarf collapse** (user, 2026-09-29).
+   **Step 1 is done** (every network as trained, `~/thud-runs/step1_as_trained.sh`,
+   19:21-23:25; table and reading in `PLAN.md`, *First training runs*): no collapse like
+   run A's (C's dwarfs never below −0.6 against the anchor, A step 16's −24.9), but a
+   drift from step 16 on — step 29 beats step 16 (+4.1, +0.9 to +7.3), yet its dwarfs
+   lost 10.1 points against the anchor (p = 0.001) and it loses to A step 14 (−8.5, −10.9
+   to −6.2, 50 of 60 pairs; as dwarfs −16.8), which step 16 had been even with.
+   Specialising on its own play: by the plan's rule, **Step 2 is indicated — for the user
+   to decide.** Also found: C's dwarfs play better with a broad search that picks by one
+   evaluation per move (+21.6 against the anchor at step 16) than with their policy's
+   focused one (+9.5) — their move probabilities look like the weak point.
+   **Step 2 is running** (the user's green light, 2026-09-30). The quick forgetting check
+   (`thud/experiments/az_forgetting.cc`) found C's values sound but its dwarfs' move
+   probabilities drifting — C29 fits the dwarf positions of steps 16-21 far worse than
+   C16-C24 did (6.57 against ~5.0 on archive 18; the trolls only 0.1-0.2 worse), mostly
+   between steps 24 and 29 — so, judged warranted: **run D**, C branched at step 15 with
+   option C (a buffer of 262,144 positions pre-filled from C's archives of steps 4-15 by
+   `az_merge_buffers`, C's cadence with `replay_buffer_reuse` 12, C's 64 batches per step
+   with the new `learner_batches`), to step 29, from 02:57 (`~/thud-runs/step2_buffer4x.sh`,
+   ~5 hours); then, each as trained, D29 against C29, the anchor, A14 and C16, D20 and D24
+   against the anchor (~3.5 hours), and the forgetting check of D on C's archives.
+   Option C's settings are to be revisited later (`PLAN.md`, *Settings to determine*, 7).
+   If D's dwarfs keep their repertoire and D beats C29 without losing to A14, forgetting
+   was the cause; if not: the value targets or the user's asymmetry hypothesis.
 3. **Proposed step back** (Claude, 2026-09-29; for the user to decide): on this CPU only
    "does it work" questions — correctness, learning against fixed opponents, no
    collapse; "which setting is best" waits for the GPU, since one run per setting cannot
    tell a better setting from a luckier run. Before the GPU: Steps 1-2, playout caps
    (3b) with equal settings per side and a no-worse run, the convolutional policy head
-   (5), a GPU throughput test; tree reuse (3c), the settings (4), network growth and the
-   buffer then on the GPU.
+   (5), a GPU throughput test; the settings (4), network growth and the buffer then on the
+   GPU. **Tree reuse (3c) is postponed** (user, 2026-09-29): why, how to build it (root
+   noise re-applied, Leela Zero's reset) and how to test it are in `PLAN.md`.
 4. **Stage 3b: playout cap randomisation** in our copy, after Step 1. A proposal is
    written up (`PLAN.md`, *Changes to the search and trainer*, playout caps: `p` 0.25
    for both sides, `N` 400, `n` 100, quick searches unrecorded and without root noise,
@@ -1549,5 +1557,50 @@ instrumentation, and the pattern agreed for later, are in `PLAN.md` Phase 5).
   OMP 1; whole matches had averaged ~1,050, their tails idle. `step1_as_trained.sh` is
   ready (~3.5 hours, the decisive answer after ~1.3), waiting for the user's word.
 
-**Next step:** as recorded in `## Current status` — Step 1 (every network as trained),
-then Step 2 only if needed, then stage 3b.
+- **Evening: tree reuse re-read and postponed.** Step 1 started at 19:21. The user asked
+  about working on tree reuse in parallel, then asked for the sources to be re-read:
+  AlphaGo Zero reused the tree in self-play (Methods, *Play*); AlphaZero's pseudocode,
+  KataGo (its self-play clears the tree "to make sure root noise is effective") and
+  Leela Chess Zero do not; Leela Zero has an open issue where reused visits swamp the
+  noise, Leela Chess Zero a closed one where a reused root got no noise at all. Checked
+  in our code on the user's questions: the evaluation cache (keyed by the position with
+  both counters, 262,144 entries, cleared every learning step) is hit 52-53%, much of it
+  a node's second request; a larger cache would gain little. The trainer's 10 MB tree
+  limit prunes rather than stops and matters only above ~850 simulations. The user
+  postponed tree reuse; the plan records why, how to build it and how to test it.
+
+- **Night: Step 1's results and the cache counters.** Step 1 finished at 23:25 (results
+  in the status block and `PLAN.md`): no collapse, but C drifted from step 16 on — it
+  beats step 16, loses to A step 14 (−8.5) and its dwarfs lost 10 points against the
+  anchor; Step 2 indicated. On the user's request the evaluator (our copy) now counts
+  value and move-probability requests with their cache hits, the trainer logs them, and
+  `az_match` has `cache=` and `share=`. Controls: default games unchanged, the cache off
+  gives the same games and no hits, a shared evaluator the same games as two; C step 29
+  against itself: 39% of value requests cached with two evaluators, 69% with one shared.
+  A first build of the identity check lacked upstream's sources (the header has the
+  command); a server-side outage of the command check stalled the shell for a while.
+  After Step 1: the identity check, then `~/thud-runs/tune_cache.sh` (the cache on, off
+  and 4x, ~35 minutes).
+
+- **After midnight: the cache comparison.** The identity check passed (12 of 12). The
+  cache makes self-play-like search 2.6-2.7x faster (3,275-3,538 against 1,301
+  simulations/s without it); a shared evaluator beats two separate ones (2,105). A 4x
+  cache first seemed +42%, but that was an artifact — a network playing itself replays
+  each pair's first battle, and the larger cache remembered it; before any replay it
+  gave no gain. Details in `PLAN.md`, *First training runs*, the match program. With the
+  counters, `import_from_upstream.py --check` lists 5 of 12 copies as a fresh import
+  (differing: mcts, alpha_zero, vpevaluator — `.h` and `.cc` each — and az_trainer.cc).
+
+- **2026-09-30, early morning: the forgetting check and Step 2.** The user explained
+  how the buffer would be enlarged (options A, B and C explained: upstream ties the
+  learning cadence and the training per step to the buffer size), asked for the quick
+  check and gave the green light for option C if warranted; its new setting is to be revisited later (in the
+  plan). `az_forgetting` (C's networks on C's archives, 3.5 minutes): values sound, the
+  dwarfs' move probabilities drifting, mostly between steps 24 and 29 — warranted. Our
+  copy's trainer got `learner_batches` (0 = upstream; it logs the batches per step);
+  `az_merge_buffers` built run D's 262,144-position buffer from C's archives of steps
+  4-15 and checked it (all distinct, exactly the archived positions). The archives miss
+  ~0.6% of positions (copied a few hundred late each time). Run D started at 02:57.
+
+**Next step:** as recorded in `## Current status` — run D's results (training ~5 hours,
+then its evaluation ~3.5 hours), then stage 3b.
