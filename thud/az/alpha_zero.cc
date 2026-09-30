@@ -421,8 +421,13 @@ void learner(const open_spiel::Game& game, const AlphaZeroConfig& config,
       // (if config.explicit_learning == true).
       device_manager->SetLearning(config.explicit_learning);
 
-      // Learn from them.
-      for (int i = 0; i < replay_buffer.Size() / config.train_batch_size; i++) {
+      // Learn from them: upstream's one pass over the buffer, or a fixed number of
+      // batches (learner_batches, thud/PLAN.md Phase 6, Step 2).
+      const int batches = config.learner_batches > 0
+                              ? config.learner_batches
+                              : replay_buffer.Size() / config.train_batch_size;
+      logger.Print("Learning on %d batches of %d", batches, config.train_batch_size);
+      for (int i = 0; i < batches; i++) {
         losses += learn_model->Learn(
             replay_buffer.Sample(&rng, config.train_batch_size));
       }
@@ -490,6 +495,25 @@ void learner(const open_spiel::Game& game, const AlphaZeroConfig& config,
           cache_info.hits, cache_info.misses, 100.0 * cache_info.HitRate()));
       eval->ClearCache();
     }
+    const VPNetEvaluator::RequestCounts requests = eval->GetRequestCounts();
+    eval->ResetRequestCounts();
+    const auto share = [](int64_t hits, int64_t misses) {
+      return hits + misses > 0 ? 100.0 * hits / (hits + misses) : 0.0;
+    };
+    logger.Print(absl::StrFormat(
+        "Requests: values %d (cache hits %.1f%%), move probabilities %d (cache hits "
+        "%.1f%%)",
+        requests.value_hits + requests.value_misses,
+        share(requests.value_hits, requests.value_misses),
+        requests.prior_hits + requests.prior_misses,
+        share(requests.prior_hits, requests.prior_misses)));
+    record.emplace("requests",
+                   json::Object({
+                       {"value_hits", requests.value_hits},
+                       {"value_misses", requests.value_misses},
+                       {"prior_hits", requests.prior_hits},
+                       {"prior_misses", requests.prior_misses},
+                   }));
     record.emplace("cache",
                    json::Object({
                        {"size", cache_info.size},

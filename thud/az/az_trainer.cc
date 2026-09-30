@@ -62,6 +62,9 @@ ABSL_FLAG(std::string, untried_move_value, "sibling_mean_minus_reduction",
           "game), sibling_mean_minus_reduction (KataGo's rule) or loss (AlphaZero's).");
 ABSL_FLAG(double, untried_move_reduction, 0.2,
           "The reduction of sibling_mean_minus_reduction.");
+ABSL_FLAG(int, learner_batches, 0,
+          "Batches each learning step trains on; 0: one pass over the replay buffer "
+          "(its size / train_batch_size), as upstream.");
 ABSL_FLAG(int, replay_buffer_size, 1 << 16,
           "How many states to store in the replay buffer.");
 ABSL_FLAG(double, replay_buffer_reuse, 3,
@@ -167,6 +170,7 @@ int main(int argc, char** argv) {
     config.policy_epsilon = absl::GetFlag(FLAGS_policy_epsilon);
     config.untried_move_value = absl::GetFlag(FLAGS_untried_move_value);
     config.untried_move_reduction = absl::GetFlag(FLAGS_untried_move_reduction);
+    config.learner_batches = absl::GetFlag(FLAGS_learner_batches);
     open_spiel::thud_az::UntriedMoveValueFromString(
         config.untried_move_value);  // Fails early if unknown.
     config.temperature = absl::GetFlag(FLAGS_temperature);

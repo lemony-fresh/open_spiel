@@ -180,8 +180,9 @@ open_spiel` (~2.5 min). The commands, and the compiler flags copied from CMake, 
 `thud/experiments/build_az_program.sh`, which builds the programs on upstream's
 AlphaZero (`az_layout_check`, `az_throughput`, `az_reuse`, `az_buffer_stats`). Programs on
 **our copy** (`thud/az/`: the trainer `az_trainer` — upstream's example plus
-`--untried_move_value` and `--untried_move_reduction` — `identity_check`,
-`untried_move_check`, and `az_match` from `thud/experiments/`) are built by
+`--untried_move_value`, `--untried_move_reduction` and `--learner_batches` —
+`identity_check`, `untried_move_check`, and from `thud/experiments/` `az_match`,
+`az_forgetting` and `az_merge_buffers`) are built by
 `thud/az/build.sh MAIN.cc`, which also links Abseil's static libraries (the flag parsing
 `libopen_spiel.so` does not re-export) and runs at `nice 19`.
 

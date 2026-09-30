@@ -28,12 +28,16 @@
 // network A's summed margin per pair (in points), its mean with a 95% interval (Student's
 // t), pairs won, drawn and lost, and each network's mean margin per side. With `progress`,
 // it also reports the simulations per second to stderr every `progress` seconds — a
-// throughput measure that needs no finished pairs.
+// throughput measure that needs no finished pairs — with the network requests by kind
+// (values, move probabilities) and how many the cache answered. `cache` sets each
+// evaluator's cache size (0: none); `share=1` gives a network playing itself one
+// evaluator for both sides, as in self-play, so that each side's search can hit the
+// positions the other side's evaluated.
 //
 //   thud/az/build.sh thud/experiments/az_match.cc
 //   OMP_NUM_THREADS=4 build-shared/az_match a=RUN_DIR:STEP b=RUN_DIR:STEP sims=100 \
 //     pairs=50 [sims_a=SIMS sims_b=SIMS opening=4 threads=16 batch=16 seed=1 \
-//     untried=upstream untried_a=UNTRIED untried_b=UNTRIED progress=0]
+//     untried=upstream untried_a=UNTRIED untried_b=UNTRIED progress=0 cache=262144 share=0]
 //
 // STEP is a checkpoint step of that run (-1: its most recent checkpoint).
 
@@ -109,7 +113,7 @@ class Args {
 std::shared_ptr<VPNetEvaluator> LoadEvaluator(const open_spiel::Game& game,
                                               const std::string& spec,
                                               DeviceManager* devices, int batch,
-                                              int inference_threads) {
+                                              int inference_threads, int cache_size) {
   const size_t colon = spec.rfind(':');
   if (colon == std::string::npos) {
     open_spiel::SpielFatalError(absl::StrCat("Expected DIR:STEP, got ", spec));
@@ -118,7 +122,7 @@ std::shared_ptr<VPNetEvaluator> LoadEvaluator(const open_spiel::Game& game,
   model.LoadCheckpoint(std::stoi(spec.substr(colon + 1)));
   devices->AddDevice(std::move(model));
   return std::make_shared<VPNetEvaluator>(devices, batch, inference_threads,
-                                          /*cache_size=*/1 << 18, /*cache_shards=*/1);
+                                          cache_size, /*cache_shards=*/1);
 }
 
 struct Battle {
@@ -165,6 +169,8 @@ int main(int argc, char** argv) {
   const open_spiel::thud_az::UntriedMoveValue rule_b =
       open_spiel::thud_az::UntriedMoveValueFromString(untried_b);
   const int progress = args.GetInt("progress", 0);
+  const int cache_size = args.GetInt("cache", 1 << 18);
+  const bool share = args.GetInt("share", 0) != 0;
   args.CheckAllUsed();
   if (spec_a.empty() || spec_b.empty()) {
     std::cerr << "Usage: " << argv[0] << " a=DIR:STEP b=DIR:STEP [key=value ...]"
@@ -172,9 +178,31 @@ int main(int argc, char** argv) {
     return 1;
   }
 
+  if (share && spec_a != spec_b) {
+    std::cerr << "share=1 needs the same network on both sides" << std::endl;
+    return 1;
+  }
   DeviceManager devices_a, devices_b;
-  auto eval_a = LoadEvaluator(*game, spec_a, &devices_a, batch, inference_threads);
-  auto eval_b = LoadEvaluator(*game, spec_b, &devices_b, batch, inference_threads);
+  auto eval_a =
+      LoadEvaluator(*game, spec_a, &devices_a, batch, inference_threads, cache_size);
+  auto eval_b = share ? eval_a
+                      : LoadEvaluator(*game, spec_b, &devices_b, batch,
+                                      inference_threads, cache_size);
+  // The requests of both evaluators (one if shared).
+  auto requests = [&]() {
+    VPNetEvaluator::RequestCounts sum = eval_a->GetRequestCounts();
+    if (!share) {
+      const VPNetEvaluator::RequestCounts b = eval_b->GetRequestCounts();
+      sum.value_hits += b.value_hits;
+      sum.value_misses += b.value_misses;
+      sum.prior_hits += b.prior_hits;
+      sum.prior_misses += b.prior_misses;
+    }
+    return sum;
+  };
+  auto percent = [](int64_t hits, int64_t misses) {
+    return hits + misses > 0 ? 100.0 * hits / (hits + misses) : 0.0;
+  };
 
   // The openings, fixed by the seed so that reruns play the same pairs.
   std::vector<std::vector<Action>> openings(pairs);
@@ -202,11 +230,18 @@ int main(int argc, char** argv) {
         }
         const Clock::time_point now = Clock::now();
         const int64_t count = simulations_done;
+        const VPNetEvaluator::RequestCounts r = requests();
         std::cerr << absl::StrFormat(
-                         "progress: %.0f s, %d simulations, %.0f simulations/s\n",
+                         "progress: %.0f s, %d simulations, %.0f simulations/s, "
+                         "values %d (%.1f%% cached), move probabilities %d (%.1f%% "
+                         "cached)\n",
                          std::chrono::duration<double>(now - start).count(), count,
                          (count - last_count) /
-                             std::chrono::duration<double>(now - last).count())
+                             std::chrono::duration<double>(now - last).count(),
+                         r.value_hits + r.value_misses,
+                         percent(r.value_hits, r.value_misses),
+                         r.prior_hits + r.prior_misses,
+                         percent(r.prior_hits, r.prior_misses))
                   << std::flush;
         last = now;
         last_count = count;
@@ -265,6 +300,7 @@ int main(int argc, char** argv) {
                                 (5 * std::pow(z, 5) + 16 * z * z * z + 3 * z) / (96 * df * df)
                           : 0;
   const double half_width = pairs > 1 ? t * std::sqrt(var / df) / std::sqrt(pairs) : 0;
+  const VPNetEvaluator::RequestCounts r = requests();
   int won = 0, drawn = 0, lost = 0;
   for (double x : pair_margin) (x > 0 ? won : x < 0 ? lost : drawn) += 1;
   std::cout << absl::StrFormat(
@@ -274,10 +310,16 @@ int main(int argc, char** argv) {
                    "\"pairs\": %d, \"a_mean_pair_margin\": %.2f, \"ci95\": [%.2f, %.2f], "
                    "\"a_pairs_won\": %d, \"drawn\": %d, \"lost\": %d, "
                    "\"a_mean_as_dwarfs\": %.2f, \"a_mean_as_trolls\": %.2f, "
-                   "\"b_mean_as_dwarfs\": %.2f, \"b_mean_as_trolls\": %.2f}",
+                   "\"b_mean_as_dwarfs\": %.2f, \"b_mean_as_trolls\": %.2f, "
+                   "\"cache\": %d, \"shared\": %s, \"value_requests\": %d, "
+                   "\"value_cached\": %.1f, \"prior_requests\": %d, "
+                   "\"prior_cached\": %.1f}",
                    spec_a, spec_b, untried_a, untried_b, sims_a, sims_b, pairs, m,
-                   m - half_width, m + half_width, won, drawn, lost, mean(a_dwarfs), mean(a_trolls),
-                   -mean(a_trolls), -mean(a_dwarfs))
+                   m - half_width, m + half_width, won, drawn, lost, mean(a_dwarfs),
+                   mean(a_trolls), -mean(a_trolls), -mean(a_dwarfs), cache_size,
+                   share ? "true" : "false", r.value_hits + r.value_misses,
+                   percent(r.value_hits, r.value_misses), r.prior_hits + r.prior_misses,
+                   percent(r.prior_hits, r.prior_misses))
             << std::endl;
   return 0;
 }
