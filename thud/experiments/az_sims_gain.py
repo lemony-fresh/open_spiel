@@ -46,6 +46,12 @@ import sys
 from scipy import stats
 
 
+def rules(summary):
+  """The two networks' rules for untried moves (one "untried" before 2026-09-29)."""
+  return (summary.get("untried_a", summary.get("untried")),
+          summary.get("untried_b", summary.get("untried")))
+
+
 def read_pairs(path):
   """Pair index -> (a_as_dwarfs, a_as_trolls), and the summary line."""
   pairs, summary = {}, None
@@ -122,9 +128,9 @@ def main(argv):
   for name, s in (("uneven", u_summary), ("baseline", b_summary)):
     if s:
       print(f"{name}: a={s['a']} sims_a={s.get('sims_a')} b={s['b']} "
-            f"sims_b={s.get('sims_b')} untried={s['untried']} pairs={s['pairs']}")
+            f"sims_b={s.get('sims_b')} untried={rules(s)} pairs={s['pairs']}")
   if (u_summary and b_summary and
-      (u_summary["a"] != b_summary["a"] or u_summary["untried"] != b_summary["untried"]
+      (u_summary["a"] != b_summary["a"] or rules(u_summary) != rules(b_summary)
        or b_summary.get("sims_a") != u_summary.get("sims_b")
        or b_summary.get("sims_b") != u_summary.get("sims_b"))):
     print("WARNING: the baseline is not the uneven match's network and rule at the "
