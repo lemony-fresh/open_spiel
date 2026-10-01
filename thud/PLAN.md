@@ -1341,7 +1341,29 @@ defaults in brackets; the ones Thud makes most uncertain first:
    test forgetting (a 4x memory, C's cadence and C's 64 batches); **the values themselves
    are to be revisited later** (user, 2026-09-30) — the memory, the training per step
    and the times each position is trained on — once learning is stable, and again before
-   growing the network or moving to the GPU.
+   growing the network or moving to the GPU. **The reference for the memory** (user asked
+   about an even bigger buffer, 2026-09-30): KataGo samples "uniformly from a growing
+   moving window of the most recent data, with window size beginning at 250,000 samples
+   and increasing to about 22 million by the end of the main run" — N_window = c(1 +
+   β((N_total/c)^α − 1)/α), c = 250,000, α = 0.75, β = 0.4, sublinear in the positions
+   generated so far (arXiv 1902.10565, section 3 and appendix C); an ablation "showed
+   major overfitting due to lack of data" until its window was doubled. At our scale it
+   gives ~280,000 positions at C's step 15 and ~390,000 at step 29: run D's 262,144 (4x)
+   is in line, our former 65,536 a quarter of KataGo's smallest window. A larger fixed
+   buffer costs no training time with `learner_batches` (64 batches whatever the size;
+   saving it each step took ~16 s at 4x), but memory: the trainer used 5.3 GB at 4x, ~8 GB
+   at 8x, plus the buffer watcher's copy — WSL's 15 GB allow ~8x at most, 16x needs more of
+   the host's 31.6 GB. And a longer memory learns from older, weaker games, which is why
+   KataGo grows it sublinearly. So, for long runs (the GPU): a growing window in our copy
+   — sample only from the most recent N_window positions — rather than a bigger fixed
+   buffer. KataGo's 22 million came after ~225 million positions (the window then 10% of
+   all data); by its rule our window should be ~4.3x the former 65,536 after 330,000
+   positions (85% of all data), ~5.9x after 640,000, ~7.5x after 1 million, ~21x after 5
+   million. Sizes need not be powers of two (65,536 is only upstream's default; the
+   buffer indexes with `% max_size`): 6x = 393,216 with `replay_buffer_reuse` 18, or 7x =
+   458,752 with 21, keeps C's cadence; at ~9,700 bytes a position the trainer needs ~6.5
+   GB at 6x and ~7.1 GB at 7x, the buffer watcher's copy ~3.8 or ~4.4 GB more at its peak
+   (2026-09-30).
 
 Speed only, not what is learned: `--actors`, `--inference_batch_size`,
 `--inference_threads`, `--inference_cache`, `OMP_NUM_THREADS`. Measurement only:

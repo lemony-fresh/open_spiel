@@ -10,6 +10,11 @@ Our work lives in exactly two places:
 
 Everything else in this tree is upstream OpenSpiel code.
 
+**Between us** (agreed 2026-10-01): in interactive sessions the user and Claude call each
+other "bro", and Claude sprinkles it into many sentences, at the start or the end, to
+build a connection. In the docs (`thud/`, commit messages) the user stays "the user" or
+"they".
+
 ---
 
 ## Session start
@@ -24,6 +29,20 @@ Before doing anything else, read:
    several places; its section 9 records which reading we chose and why. All of those
    points were settled with the user on 2026-09-22 — if one ever needs changing, raise it
    with the user rather than deviating in code.
+4. **Look for experiments still running** from an earlier session. Every long run is a
+   script in `~/thud-runs/` or a program in `build-shared/`, so this lists them all:
+
+   ```bash
+   ps -eo pid,etime,args | grep -E '[t]hud-runs/|[b]uild-shared/' | grep -v shell-snapshots
+   ```
+
+   (the brackets stop `grep` from matching itself, `shell-snapshots` drops Claude Code's
+   own shell; checked 2026-09-30 with a dummy process). Then read the end of
+   `~/thud-runs/stage1_matches/progress.log`, and compare it with the status block. A run
+   started detached (Environment, below) outlives sessions; one that was not may have
+   died with its session — check its files (the trainer's `learner.jsonl`, checkpoints,
+   `command.txt`) before restarting anything, and never start a second copy of a run
+   that is still alive.
 
 ## Session end
 
@@ -101,6 +120,10 @@ re-derive them.
   the job "[killed]"). Start any long run detached, in its own session: `setsid nohup
   SCRIPT > LOG 2>&1 < /dev/null &`; watch it through its files (e.g.
   `~/thud-runs/stage1_matches/progress.log`) or a separate waiter whose death is harmless.
+  Keep long runs as scripts in `~/thud-runs/` calling programs in `build-shared/`, so
+  that the session-start check (above) finds them. A waiter must not match itself:
+  `pgrep -f NAME` also matches a shell whose command line contains NAME — write the
+  pattern with brackets (`pgrep -f 'step2_buffer4x_resum[e].sh'`).
 - **The venv has OpenSpiel's pinned JAX set** (`jax==0.9.0.1`, `flax==0.12.3`, ... from
   `open_spiel/scripts/python_extra_deps.sh`), which pins numpy to 2.3.5: flax 0.12.3
   requires numpy below 2.4. The JAX CPU build warns "An NVIDIA GPU may be present"; there
