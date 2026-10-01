@@ -1632,5 +1632,21 @@ instrumentation, and the pattern agreed for later, are in `PLAN.md` Phase 5).
   24, 29; the forgetting check shows no policy narrowing (D29's dwarf loss on old
   archives at C16's level). Forgetting was part of the cause.
 
+- **2026-09-30 late evening and 2026-10-01 morning.** The user asked whether anything
+  speaks against an even bigger buffer: not the training time (with `learner_batches`,
+  64 batches whatever the size; saving 2.5 GB took ~16 s a step), but memory (WSL's 15
+  GB: ~7x at most with the buffer watcher's copy) and staleness; KataGo grows its window
+  sublinearly with the data (250,000 to 22 million after ~225 million positions; by its
+  rule ~4.3x our former 65,536 at C's step 15, ~5.9x at step 29, ~7.5x after a million),
+  so run C's forgetting with a quarter of KataGo's smallest window is unsurprising. Sizes
+  need not be powers of two (6x = 393,216 with reuse 18, 7x = 458,752 with 21). Asked
+  about 7x: slower uptake of fresh games (the newest step's share of each update 4.8%,
+  at 4x 8.3%), slightly stale until ~900,000 positions, ~11.6 GB peak (no full `make
+  -j10` meanwhile), pre-filling from run D needs `az_merge_buffers` to skip duplicates
+  (D's saved buffers overlap), and it must not change together with playout caps in one
+  comparison. In `CLAUDE.md`: a session-start check for running experiments (tested with
+  a dummy process), and the user and Claude call each other "bro" in sessions (the docs
+  keep "the user").
+
 **Next step:** as recorded in `## Current status` — the user's decisions on adopting the
 longer memory and on stage 3b.
