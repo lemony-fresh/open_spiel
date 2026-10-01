@@ -24,9 +24,11 @@ dwarfs' searches narrow, stopped run A's collapse and made the dwarf play far st
 (run C, 2026-09-28) — through step 16; continued to step 29 and evaluated as trained, no
 collapse but a drift: it beats step 16, loses to A step 14, and its dwarfs' move
 probabilities narrowed (forgetting, by the quick check; Step 2 tests a longer memory).
-**Now running: Step 2 of the plan to solve the dwarfs' decline** — run D, run C branched
-at step 15 with a 4x memory (2026-09-30), then its evaluation; then stage 3b, playout
-caps.
+**Step 2 is done** (2026-09-30): run D, run C branched at step 15 with a 4x memory, keeps
+its dwarfs' move probabilities from narrowing and beats C29 (+7.3) and C16 (+8.4), but
+still loses to A14 (−5.4) and its dwarfs still slip against the anchor — forgetting
+explains part of the decline. **Next: the user's decisions** — adopt the longer memory,
+and stage 3b, playout caps.
 
 **Where we stand:**
 
@@ -96,19 +98,21 @@ Phase 6, *Phase 6 roadmap and decision log*** — read it before choosing what t
    to decide.** Also found: C's dwarfs play better with a broad search that picks by one
    evaluation per move (+21.6 against the anchor at step 16) than with their policy's
    focused one (+9.5) — their move probabilities look like the weak point.
-   **Step 2 is running** (the user's green light, 2026-09-30). The quick forgetting check
-   (`thud/experiments/az_forgetting.cc`) found C's values sound but its dwarfs' move
-   probabilities drifting — C29 fits the dwarf positions of steps 16-21 far worse than
-   C16-C24 did (6.57 against ~5.0 on archive 18; the trolls only 0.1-0.2 worse), mostly
-   between steps 24 and 29 — so, judged warranted: **run D**, C branched at step 15 with
-   option C (a buffer of 262,144 positions pre-filled from C's archives of steps 4-15 by
-   `az_merge_buffers`, C's cadence with `replay_buffer_reuse` 12, C's 64 batches per step
-   with the new `learner_batches`), to step 29, from 02:57 (`~/thud-runs/step2_buffer4x.sh`,
-   ~5 hours); then, each as trained, D29 against C29, the anchor, A14 and C16, D20 and D24
-   against the anchor (~3.5 hours), and the forgetting check of D on C's archives.
-   Option C's settings are to be revisited later (`PLAN.md`, *Settings to determine*, 7).
-   If D's dwarfs keep their repertoire and D beats C29 without losing to A14, forgetting
-   was the cause; if not: the value targets or the user's asymmetry hypothesis.
+   **Step 2 is done** (2026-09-30; results in `PLAN.md`, *First training runs*). The quick
+   forgetting check (`thud/experiments/az_forgetting.cc`) had found C's dwarfs' move
+   probabilities drifting, so run D branched C at step 15 with option C (a buffer of
+   262,144 pre-filled from C's archives by `az_merge_buffers`, C's cadence, C's 64
+   batches per step with the new `learner_batches`), to step 29 (`~/thud-runs/
+   step2_buffer4x.sh`; frozen 07:40-10:48 by a battery freeze, stopped at 10:54 with
+   the Claude Code session that had started it, resumed detached at 14:43 with
+   `step2_buffer4x_resume.sh`). Results, each as trained: **D29 beats C29 by +7.3 and
+   C16 by +8.4**; against A14 −5.4 (C29: −8.5); its dwarfs against the anchor +11.7,
+   +8.1, +3.2 at steps 20, 24, 29 (C: +3.2, +0.9, −0.6); D's dwarf policy keeps fitting old
+   positions at C16's level (C29's narrowing gone). Forgetting explains part: the longer
+   memory removes the policy's narrowing and makes the strongest network so far, but the
+   dwarfs still slip against the anchor and the gap to A14 remains. **To decide (user):**
+   adopt the longer memory as our setting (its values to revisit later, `PLAN.md`,
+   *Settings to determine*, 7) and go on with stage 3b.
 3. **Proposed step back** (Claude, 2026-09-29; for the user to decide): on this CPU only
    "does it work" questions — correctness, learning against fixed opponents, no
    collapse; "which setting is best" waits for the GPU, since one run per setting cannot
@@ -1602,5 +1606,31 @@ instrumentation, and the pattern agreed for later, are in `PLAN.md` Phase 5).
   4-15 and checked it (all distinct, exactly the archived positions). The archives miss
   ~0.6% of positions (copied a few hundred late each time). Run D started at 02:57.
 
-**Next step:** as recorded in `## Current status` — run D's results (training ~5 hours,
-then its evaluation ~3.5 hours), then stage 3b.
+- **2026-09-30 morning.** The laptop, unplugged by accident, ran out of battery: Windows
+  suspended it (WSL up since 2026-09-26, every process of run D alive), the pause
+  detector shows one freeze of 11,282 s (07:40-10:48), and run D continued at step 25.
+  The trainer's new request counts corrected the cache argument: in self-play only
+  13-22% of value requests hit (the noise-free match: 40-45%), about the share tree reuse
+  would inherit — so each search spends ~a fifth of its simulations re-traversing what
+  the previous one explored; the cache spares the network calls, not the simulations. My
+  earlier claim that the cache recovers most of reuse's saving was wrong; corrected in
+  `PLAN.md` (the tree-reuse entry, its roadmap row, the match program), with a new
+  trigger to revisit reuse (the dwarfs' most visited move above ~30%). The user asked
+  whether this makes reuse more promising: somewhat (its gain is the whole inherited
+  share, and grows as the policy sharpens), but the value of 20-30% more simulations is
+  unmeasured and the risk to root noise — the dwarfs' exploration — unchanged, so it
+  stays postponed.
+
+- **2026-09-30 afternoon.** Run D had not advanced since 10:54: its process tree died
+  with the old Claude Code session (the job's output reads "[killed]"; no out-of-memory
+  kill). Resumed from step 25 at 14:43 with `setsid nohup`, so a session change can no
+  longer stop it; the lesson is in `CLAUDE.md` (Environment).
+
+- **2026-09-30 evening: Step 2's results.** Run D finished training at ~16:40 and its
+  evaluation at 19:44, ahead of the estimate: D29 beats C29 (+7.3) and C16 (+8.4), loses
+  to A14 (−5.4, C29 −8.5); its dwarfs against the anchor +11.7 / +8.1 / +3.2 at steps 20,
+  24, 29; the forgetting check shows no policy narrowing (D29's dwarf loss on old
+  archives at C16's level). Forgetting was part of the cause.
+
+**Next step:** as recorded in `## Current status` — the user's decisions on adopting the
+longer memory and on stage 3b.

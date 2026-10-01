@@ -95,6 +95,12 @@ re-derive them.
   unpaused. Time measurements with a
   monotonic clock survive a pause; wall-clock times (the AlphaZero trainer's logs, `date`
   differences) do not. A pause shows as `/proc/uptime` falling behind the wall clock.
+- **Background jobs die with the Claude Code session that started them.** On 2026-09-30
+  run D's whole process tree stopped at 10:54, minutes after a new session replaced the
+  old one following a battery freeze (no crash, no out-of-memory kill; the harness marked
+  the job "[killed]"). Start any long run detached, in its own session: `setsid nohup
+  SCRIPT > LOG 2>&1 < /dev/null &`; watch it through its files (e.g.
+  `~/thud-runs/stage1_matches/progress.log`) or a separate waiter whose death is harmless.
 - **The venv has OpenSpiel's pinned JAX set** (`jax==0.9.0.1`, `flax==0.12.3`, ... from
   `open_spiel/scripts/python_extra_deps.sh`), which pins numpy to 2.3.5: flax 0.12.3
   requires numpy below 2.4. The JAX CPU build warns "An NVIDIA GPU may be present"; there
