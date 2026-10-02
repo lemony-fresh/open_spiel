@@ -12,8 +12,9 @@ Everything else in this tree is upstream OpenSpiel code.
 
 **Between us** (agreed 2026-10-01): in interactive sessions the user and Claude call each
 other "bro", and Claude sprinkles it into many sentences, at the start or the end, to
-build a connection. In the docs (`thud/`, commit messages) the user stays "the user" or
-"they".
+build a connection — the user asked for it more often than Claude first did: several
+times in a reply, in short replies too, though not in every sentence. In the docs
+(`thud/`, commit messages) the user stays "the user" or "they".
 
 ---
 
@@ -114,6 +115,12 @@ re-derive them.
   unpaused. Time measurements with a
   monotonic clock survive a pause; wall-clock times (the AlphaZero trainer's logs, `date`
   differences) do not. A pause shows as `/proc/uptime` falling behind the wall clock.
+  **A sleep can also end WSL altogether**: on 2026-10-01 the laptop slept on battery from
+  ~15:12 to 16:43 (Windows logged nothing in between, then "Wake from sleep detected"),
+  and WSL restarted on waking — every process ended, detached ones too (2026-09-30 it had
+  survived a 3-hour battery freeze). So check with `powershell.exe -NoProfile -Command
+  "(Get-CimInstance Win32_Battery).BatteryStatus"` (2 = mains, 1 = battery) before and
+  during long runs; `uptime -s` shows when WSL last started.
 - **Background jobs die with the Claude Code session that started them.** On 2026-09-30
   run D's whole process tree stopped at 10:54, minutes after a new session replaced the
   old one following a battery freeze (no crash, no out-of-memory kill; the harness marked
@@ -211,7 +218,7 @@ AlphaZero (`az_layout_check`, `az_throughput`, `az_reuse`, `az_buffer_stats`). P
 **our copy** (`thud/az/`: the trainer `az_trainer` — upstream's example plus
 `--untried_move_value`, `--untried_move_reduction` and `--learner_batches` —
 `identity_check`, `untried_move_check`, and from `thud/experiments/` `az_match`,
-`az_forgetting` and `az_merge_buffers`) are built by
+`az_forgetting`, `az_merge_buffers` and `az_target_quality`) are built by
 `thud/az/build.sh MAIN.cc`, which also links Abseil's static libraries (the flag parsing
 `libopen_spiel.so` does not re-export) and runs at `nice 19`.
 
