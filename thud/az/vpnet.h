@@ -163,6 +163,13 @@ class VPNetModel {
   torch::Device torch_device_;
 };
 
+// Our change, for training on randomly turned and mirrored positions: `inputs` as
+// they look after one of Thud's 8 board symmetries (thud::SymmetricObservation and
+// thud::SymmetricAction; symmetry 0 changes nothing). The value stays: a symmetry
+// changes neither the side to move nor the outcome.
+VPNetModel::TrainInputs SymmetricTrainInputs(const VPNetModel::TrainInputs& inputs,
+                                             int symmetry);
+
 }  // namespace torch_az
 }  // namespace thud_az
 }  // namespace open_spiel
