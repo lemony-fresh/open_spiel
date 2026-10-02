@@ -242,6 +242,16 @@ std::vector<VPNetModel::InferenceOutputs> VPNetModel::Inference(
 }
 
 VPNetModel::LossInfo VPNetModel::Learn(const std::vector<TrainInputs>& inputs) {
+  return Losses(inputs, /*learn=*/true);
+}
+
+VPNetModel::LossInfo VPNetModel::Loss(const std::vector<TrainInputs>& inputs) {
+  return Losses(inputs, /*learn=*/false);
+}
+
+// Our change: Learn's code, which can also stop before the learning step.
+VPNetModel::LossInfo VPNetModel::Losses(const std::vector<TrainInputs>& inputs,
+                                        bool learn) {
   int training_batch_size = inputs.size();
 
   std::vector<float> raw_train_inputs(training_batch_size * flat_input_size_);
@@ -286,6 +296,18 @@ VPNetModel::LossInfo VPNetModel::Learn(const std::vector<TrainInputs>& inputs) {
       torch::from_blob(raw_value_targets.data(), {training_batch_size, 1})
           .clone()
           .to(torch_device_);
+
+  // Only the losses, as the network plays (Inference): no learning step.
+  if (!learn) {
+    model_->eval();
+    torch::NoGradGuard no_grad;
+    std::vector<torch::Tensor> torch_outputs =
+        model_->losses(torch_train_inputs, torch_train_legal_mask,
+                       torch_policy_targets, torch_value_targets);
+    return LossInfo(torch_outputs[0].item<float>(),
+                    torch_outputs[1].item<float>(),
+                    torch_outputs[2].item<float>());
+  }
 
   // Run a training step and get the losses.
   model_->train();

@@ -130,7 +130,14 @@ re-derive them.
   Keep long runs as scripts in `~/thud-runs/` calling programs in `build-shared/`, so
   that the session-start check (above) finds them. A waiter must not match itself:
   `pgrep -f NAME` also matches a shell whose command line contains NAME — write the
-  pattern with brackets (`pgrep -f 'step2_buffer4x_resum[e].sh'`).
+  pattern with brackets (`pgrep -f 'step2_buffer4x_resum[e].sh'`). Brackets do not
+  stop it matching *another* shell that merely mentions the name, and the Claude Code
+  shell that wrote or launched a script holds the whole text in its command line and can
+  outlive the launch: on 2026-10-02 `head_check_augment.sh` waited on `head_check.sh`,
+  matched the shell that had created it 3.5 hours earlier, and stalled the queue until
+  that shell was ended. Anchor waits to the script's own command line instead: `pgrep -f
+  '^/bin/bash [^ ]*/head_check[.]sh'` (checked: a dummy shell mentioning the name, and
+  Claude Code's own, do not match; the running script does).
 - **The venv has OpenSpiel's pinned JAX set** (`jax==0.9.0.1`, `flax==0.12.3`, ... from
   `open_spiel/scripts/python_extra_deps.sh`), which pins numpy to 2.3.5: flax 0.12.3
   requires numpy below 2.4. The JAX CPU build warns "An NVIDIA GPU may be present"; there
@@ -216,9 +223,11 @@ open_spiel` (~2.5 min). The commands, and the compiler flags copied from CMake, 
 `thud/experiments/build_az_program.sh`, which builds the programs on upstream's
 AlphaZero (`az_layout_check`, `az_throughput`, `az_reuse`, `az_buffer_stats`). Programs on
 **our copy** (`thud/az/`: the trainer `az_trainer` — upstream's example plus
-`--untried_move_value`, `--untried_move_reduction` and `--learner_batches` —
-`identity_check`, `untried_move_check`, and from `thud/experiments/` `az_match`,
-`az_forgetting`, `az_merge_buffers` and `az_target_quality`) are built by
+`--untried_move_value`, `--untried_move_reduction`, `--learner_batches`,
+`--nn_model=resnet_conv_policy` and `--symmetry_augmentation` — `identity_check`,
+`untried_move_check`, `conv_policy_check`, `augmentation_check`, and from
+`thud/experiments/` `az_match`, `az_forgetting`, `az_merge_buffers`, `az_target_quality`
+and `az_head_check`) are built by
 `thud/az/build.sh MAIN.cc`, which also links Abseil's static libraries (the flag parsing
 `libopen_spiel.so` does not re-export) and runs at `nice 19`.
 

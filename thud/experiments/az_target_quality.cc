@@ -17,9 +17,10 @@
 // The trainer's policy target is the root's visit counts. This plays self-play games as
 // the trainer does (root noise, the first `drop` moves sampled from the visit counts, then
 // the most visited), takes every `every`-th position, and searches each one with root noise
-// at each budget in `sims` — the targets the trainer would record — and once more without
-// noise at `ref` simulations, the reference. Per side to move, for each budget: how often
-// its most visited move is the reference's, the share of its visits on the reference's most
+// at each budget in `sims` — the targets the trainer would record — and without noise at
+// each budget in `refs`, the references (the first is the reference proper; deeper ones
+// show how stable it is: each is compared with the first). Per side to move, for each
+// budget: how often its most visited move is the reference's, the share of its visits on the reference's most
 // visited move, and the total variation distance of its visit distribution from the
 // reference's (half the summed absolute differences: the share of visits that would have
 // to move). Means with 95% intervals over positions, and each budget against the first,
@@ -27,7 +28,7 @@
 //
 //   thud/az/build.sh thud/experiments/az_target_quality.cc
 //   OMP_NUM_THREADS=4 build-shared/az_target_quality a=RUN_DIR:STEP \
-//     [sims=100,400,1000 ref=2000 games=40 every=7 drop=10 threads=32 batch=32 seed=1
+//     [sims=100,400,1000 refs=2000,4000 games=40 every=7 drop=10 threads=32 batch=32 seed=1
 //      untried=sibling_mean_minus_reduction alpha=0.1 epsilon=0.25]
 //
 // Prints one JSON line per position, then one summary line per side and budget.
@@ -162,7 +163,12 @@ int main(int argc, char** argv) {
     if (!absl::SimpleAtoi(s, &v)) open_spiel::SpielFatalError("sims=N,N,...");
     sims.push_back(v);
   }
-  const int ref_sims = args.GetInt("ref", 2000);
+  std::vector<int> refs;
+  for (absl::string_view s : absl::StrSplit(args.Get("refs", "2000"), ',')) {
+    int v;
+    if (!absl::SimpleAtoi(s, &v)) open_spiel::SpielFatalError("refs=N,N,...");
+    refs.push_back(v);
+  }
   const int games = args.GetInt("games", 40);
   const int every = args.GetInt("every", 7);
   const int drop = args.GetInt("drop", 10);
@@ -236,33 +242,54 @@ int main(int argc, char** argv) {
   }
   std::cerr << positions.size() << " positions from " << games << " games" << std::endl;
 
-  // Phase 2: each position searched at every budget with noise, and as the reference.
-  const int k = sims.size();
-  std::vector<std::vector<Comparison>> results(positions.size());
+  // Phase 2: each position searched at every budget with noise, and at every reference
+  // budget without noise. Targets are compared with every reference, and each deeper
+  // reference with the first: how stable the reference itself is.
+  const int k = sims.size(), nr = refs.size();
+  // results[i][r][j]: target j against reference r; stable[i][r]: reference r against 0.
+  std::vector<std::vector<std::vector<Comparison>>> results(
+      positions.size(), std::vector<std::vector<Comparison>>(nr));
+  std::vector<std::vector<Comparison>> stable(positions.size());
   std::vector<int> side(positions.size());
   {
     std::atomic<int> next{0};
     std::vector<std::thread> workers;
     for (int t = 0; t < threads; ++t) {
       workers.emplace_back([&, t]() {
-        std::vector<std::unique_ptr<MCTSBot>> bots;
-        for (int j = 0; j < k; ++j) bots.push_back(make_bot(sims[j], true, seed * 31 + t * 7 + j));
-        auto ref_bot = make_bot(ref_sims, /*noise=*/false, seed);
+        std::vector<std::unique_ptr<MCTSBot>> bots, ref_bots;
+        for (int j = 0; j < k; ++j) {
+          bots.push_back(make_bot(sims[j], /*noise=*/true, seed * 31 + t * 7 + j));
+        }
+        for (int r = 0; r < nr; ++r) {
+          ref_bots.push_back(make_bot(refs[r], /*noise=*/false, seed));
+        }
         for (int i = next++; i < positions.size(); i = next++) {
           const open_spiel::State& state = *positions[i];
-          const std::map<Action, double> ref = Visits(*ref_bot->MCTSearch(state));
+          std::vector<std::map<Action, double>> ref;
+          for (int r = 0; r < nr; ++r) ref.push_back(Visits(*ref_bots[r]->MCTSearch(state)));
           side[i] = state.CurrentPlayer();
           std::string line = absl::StrFormat("{\"position\": %d, \"side\": \"%s\", "
                                              "\"legal\": %d",
                                              i, side[i] == 0 ? "dwarfs" : "trolls",
                                              state.LegalActions().size());
-          for (int j = 0; j < k; ++j) {
-            const Comparison c = Compare(Visits(*bots[j]->MCTSearch(state)), ref);
-            results[i].push_back(c);
+          for (int r = 1; r < nr; ++r) {
+            const Comparison c = Compare(ref[0], ref[r]);
+            stable[i].push_back(c);
             absl::StrAppendFormat(&line,
-                                  ", \"s%d\": {\"agrees\": %.0f, \"mass_on_best\": %.4f, "
+                                  ", \"ref%d_vs_ref%d\": {\"agrees\": %.0f, "
                                   "\"distance\": %.4f}",
-                                  sims[j], c.agrees, c.mass_on_best, c.distance);
+                                  refs[0], refs[r], c.agrees, c.distance);
+          }
+          for (int j = 0; j < k; ++j) {
+            const std::map<Action, double> target = Visits(*bots[j]->MCTSearch(state));
+            for (int r = 0; r < nr; ++r) {
+              const Comparison c = Compare(target, ref[r]);
+              results[i][r].push_back(c);
+              absl::StrAppendFormat(&line,
+                                    ", \"s%d_ref%d\": {\"agrees\": %.0f, "
+                                    "\"mass_on_best\": %.4f, \"distance\": %.4f}",
+                                    sims[j], refs[r], c.agrees, c.mass_on_best, c.distance);
+            }
           }
           std::lock_guard<std::mutex> lock(mu);
           std::cout << line << "}" << std::endl;
@@ -272,36 +299,55 @@ int main(int argc, char** argv) {
     for (auto& w : workers) w.join();
   }
 
-  // Summaries per side and budget, and each budget against the first, paired.
+  // Summaries per side: the references' stability, then per reference each budget and
+  // each budget against the first, paired.
   for (int s = 0; s < 2; ++s) {
-    for (int j = 0; j < k; ++j) {
-      std::vector<double> agrees, mass, distance, d_agrees, d_mass, d_distance;
+    for (int r = 1; r < nr; ++r) {
+      std::vector<double> agrees, distance;
       for (int i = 0; i < positions.size(); ++i) {
         if (side[i] != s) continue;
-        const Comparison& c = results[i][j];
-        const Comparison& base = results[i][0];
-        agrees.push_back(c.agrees);
-        mass.push_back(c.mass_on_best);
-        distance.push_back(c.distance);
-        d_agrees.push_back(c.agrees - base.agrees);
-        d_mass.push_back(c.mass_on_best - base.mass_on_best);
-        d_distance.push_back(c.distance - base.distance);
+        agrees.push_back(stable[i][r - 1].agrees);
+        distance.push_back(stable[i][r - 1].distance);
       }
-      const Stats a = MeanInterval(agrees), m = MeanInterval(mass),
-                  d = MeanInterval(distance), da = MeanInterval(d_agrees),
-                  dm = MeanInterval(d_mass), dd = MeanInterval(d_distance);
+      const Stats a = MeanInterval(agrees), d = MeanInterval(distance);
       std::cout << absl::StrFormat(
-                       "{\"summary\": true, \"side\": \"%s\", \"sims\": %d, \"ref\": %d, "
-                       "\"positions\": %d, \"agrees\": [%.3f, %.3f, %.3f], "
-                       "\"mass_on_best\": [%.3f, %.3f, %.3f], \"distance\": [%.3f, %.3f, "
-                       "%.3f], \"minus_%d\": {\"agrees\": [%.3f, %.3f, %.3f], "
-                       "\"mass_on_best\": [%.3f, %.3f, %.3f], \"distance\": [%.3f, %.3f, "
-                       "%.3f]}}",
-                       s == 0 ? "dwarfs" : "trolls", sims[j], ref_sims, agrees.size(),
-                       a.mean, a.low, a.high, m.mean, m.low, m.high, d.mean, d.low, d.high,
-                       sims[0], da.mean, da.low, da.high, dm.mean, dm.low, dm.high,
-                       dd.mean, dd.low, dd.high)
+                       "{\"summary\": true, \"stability\": true, \"side\": \"%s\", "
+                       "\"ref\": %d, \"deeper_ref\": %d, \"positions\": %d, "
+                       "\"agrees\": [%.3f, %.3f, %.3f], \"distance\": [%.3f, %.3f, %.3f]}",
+                       s == 0 ? "dwarfs" : "trolls", refs[0], refs[r], agrees.size(),
+                       a.mean, a.low, a.high, d.mean, d.low, d.high)
                 << std::endl;
+    }
+    for (int r = 0; r < nr; ++r) {
+      for (int j = 0; j < k; ++j) {
+        std::vector<double> agrees, mass, distance, d_agrees, d_mass, d_distance;
+        for (int i = 0; i < positions.size(); ++i) {
+          if (side[i] != s) continue;
+          const Comparison& c = results[i][r][j];
+          const Comparison& base = results[i][r][0];
+          agrees.push_back(c.agrees);
+          mass.push_back(c.mass_on_best);
+          distance.push_back(c.distance);
+          d_agrees.push_back(c.agrees - base.agrees);
+          d_mass.push_back(c.mass_on_best - base.mass_on_best);
+          d_distance.push_back(c.distance - base.distance);
+        }
+        const Stats a = MeanInterval(agrees), m = MeanInterval(mass),
+                    d = MeanInterval(distance), da = MeanInterval(d_agrees),
+                    dm = MeanInterval(d_mass), dd = MeanInterval(d_distance);
+        std::cout << absl::StrFormat(
+                         "{\"summary\": true, \"side\": \"%s\", \"sims\": %d, "
+                         "\"ref\": %d, \"positions\": %d, \"agrees\": [%.3f, %.3f, %.3f], "
+                         "\"mass_on_best\": [%.3f, %.3f, %.3f], \"distance\": [%.3f, %.3f, "
+                         "%.3f], \"minus_%d\": {\"agrees\": [%.3f, %.3f, %.3f], "
+                         "\"mass_on_best\": [%.3f, %.3f, %.3f], \"distance\": [%.3f, %.3f, "
+                         "%.3f]}}",
+                         s == 0 ? "dwarfs" : "trolls", sims[j], refs[r], agrees.size(),
+                         a.mean, a.low, a.high, m.mean, m.low, m.high, d.mean, d.low,
+                         d.high, sims[0], da.mean, da.low, da.high, dm.mean, dm.low,
+                         dm.high, dd.mean, dd.low, dd.high)
+                  << std::endl;
+      }
     }
   }
   return 0;
