@@ -23,6 +23,8 @@
 
 #include <torch/torch.h>
 
+#include <algorithm>
+#include <cstdint>
 #include <iostream>
 #include <stdexcept>
 #include <string>
@@ -220,6 +222,102 @@ std::vector<torch::Tensor> ResOutputBlockImpl::forward(torch::Tensor x,
   return {value_output, policy_logits};
 }
 
+ResConvPolicyOutputBlockImpl::ResConvPolicyOutputBlockImpl(
+    const ResOutputBlockConfig& config, int policy_planes,
+    const std::vector<int64_t>& policy_map)
+    : value_conv_(torch::nn::Conv2dOptions(
+                      /*input_channels=*/config.input_channels,
+                      /*output_channels=*/config.value_filters,
+                      /*kernel_size=*/config.kernel_size)
+                      .stride(1)
+                      .padding(config.padding)
+                      .dilation(1)
+                      .groups(1)
+                      .bias(true)
+                      .padding_mode(torch::kZeros)),
+      value_batch_norm_(
+          torch::nn::BatchNorm2dOptions(
+              /*num_features=*/config.value_filters)
+              .eps(0.001)      // Make it the same as TF.
+              .momentum(0.01)  // Torch momentum = 1 - TF momentum.
+              .affine(true)
+              .track_running_stats(true)),
+      value_linear1_(torch::nn::LinearOptions(
+                         /*in_features=*/config.value_linear_in_features,
+                         /*out_features=*/config.value_linear_out_features)
+                         .bias(true)),
+      value_linear2_(torch::nn::LinearOptions(
+                         /*in_features=*/config.value_linear_out_features,
+                         /*out_features=*/1)
+                         .bias(true)),
+      value_observation_size_(config.value_observation_size),
+      policy_conv1_(torch::nn::Conv2dOptions(
+                        /*input_channels=*/config.input_channels,
+                        /*output_channels=*/config.input_channels,
+                        /*kernel_size=*/3)
+                        .stride(1)
+                        .padding(1)
+                        .dilation(1)
+                        .groups(1)
+                        .bias(true)
+                        .padding_mode(torch::kZeros)),
+      policy_batch_norm_(
+          torch::nn::BatchNorm2dOptions(
+              /*num_features=*/config.input_channels)
+              .eps(0.001)      // Make it the same as TF.
+              .momentum(0.01)  // Torch momentum = 1 - TF momentum.
+              .affine(true)
+              .track_running_stats(true)),
+      policy_conv2_(torch::nn::Conv2dOptions(
+                        /*input_channels=*/config.input_channels,
+                        /*output_channels=*/policy_planes,
+                        /*kernel_size=*/3)
+                        .stride(1)
+                        .padding(1)
+                        .dilation(1)
+                        .groups(1)
+                        .bias(true)
+                        .padding_mode(torch::kZeros)),
+      policy_map_(torch::tensor(policy_map, torch::kInt64)) {
+  // Every action needs its own entry in the planes, or two would share a logit.
+  const int64_t entries = static_cast<int64_t>(policy_planes) *
+                          config.value_observation_size;
+  std::vector<int64_t> sorted = policy_map;
+  std::sort(sorted.begin(), sorted.end());
+  if (static_cast<int>(sorted.size()) != config.policy_linear_out_features ||
+      sorted.empty() || sorted.front() < 0 || sorted.back() >= entries ||
+      std::adjacent_find(sorted.begin(), sorted.end()) != sorted.end()) {
+    throw std::runtime_error(
+        "The policy map must give every action its own entry in the planes.");
+  }
+  register_module("value_conv", value_conv_);
+  register_module("value_batch_norm", value_batch_norm_);
+  register_module("value_linear_1", value_linear1_);
+  register_module("value_linear_2", value_linear2_);
+  register_module("policy_conv_1", policy_conv1_);
+  register_module("policy_batch_norm", policy_batch_norm_);
+  register_module("policy_conv_2", policy_conv2_);
+}
+
+torch::Tensor ResConvPolicyOutputBlockImpl::PolicyPlanes(torch::Tensor x) {
+  return policy_conv2_(torch::relu(policy_batch_norm_(policy_conv1_(x))));
+}
+
+std::vector<torch::Tensor> ResConvPolicyOutputBlockImpl::forward(
+    torch::Tensor x, torch::Tensor mask) {
+  torch::Tensor value_output = torch::relu(value_batch_norm_(value_conv_(x)));
+  value_output = value_output.view({-1, value_observation_size_});
+  value_output = torch::relu(value_linear1_(value_output));
+  value_output = torch::tanh(value_linear2_(value_output));
+
+  torch::Tensor policy_logits = PolicyPlanes(x).flatten(/*start_dim=*/1)
+      .index_select(1, policy_map_.to(x.device()));
+  policy_logits = torch::where(mask, policy_logits,
+                               -(1 << 16) * torch::ones_like(policy_logits));
+
+  return {value_output, policy_logits};
+}
+
 MLPBlockImpl::MLPBlockImpl(const int in_features, const int out_features)
     : linear_(torch::nn::LinearOptions(
                          /*in_features=*/in_features,
@@ -282,8 +380,9 @@ ModelImpl::ModelImpl(const ModelConfig& config, const std::string& device)
       input_size *= num;
     }
   }
-  // Decide if resnet or MLP
-  if (config.nn_model == "resnet") {
+  // Decide if resnet or MLP. Our change: "resnet_conv_policy" is the residual
+  // model with a convolutional policy head (ResConvPolicyOutputBlock).
+  if (config.nn_model == "resnet" || config.nn_model == "resnet_conv_policy") {
     int obs_dims = config.observation_tensor_shape.size();
     int channels = config.observation_tensor_shape[0];
     int height = obs_dims > 1 ? config.observation_tensor_shape[1] : 1;
@@ -318,7 +417,12 @@ ModelImpl::ModelImpl(const ModelConfig& config, const std::string& device)
     for (int i = 0; i < num_torso_blocks_; i++) {
       layers_->push_back(ResTorsoBlock(residual_config, i));
     }
-    layers_->push_back(ResOutputBlock(output_config));
+    if (config.nn_model == "resnet") {
+      layers_->push_back(ResOutputBlock(output_config));
+    } else {
+      layers_->push_back(ResConvPolicyOutputBlock(
+          output_config, config.policy_planes, config.policy_map));
+    }
 
     register_module("layers", layers_);
 
@@ -385,12 +489,15 @@ std::vector<torch::Tensor> ModelImpl::losses(torch::Tensor inputs,
 std::vector<torch::Tensor> ModelImpl::forward_(torch::Tensor x,
                                                torch::Tensor mask) {
   std::vector<torch::Tensor> output;
-  if (this->nn_model_ == "resnet") {
+  if (this->nn_model_ == "resnet" ||
+      this->nn_model_ == "resnet_conv_policy") {
     for (int i = 0; i < num_torso_blocks_ + 2; i++) {
       if (i == 0) {
         x = layers_[i]->as<ResInputBlock>()->forward(x);
       } else if (i >= num_torso_blocks_ + 1) {
-        output = layers_[i]->as<ResOutputBlock>()->forward(x, mask);
+        output = this->nn_model_ == "resnet"
+            ? layers_[i]->as<ResOutputBlock>()->forward(x, mask)
+            : layers_[i]->as<ResConvPolicyOutputBlock>()->forward(x, mask);
       } else {
         x = layers_[i]->as<ResTorsoBlock>()->forward(x);
       }

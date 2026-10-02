@@ -216,6 +216,85 @@ DecodedAction DecodeAction(Action action) {
           static_cast<int>(action % kMaxDistance) + 1, false};
 }
 
+int PolicyPlaneIndex(Action action) {
+  const DecodedAction parts = DecodeAction(action);
+  const Coord coord = SquareCoord(parts.square);
+  const int plane = parts.capture_step
+                        ? kNumDirections * kMaxDistance + parts.direction
+                        : parts.direction * kMaxDistance + parts.distance - 1;
+  return (plane * kBoardSize + coord.row) * kBoardSize + coord.col;
+}
+
+// ---------------------------------------------------------------------------
+// The board's symmetries.
+
+namespace {
+
+// Each symmetry as a matrix {a, b, c, d} taking an offset (row, col) from the
+// Thudstone to (a * row + b * col, c * row + d * col): the identity, the three
+// quarter turns, and the four mirror images.
+constexpr std::array<std::array<int, 4>, kNumSymmetries> kSymmetryMatrices = {
+    {{1, 0, 0, 1},
+     {0, 1, -1, 0},
+     {-1, 0, 0, -1},
+     {0, -1, 1, 0},
+     {1, 0, 0, -1},
+     {-1, 0, 0, 1},
+     {0, 1, 1, 0},
+     {0, -1, -1, 0}}};
+
+}  // namespace
+
+Coord SymmetricCoord(Coord coord, int symmetry) {
+  SPIEL_CHECK_GE(symmetry, 0);
+  SPIEL_CHECK_LT(symmetry, kNumSymmetries);
+  const std::array<int, 4>& m = kSymmetryMatrices[symmetry];
+  const int row = coord.row - kThudstoneRow, col = coord.col - kThudstoneCol;
+  return {kThudstoneRow + m[0] * row + m[1] * col,
+          kThudstoneCol + m[2] * row + m[3] * col};
+}
+
+int SymmetricDirection(int direction, int symmetry) {
+  SPIEL_CHECK_GE(direction, 0);
+  SPIEL_CHECK_LT(direction, kNumDirections);
+  SPIEL_CHECK_GE(symmetry, 0);
+  SPIEL_CHECK_LT(symmetry, kNumSymmetries);
+  const std::array<int, 4>& m = kSymmetryMatrices[symmetry];
+  const int row = m[0] * kRowStep[direction] + m[1] * kColStep[direction];
+  const int col = m[2] * kRowStep[direction] + m[3] * kColStep[direction];
+  for (int d = 0; d < kNumDirections; ++d) {
+    if (kRowStep[d] == row && kColStep[d] == col) return d;
+  }
+  SpielFatalError("A symmetry took a direction to no direction.");
+}
+
+Action SymmetricAction(Action action, int symmetry) {
+  const DecodedAction parts = DecodeAction(action);
+  const Coord coord = SymmetricCoord(SquareCoord(parts.square), symmetry);
+  const int square = SquareIndex(coord.row, coord.col);
+  const int direction = SymmetricDirection(parts.direction, symmetry);
+  return parts.capture_step
+             ? EncodeCaptureStepAction(square, direction)
+             : EncodeLineAction(square, direction, parts.distance);
+}
+
+std::vector<float> SymmetricObservation(absl::Span<const float> observation,
+                                        int symmetry) {
+  SPIEL_CHECK_EQ(observation.size(),
+                 kNumObservationPlanes * kBoardSize * kBoardSize);
+  std::vector<float> transformed(observation.size());
+  for (int plane = 0; plane < kNumObservationPlanes; ++plane) {
+    for (int row = 0; row < kBoardSize; ++row) {
+      for (int col = 0; col < kBoardSize; ++col) {
+        const Coord to = SymmetricCoord({row, col}, symmetry);
+        transformed[(plane * kBoardSize + to.row) * kBoardSize + to.col] =
+            observation[(plane * kBoardSize + row) * kBoardSize + col];
+      }
+    }
+  }
+  return transformed;
+}
+
 // ---------------------------------------------------------------------------
 // Positions as text.
 

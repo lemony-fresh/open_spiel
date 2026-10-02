@@ -2451,6 +2451,90 @@ void TestSymmetry() {
   }
 }
 
+// The policy layout for a convolutional network head (thud.h): every action
+// has its own entry, plane d * 14 + k - 1 for a line move in direction d over
+// k squares and 112 + d for a capture step, at the moving piece's square.
+void TestPolicyPlaneIndex() {
+  SPIEL_CHECK_EQ(kNumPolicyPlanes, 120);
+  // Two entries worked out by hand, in case both sides shared a mistake: the
+  // dwarf on (0,5) going 3 squares south is on plane 4 * 14 + 2 = 58, entry
+  // 58 * 225 + 0 * 15 + 5; the troll on (6,6) stepping north and capturing on
+  // plane 112, entry 112 * 225 + 6 * 15 + 6.
+  SPIEL_CHECK_EQ(PolicyPlaneIndex(LineAction(0, 5, kSouth, 3)), 13055);
+  SPIEL_CHECK_EQ(PolicyPlaneIndex(CaptureStepAction(6, 6, kNorth)), 25296);
+  std::vector<bool> used(120 * 15 * 15, false);
+  for (Action action = 0; action < 19800; ++action) {
+    const Parts parts = Decode(action);
+    const auto [r, c] = RowCol(parts.square);
+    const int plane = parts.capture_step
+                          ? 112 + parts.direction
+                          : parts.direction * 14 + parts.distance - 1;
+    const int index = PolicyPlaneIndex(action);
+    SPIEL_CHECK_EQ(index, (plane * 15 + r) * 15 + c);
+    SPIEL_CHECK_FALSE(used[index]);
+    used[index] = true;
+  }
+  // The entries no action uses are exactly those of the cut-off corners: 60
+  // cells on each of the 120 planes.
+  int unused = 0;
+  for (int index = 0; index < 120 * 15 * 15; ++index) {
+    const int r = index / 15 % 15, c = index % 15;
+    SPIEL_CHECK_EQ(used[index], OnBoard(r, c));
+    unused += !used[index];
+  }
+  SPIEL_CHECK_EQ(unused, 120 * 60);
+}
+
+// The board's symmetries as thud.h offers them, against this file's own
+// mirroring code (checked by TestSymmetry): squares, directions and every
+// action under each symmetry, and the observation of mirrored positions.
+void TestSymmetryHelpers() {
+  SPIEL_CHECK_EQ(kNumSymmetries, 8);
+  for (int s = 0; s < 8; ++s) {
+    for (int square = 0; square < 165; ++square) {
+      const auto [r, c] = RowCol(square);
+      const std::array<int, 2> offset = Map(kSymmetries[s], r - 7, c - 7);
+      const Coord coord = SymmetricCoord({r, c}, s);
+      SPIEL_CHECK_EQ(coord.row, offset[0] + 7);
+      SPIEL_CHECK_EQ(coord.col, offset[1] + 7);
+    }
+  }
+  // Every action, under every symmetry; each symmetry permutes the actions,
+  // symmetry 0 leaves them as they are, and the 8 permutations differ.
+  std::vector<std::vector<Action>> images(8);
+  for (int s = 0; s < 8; ++s) {
+    std::vector<bool> hit(19800, false);
+    for (Action action = 0; action < 19800; ++action) {
+      const Action image = SymmetricAction(action, s);
+      SPIEL_CHECK_EQ(image, TransformAction(action, kSymmetries[s]));
+      SPIEL_CHECK_FALSE(hit[image]);
+      hit[image] = true;
+      images[s].push_back(image);
+      if (s == 0) SPIEL_CHECK_EQ(image, action);
+    }
+    for (int t = 0; t < s; ++t) SPIEL_CHECK_TRUE(images[s] != images[t]);
+  }
+  // Observations: the observation of a mirrored position is the mirrored
+  // observation, in the starting position and along random games.
+  // Every 7th turn: 7 is odd, so both sides are to move in some of them.
+  std::mt19937 rng(/*seed=*/20261002);
+  for (int game = 0; game < 3; ++game) {
+    std::unique_ptr<State> state = Thud()->NewInitialState();
+    for (int turn = 0; !state->IsTerminal(); ++turn) {
+      if (turn % 7 == 0) {
+        const auto& thud = static_cast<const ThudState&>(*state);
+        const std::vector<float> observation = state->ObservationTensor(0);
+        for (int s = 0; s < 8; ++s) {
+          std::unique_ptr<State> image = Transform(thud, kSymmetries[s]);
+          SPIEL_CHECK_TRUE(image->ObservationTensor(0) ==
+                           SymmetricObservation(observation, s));
+        }
+      }
+      state->ApplyAction(RandomAction(*state, rng));
+    }
+  }
+}
+
 int CountPieces(const ThudState& state, Cell cell) {
   int count = 0;
   for (int r = 0; r < 15; ++r) {
@@ -2667,6 +2751,8 @@ int main(int argc, char** argv) {
   thud::TestSerialize();
   thud::TestPerft();
   thud::TestSymmetry();
+  thud::TestPolicyPlaneIndex();
+  thud::TestSymmetryHelpers();
   thud::TestRandomPlay();
   thud::TestOpenSpielGenericTests();
 }
