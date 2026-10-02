@@ -24,13 +24,14 @@
 #include <torch/torch.h>
 #include <torch/types.h>
 
-#include <cstdint>
 #include <algorithm>
+#include <cstdint>
 #include <fstream>  // For ifstream/ofstream.
 #include <string>
 #include <vector>
 
 #include "open_spiel/abseil-cpp/absl/strings/str_cat.h"
+#include "open_spiel/games/thud/thud.h"
 #include "thud/az/model.h"
 #include "open_spiel/spiel.h"
 #include "open_spiel/spiel_utils.h"
@@ -95,6 +96,19 @@ std::string TorchDeviceName(const std::string& device) {
   return device;
 }
 
+// Our change: the convolutional policy head's layout of the actions over the
+// board (ModelConfig::policy_map). Only Thud defines one
+// (open_spiel/games/thud/thud.h).
+ModelConfig WithPolicyMap(const Game& game, ModelConfig config) {
+  if (config.nn_model != "resnet_conv_policy") return config;
+  SPIEL_CHECK_EQ(game.GetType().short_name, "thud");
+  config.policy_planes = thud::kNumPolicyPlanes;
+  for (Action action = 0; action < game.NumDistinctActions(); ++action) {
+    config.policy_map.push_back(thud::PolicyPlaneIndex(action));
+  }
+  return config;
+}
+
 bool CreateGraphDef(const Game& game, double learning_rate, double weight_decay,
                     const std::string& path, const std::string& filename,
                     std::string nn_model, int nn_width, int nn_depth,
@@ -117,7 +131,7 @@ VPNetModel::VPNetModel(const Game& game, const std::string& path,
       path_(path),
       flat_input_size_(game.ObservationTensorSize()),
       num_actions_(game.NumDistinctActions()),
-      model_config_(LoadModelConfig(path, file_name)),
+      model_config_(WithPolicyMap(game, LoadModelConfig(path, file_name))),
       model_(model_config_, TorchDeviceName(device)),
       model_optimizer_(
           model_->parameters(),

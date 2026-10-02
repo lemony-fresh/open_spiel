@@ -24,6 +24,7 @@
 
 #include <torch/torch.h>
 
+#include <cstdint>
 #include <iostream>
 #include <string>
 #include <vector>
@@ -74,6 +75,11 @@ struct ModelConfig {
   double learning_rate;
   double weight_decay;
   std::string nn_model = "resnet";
+  // Our change, for nn_model "resnet_conv_policy": the number of policy
+  // planes, and each action's entry in them, (plane * height + row) * width +
+  // col. They are not saved with the rest: VPNetModel takes them from the game.
+  int policy_planes = 0;
+  std::vector<int64_t> policy_map;
 };
 std::istream& operator>>(std::istream& stream, ModelConfig& config);
 std::ostream& operator<<(std::ostream& stream, const ModelConfig& config);
@@ -161,6 +167,46 @@ class ResOutputBlockImpl : public torch::nn::Module {
   int policy_observation_size_;
 };
 TORCH_MODULE(ResOutputBlock);
+
+// Our change: an output block whose policy head is convolutional, built as
+// AlphaZero's for chess and shogi ("an additional rectified, batch-normalized
+// convolutional layer, followed by a final convolution of 73 filters",
+// Silver et al., Science 2018, supplementary materials) and Leela Chess Zero's
+// (lczero-training, tf/tfprocess.py: two 3x3 convolutions, the second with a
+// bias, then a fixed map from its 80 planes to its 1,858 moves). The value head
+// is the residual model's.
+//
+// Illustration:
+//                    --> CONV --> BN --> RELU --> LIN --> RELU --> LIN --> TANH
+//   [Input Tensor] --
+//                    --> CONV --> BN --> RELU --> CONV --> MAP
+//
+// The policy convolutions are 3x3; the last one gives policy_planes planes
+// and MAP takes each action's logit from its own entry in them
+// (ModelConfig::policy_map). There is no weight per action: for Thud, at
+// width 64, the head has ~0.1M weights where the linear layer has ~8.9M.
+class ResConvPolicyOutputBlockImpl : public torch::nn::Module {
+ public:
+  ResConvPolicyOutputBlockImpl(const ResOutputBlockConfig& config,
+                               int policy_planes,
+                               const std::vector<int64_t>& policy_map);
+  std::vector<torch::Tensor> forward(torch::Tensor x, torch::Tensor mask);
+  // The planes the policy logits are taken from, for checks.
+  torch::Tensor PolicyPlanes(torch::Tensor x);
+
+ private:
+  torch::nn::Conv2d value_conv_;
+  torch::nn::BatchNorm2d value_batch_norm_;
+  torch::nn::Linear value_linear1_;
+  torch::nn::Linear value_linear2_;
+  int value_observation_size_;
+  torch::nn::Conv2d policy_conv1_;
+  torch::nn::BatchNorm2d policy_batch_norm_;
+  torch::nn::Conv2d policy_conv2_;
+  // Not a registered buffer, so checkpoints hold only what is learned.
+  torch::Tensor policy_map_;
+};
+TORCH_MODULE(ResConvPolicyOutputBlock);
 
 // A dense block with ReLU activation.
 class MLPBlockImpl : public torch::nn::Module {

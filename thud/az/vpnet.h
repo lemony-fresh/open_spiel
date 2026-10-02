@@ -45,6 +45,10 @@ bool CreateGraphDef(const Game& game, double learning_rate, double weight_decay,
                     std::string nn_model, int nn_width, int nn_depth,
                     bool verbose = false);
 
+// Our change: `config` with the convolutional policy head's layout of the
+// actions (ModelConfig::policy_map) filled in for `game`, if it has that head.
+ModelConfig WithPolicyMap(const Game& game, ModelConfig config);
+
 class VPNetModel {
  public:
   // A class to handle the network's loss.

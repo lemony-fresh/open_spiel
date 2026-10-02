@@ -189,6 +189,34 @@ Action EncodeLineAction(int square, int direction, int distance);
 Action EncodeCaptureStepAction(int square, int direction);
 DecodedAction DecodeAction(Action action);
 
+// A policy laid out as planes over the board, for a convolutional network head:
+// one plane of kBoardSize x kBoardSize per kind of move. A line move from a square
+// in direction d over distance k is on plane d * kMaxDistance + k - 1; a capture
+// step in direction d on plane kNumDirections * kMaxDistance + d; both at the
+// moving piece's square. Every action has its own entry, on a board square; the
+// cells of the cut-off corners are never used (165 squares x 120 planes = 19,800).
+inline constexpr int kNumPolicyPlanes =
+    kNumDirections * kMaxDistance + kNumDirections;  // 120
+// The entry of `action`: (plane * kBoardSize + row) * kBoardSize + col.
+int PolicyPlaneIndex(Action action);
+
+// The board's symmetries: the quarter turns and the mirror images keep the
+// octagon and the Thudstone in place. There are 8, not the 16 of a regular
+// octagon: Thud's edges alternate between 5 and 4 squares, and a turn by 45
+// degrees would not take squares to squares. Symmetry 0 is the identity.
+inline constexpr int kNumSymmetries = 8;
+// The square as it looks after `symmetry`.
+Coord SymmetricCoord(Coord coord, int symmetry);
+// The direction as it looks after `symmetry`.
+int SymmetricDirection(int direction, int symmetry);
+// The action as it looks after `symmetry`: the same move in the transformed
+// position. A permutation of the actions for every symmetry.
+Action SymmetricAction(Action action, int symmetry);
+// An observation tensor (ObservationTensor()'s layout) as it looks after
+// `symmetry`: each plane transformed like the board.
+std::vector<float> SymmetricObservation(absl::Span<const float> observation,
+                                        int symmetry);
+
 // A position: what the text format at the top of this file describes.
 struct Position {
   std::array<Cell, kNumSquares> board{};  // Indexed by SquareIndex().
