@@ -17,6 +17,8 @@
 // file of another size, but loads this one. Takes each input's positions in the order
 // they were added (a full circular buffer starts at total_added % size) and adds them,
 // inputs in the order given, to a buffer of MAX_SIZE, which keeps the last MAX_SIZE.
+// A position already added (the same observation, legal moves, targets) is skipped, so
+// overlapping inputs — a run's archive and its later buffer — give each position once.
 // Then reads the file back and checks that it holds exactly those positions.
 //
 //   thud/az/build.sh thud/experiments/az_merge_buffers.cc
@@ -28,6 +30,7 @@
 #include <iostream>
 #include <string>
 #include <tuple>
+#include <unordered_set>
 #include <vector>
 
 #include <nop/serializer.h>
@@ -70,6 +73,8 @@ int main(int argc, char** argv) {
   const std::string out_path = argv[1];
   const int max_size = std::stoi(argv[2]);
   std::vector<uint64_t> expected;  // Fingerprints, in the order added.
+  std::unordered_set<uint64_t> seen;
+  int64_t skipped = 0;
   {
     Buffer merged(max_size);
     for (int i = 3; i < argc; ++i) {
@@ -81,8 +86,13 @@ int main(int argc, char** argv) {
       const int start = n == SavedMaxSize(argv[i]) ? in.TotalAdded() % n : 0;
       for (int k = 0; k < n; ++k) {
         const VPNetModel::TrainInputs& p = data[(start + k) % n];
+        const uint64_t fingerprint = Fingerprint(p);
+        if (!seen.insert(fingerprint).second) {
+          ++skipped;  // Already added from an earlier input.
+          continue;
+        }
         merged.Add(p);
-        expected.push_back(Fingerprint(p));
+        expected.push_back(fingerprint);
       }
       std::cerr << absl::StrFormat("%s: %d positions (total added %d)\n", argv[i], n,
                                    in.TotalAdded());
@@ -106,8 +116,8 @@ int main(int argc, char** argv) {
   std::cout << absl::StrFormat(
                    "{\"out\": \"%s\", \"max_size\": %d, \"positions\": %d, "
                    "\"total_added\": %d, \"distinct_fingerprints\": %d, "
-                   "\"same_positions_as_inputs\": %s}",
-                   out_path, max_size, check.Size(), check.TotalAdded(), distinct,
+                   "\"duplicates_skipped\": %d, \"same_positions_as_inputs\": %s}",
+                   out_path, max_size, check.Size(), check.TotalAdded(), distinct, skipped,
                    same ? "true" : "false")
             << std::endl;
   return same ? 0 : 1;

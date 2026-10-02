@@ -27,8 +27,16 @@ probabilities narrowed (forgetting, by the quick check; Step 2 tests a longer me
 **Step 2 is done** (2026-09-30): run D, run C branched at step 15 with a 4x memory, keeps
 its dwarfs' move probabilities from narrowing and beats C29 (+7.3) and C16 (+8.4), but
 still loses to A14 (−5.4) and its dwarfs still slip against the anchor — forgetting
-explains part of the decline. **Next: the user's decisions** — adopt the longer memory,
-and stage 3b, playout caps.
+explains part of the decline. **Now running: run E** (2026-10-01, from 13:17, detached; stopped when the laptop slept on
+battery at ~15:12 and WSL restarted on waking; resumed from step 32 at 17:54 for its
+remaining 14,681 s, until ~22:00):
+run D continued from step 29 with a 7x memory (458,752 positions) and no playout caps,
+6 hours of machine time — the control arm for stage 3b's playout caps (run F later, from
+the same state, same machine time). Playout caps would cut the recorded positions per
+hour ~7x (F: ~2 learning steps in 6 hours against E's ~14), so first **the cheap hint**:
+`az_target_quality` (how much closer 400-simulation targets come to a 2,000-simulation
+reference than 100-simulation ones), queued after E (`~/thud-runs/target_quality.sh`,
+~30 minutes, until ~22:30).
 
 **Where we stand:**
 
@@ -1648,5 +1656,27 @@ instrumentation, and the pattern agreed for later, are in `PLAN.md` Phase 5).
   a dummy process), and the user and Claude call each other "bro" in sessions (the docs
   keep "the user").
 
-**Next step:** as recorded in `## Current status` — the user's decisions on adopting the
-longer memory and on stage 3b.
+- **2026-10-01.** The user agreed to a 7x memory as the common baseline of the playout-caps
+  comparison, rather than testing 7x against 4x (a tuning question for the GPU).
+  `az_merge_buffers` now skips positions already added (controls: the same archive twice
+  skips the whole second copy, plus 45 exact repeats inside it; D's archive 27 and final
+  buffer overlap by 218,061 positions). Run E's 7x buffer: the newest 458,752 positions
+  of D's lineage (C's steps 7-15, D's 16-29), all distinct; kept as
+  `replay_buffer_start.data` for run F. Run E started at 13:17, detached, the trainer at
+  normal priority (other work at nice 19, a load monitor logging the CPU the rest takes),
+  for 6 hours of machine time (`~/thud-runs/stage3b_E.sh`).
+
+- **2026-10-01 afternoon and evening.** Playout caps would cut the recorded positions per
+  hour ~7x (1.75x costlier moves, a quarter of them recorded), so run F would get ~2
+  learning steps in 6 hours against E's ~14; the user chose the cheap hint first,
+  `az_target_quality` (smoke-tested; it refuses an even sampling step, which would
+  sample only the dwarfs). The laptop slept on battery at ~15:12 and WSL restarted on
+  waking (Windows: no events until "Wake from sleep detected" at 16:43), ending run E
+  after step 32 and the queued script; not memory (a memory kill ends single processes),
+  but the 7x buffer plus the watcher's copy came to ~12 GB of 15, so E resumed at 17:54
+  without the watcher. In `CLAUDE.md`: a sleep can end WSL altogether — check the power
+  source before and during long runs. The target-quality script now waits for any part
+  of run E (it would have recognised only the first script's name).
+
+**Next step:** as recorded in `## Current status` — run E (until ~22:00) and the target
+quality (until ~22:30), then the decision on playout caps and run F.

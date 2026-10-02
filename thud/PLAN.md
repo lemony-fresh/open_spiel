@@ -1184,6 +1184,25 @@ first session, with no patch at all.**
     remain the weak point, which playout caps (3b) and the convolutional policy head (5)
     address.
 
+  **Run E** (2026-10-01, `~/thud-runs/stage3b_E.sh`, `~/thud-runs/stage3b_E_7x/`): run D
+  continued from step 29 with a **7x memory** — 458,752 positions, `replay_buffer_reuse`
+  21 (C's and D's cadence), `learner_batches` 64 — pre-filled with the newest positions of
+  D's lineage (C's steps 7-15 and D's 16-29; `az_merge_buffers` now skips duplicates: D's
+  archive 27 and final buffer overlap by 218,061), no playout caps, 6 hours of machine
+  time from 13:17. It is stage 3b's control arm: run F starts from the same state
+  (`replay_buffer_start.data`, D's checkpoint 29) with playout caps for the same machine
+  time; 7x is common to both (the user, 2026-10-01: adopt it as the baseline rather than
+  test it against 4x). The trainer runs at normal priority, other work at nice 19, and
+  a load monitor (`load.log`) records the CPU the rest of the machine takes. The laptop
+  slept on battery at ~15:12 (Windows logged nothing until "Wake from sleep detected" at
+  16:43) and WSL restarted on waking, ending E after step 32 (checkpoint 32; the buffer
+  after step 33's games was saved complete at 15:09) with 6,919 s of its 21,600 s used;
+  resumed at 17:54 for the remaining 14,681 s (`stage3b_E_resume.sh`), its step 33
+  learning from slightly more new games than usual. Without the buffer watcher from then
+  on: it loaded a second 4.4 GB copy after every step, ~12 GB of WSL's 15 with the
+  trainer's ~7 — not the cause (a memory kill ends single processes, not WSL), but too
+  close; the statistics can be computed afterwards from the saved buffers.
+
   **Match intervals until 2026-09-28 used the normal factor 1.96**; with 20 pairs Student's
   t (2.09 for 19 degrees of freedom) is right, about 7% wider. `az_match` uses t since.
   Recomputed: C step 16 against A step 16 +17.0 to +24.7; against the anchor +42.5 to
@@ -1518,6 +1537,30 @@ goes into our own copy, decided 2026-09-26 — stages 3 and 5 of the roadmap, on
   7. Tests: the switch off reproduces today's trainer (the tic-tac-toe control, and the
      share of recorded positions = 1); on, the share of full searches per side ≈ `p`,
      only they are recorded, quick ones have no root noise.
+  **The cost at our scale** (2026-10-01, the user asked why it is so large): two factors
+  multiply — a move costs 0.25 × 400 + 0.75 × 100 = 175 simulations instead of 100
+  (1.75x fewer moves an hour), and only the full-search quarter is recorded (4x fewer
+  training positions per move): **7x fewer training positions an hour** than run E
+  (1.4 instead of 10 per 1,000 simulations; the cheaper variant 300/50 4.5x fewer, 50%
+  full searches of 200 with quick ones of 100 3x fewer). With a learning step every
+  21,845 recorded positions, 6 hours give run F ~2 steps against E's ~14, and its buffer
+  stays ~90% old positions — too little for a comparison. KataGo could afford it: its
+  baseline was the expensive search, its runs days of GPU time; our stage 1 found 100
+  simulations better than 400 at equal time early on, when data is scarce. **The cheap
+  hint first** (the user chose it): `thud/experiments/az_target_quality.cc` measures how
+  much better the targets of a deeper search are, without training — self-play positions
+  of D29 as the trainer plays them (root noise, the first 10 moves sampled, every 7th
+  position, both sides; the program refuses an even step), each searched with root noise
+  at 100, 400 and 1,000 simulations and once without noise at 2,000 as the reference; per
+  side, how often each search's most visited move is the reference's, the share of its
+  visits on the reference's best move, and the total variation distance of its visit
+  distribution from the reference's (½ Σ|p − q|, the share of visits that would have to
+  move; 1 minus it is their overlap — bounded, unlike the cross-entropy, which is
+  infinite wherever the reference visits a move the target never tried); 400 against 100
+  paired per position; control: 1,000 should come closer still. Queued after run E
+  (`~/thud-runs/target_quality.sh`, ~30 minutes). If 400's targets are far closer, a
+  longer comparison or the GPU decides; if barely, playout caps are not worth 7x less data
+  at our scale.
 - **Tree reuse**: the played move's subtree, with its statistics, becomes the next root
   (AlphaGo Zero did this; OpenSpiel builds a fresh tree each move, `mcts.cc:356`, and
   `RestartAt` does nothing, `mcts.h:173`). The dwarfs would profit through the trolls'
