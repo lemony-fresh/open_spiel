@@ -56,6 +56,10 @@ struct AlphaZeroConfig {
   // buffer (its size / train_batch_size). Separates how much the network remembers
   // (the buffer) from how much it trains per step (thud/PLAN.md Phase 6, Step 2).
   int learner_batches;
+  // Added: train on each sampled position turned or mirrored by a random one of
+  // Thud's 8 board symmetries (SymmetricTrainInputs in thud/az/vpnet.h), as AlphaGo
+  // Zero did with Go's; false is upstream's behaviour.
+  bool symmetry_augmentation;
   int checkpoint_freq;
   int evaluation_window;
 
@@ -94,6 +98,7 @@ struct AlphaZeroConfig {
         {"replay_buffer_size", replay_buffer_size},
         {"replay_buffer_reuse", replay_buffer_reuse},
         {"learner_batches", learner_batches},
+        {"symmetry_augmentation", symmetry_augmentation},
         {"checkpoint_freq", checkpoint_freq},
         {"evaluation_window", evaluation_window},
         {"uct_c", uct_c},
@@ -134,6 +139,9 @@ struct AlphaZeroConfig {
     learner_batches = config_json.count("learner_batches")
                           ? config_json.at("learner_batches").GetInt()
                           : 0;
+    // A run from before the setting existed trained without it.
+    symmetry_augmentation = config_json.count("symmetry_augmentation") &&
+                            config_json.at("symmetry_augmentation").GetBool();
     checkpoint_freq = config_json.at("checkpoint_freq").GetInt();
     evaluation_window = config_json.at("evaluation_window").GetInt();
     uct_c = config_json.at("uct_c").GetDouble();

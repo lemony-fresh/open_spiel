@@ -43,6 +43,7 @@
 #include "open_spiel/abseil-cpp/absl/time/clock.h"
 #include "open_spiel/abseil-cpp/absl/time/time.h"
 #include "open_spiel/abseil-cpp/absl/types/optional.h"
+#include "open_spiel/games/thud/thud.h"
 #include "thud/az/device_manager.h"
 #include "thud/az/vpevaluator.h"
 #include "thud/az/vpnet.h"
@@ -426,10 +427,19 @@ void learner(const open_spiel::Game& game, const AlphaZeroConfig& config,
       const int batches = config.learner_batches > 0
                               ? config.learner_batches
                               : replay_buffer.Size() / config.train_batch_size;
-      logger.Print("Learning on %d batches of %d", batches, config.train_batch_size);
+      logger.Print("Learning on %d batches of %d%s", batches, config.train_batch_size,
+                   config.symmetry_augmentation ? ", each position turned or "
+                                                  "mirrored at random" : "");
+      std::uniform_int_distribution<int> symmetry(0, thud::kNumSymmetries - 1);
       for (int i = 0; i < batches; i++) {
-        losses += learn_model->Learn(
-            replay_buffer.Sample(&rng, config.train_batch_size));
+        std::vector<VPNetModel::TrainInputs> batch =
+            replay_buffer.Sample(&rng, config.train_batch_size);
+        if (config.symmetry_augmentation) {  // Added: thud/PLAN.md Phase 6.
+          for (VPNetModel::TrainInputs& inputs : batch) {
+            inputs = SymmetricTrainInputs(inputs, symmetry(rng));
+          }
+        }
+        losses += learn_model->Learn(batch);
       }
 
       // The device manager can now once again use the first device for
@@ -543,6 +553,8 @@ bool AlphaZero(AlphaZeroConfig config, StopToken* stop, bool resuming) {
     open_spiel::SpielFatalError("Game must have terminal rewards.");
   if (game_type.dynamics != open_spiel::GameType::Dynamics::kSequential)
     open_spiel::SpielFatalError("Game must have sequential turns.");
+  if (config.symmetry_augmentation && game_type.short_name != "thud")
+    open_spiel::SpielFatalError("symmetry_augmentation knows only Thud's symmetries.");
 
   file::Mkdirs(config.path);
   if (!file::IsDirectory(config.path)) {

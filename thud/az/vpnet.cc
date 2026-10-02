@@ -307,6 +307,24 @@ VPNetModel::LossInfo VPNetModel::Learn(const std::vector<TrainInputs>& inputs) {
                   torch_outputs[2].item<float>());
 }
 
+VPNetModel::TrainInputs SymmetricTrainInputs(const VPNetModel::TrainInputs& inputs,
+                                             int symmetry) {
+  VPNetModel::TrainInputs transformed;
+  for (Action action : inputs.legal_actions) {
+    transformed.legal_actions.push_back(thud::SymmetricAction(action, symmetry));
+  }
+  std::sort(transformed.legal_actions.begin(), transformed.legal_actions.end());
+  transformed.observations =
+      thud::SymmetricObservation(inputs.observations, symmetry);
+  for (const auto& [action, probability] : inputs.policy) {
+    transformed.policy.push_back(
+        {thud::SymmetricAction(action, symmetry), probability});
+  }
+  std::sort(transformed.policy.begin(), transformed.policy.end());
+  transformed.value = inputs.value;
+  return transformed;
+}
+
 }  // namespace torch_az
 }  // namespace thud_az
 }  // namespace open_spiel
