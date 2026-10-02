@@ -27,23 +27,60 @@ probabilities narrowed (forgetting, by the quick check; Step 2 tests a longer me
 **Step 2 is done** (2026-09-30): run D, run C branched at step 15 with a 4x memory, keeps
 its dwarfs' move probabilities from narrowing and beats C29 (+7.3) and C16 (+8.4), but
 still loses to A14 (−5.4) and its dwarfs still slip against the anchor — forgetting
-explains part of the decline. **Now running: run E** (2026-10-01, from 13:17, detached; stopped when the laptop slept on
-battery at ~15:12 and WSL restarted on waking; resumed from step 32 at 17:54 for its
-remaining 14,681 s, until ~22:00):
+explains part of the decline. **Run E is done** (2026-10-01, from 13:17, detached; stopped when the laptop slept on
+battery at ~15:12 and WSL restarted on waking; resumed from step 32 at 17:54, finished at
+step 44 at 21:59):
 run D continued from step 29 with a 7x memory (458,752 positions) and no playout caps,
 6 hours of machine time — the control arm for stage 3b's playout caps (run F later, from
 the same state, same machine time). Playout caps would cut the recorded positions per
 hour ~7x (F: ~2 learning steps in 6 hours against E's ~14), so first **the cheap hint**:
 `az_target_quality` (how much closer 400-simulation targets come to a 2,000-simulation
-reference than 100-simulation ones), queued after E (`~/thud-runs/target_quality.sh`,
-~30 minutes, until ~22:30).
+reference than 100-simulation ones), done 22:22: **moderately better** — the dwarfs'
+top move agrees with the reference 57.4% instead of 51.8% (+5.6 points), the distance
+shrinks ~12% (trolls ~19%); the control (1,000 simulations) closer still. Not worth 7x
+less data here: the recommendation (for the user to decide) is no run F on this CPU,
+playout caps on the GPU (`PLAN.md`). The 2,000-simulation reference is stable enough
+(2026-10-02, the user asked: against 4,000 the gain from 100 to 400 is the same). **Built 2026-10-02, 00:45-03:00** (each behind a
+switch, off by default, tested with controls; committed 2026-10-02 in three commits): the
+**convolutional policy head** (stage 5, `--nn_model=resnet_conv_policy`, 420,988 weights
+at 64 x 4 against 9,244,626), **symmetry augmentation** (5b, `--symmetry_augmentation`;
+the board has **8** symmetries, not 16) and the trainer's **overfitting check** (new
+against trained positions' loss before each learning step). **Run E's evaluation**
+(00:45-03:27, `PLAN.md`, *First training runs*): **E44 beats D29 by +9.7** (33 of 40
+pairs) and the anchor by +37.7, the best yet; its dwarfs recovered against the anchor
+(+8.7, D29 +3.2, p = 0.03); no forgetting of the dwarfs' moves; **it still loses to A14,
+−3.5** (−5.7 to −1.3; D29 −5.4), what is left of A14's edge being on the dwarf side.
+**The head check** (04:02-05:16, `PLAN.md`, *Changes to the search and trainer*): the
+**new head learns the dwarfs' hurls on held-out positions — 98.8-99.4% of their policy
+mass against the linear head's 75-78%** (which reproduces the layout control exactly) —
+without overfitting (the linear head: 94-96% on its training positions), and is 3x
+closer to symmetric; ~15% slower per full batch of 32, faster per small one, 12% slower
+over run C'. **Symmetry augmentation** (05:49-06:45, the 2 x 2 at 64
+x 4): a strong regulariser for the linear head (held-out hurl mass 75.0% → 86.8%, its
+overfitting gone), little for the new head (98.8% → 99.1%). **Run C'** (`stage5_conv.sh`,
+06:50-13:38 after the full test suite passed, 285 of 285; run C's settings with the new
+head, from scratch to step 16): no overfitting, but **its dwarfs are much weaker than
+C's at equal steps** — against the anchor −10.3 at step 16 (C16 +9.5, p < 0.001), the
+trolls equal; in its self-play the trolls won every game; **C'16 loses to C16
+head-to-head, −8.5 a pair** (−12.6 to −4.3, 30 of 40 pairs). Its trolls learnt faster
+(+27.8 against the anchor at step 8, C +15.8), its dwarfs much worse. So the harness's
+win did not carry over to self-play, in one run each: stage 5 fails by the roadmap's
+rule, and the head is not adopted for now (the user: revisit it later). Nothing is
+running. **Decided (user, 2026-10-02): the next run is a fresh 7x run from step 1 with
+the old head**, probably with symmetry augmentation — open: whether to add augmentation
+with a control run without it (one change at a time; `PLAN.md` decision log). **Next:**
+settle that and start it; still open: playout caps (recommended: on the GPU, no run F
+here) and the analysis of run C''s saved data (the dwarfs' search breadth, its dwarf
+policy on C's archives; `PLAN.md`).
 
 **Where we stand:**
 
 - `open_spiel/games/thud/thud.cc` implements the game as designed in `PLAN.md` Phase 3
   (padded 17x17 grid, one function per move type, `IsTerminal` cached and decided without
-  generating moves). `thud_test.cc` has **47 test functions, all passing**; the first 46
-  passed without any test being changed, and the 47th runs OpenSpiel's generic tests.
+  generating moves). `thud_test.cc` has **49 test functions, all passing**; the first 46
+  passed without any test being changed, the 47th runs OpenSpiel's generic tests, and
+  the 48th and 49th (2026-10-02) test the policy-plane map and the symmetry helpers
+  (`PLAN.md` Phase 6, stages 5 and 5b).
   `ctest -R thud` takes about 3 s. A planted wrap-around bug is caught by 21 tests, and
   removing either end-of-battle limit by 2.
 - **The full OpenSpiel suite passes 285 of 285** (0 build warnings), including the upstream
@@ -70,8 +107,9 @@ reference than 100-simulation ones), queued after E (`~/thud-runs/target_quality
   `az_buffer_stats.cc` (search breadth from a saved replay buffer) — are built by
   `build_az_program.sh PROGRAM` against `build-shared/libopen_spiel.so`; `az_match.cc`
   (head-to-head matches, searching with our copy; `sims_a`/`sims_b` for uneven matches)
-  by `thud/az/build.sh`, and `az_sims_gain.py` analyses an uneven match against its
-  baseline; `az_thud.flags` holds our trainer defaults. Training
+  and `az_head_check.cc` (the layout check on our copy, for the policy head and
+  augmentation) by `thud/az/build.sh`, and `az_sims_gain.py` analyses an uneven match
+  against its baseline; `az_thud.flags` holds our trainer defaults. Training
   runs, their scripts and match results live outside the repo in `~/thud-runs/`.
   hexparrot runs from a clone
   outside the repo, by default
@@ -118,9 +156,10 @@ Phase 6, *Phase 6 roadmap and decision log*** — read it before choosing what t
    +8.1, +3.2 at steps 20, 24, 29 (C: +3.2, +0.9, −0.6); D's dwarf policy keeps fitting old
    positions at C16's level (C29's narrowing gone). Forgetting explains part: the longer
    memory removes the policy's narrowing and makes the strongest network so far, but the
-   dwarfs still slip against the anchor and the gap to A14 remains. **To decide (user):**
-   adopt the longer memory as our setting (its values to revisit later, `PLAN.md`,
-   *Settings to determine*, 7) and go on with stage 3b.
+   dwarfs still slip against the anchor and the gap to A14 remains. **Adopted** (user,
+   2026-10-01): a 7x memory as the baseline (its values to revisit later, `PLAN.md`,
+   *Settings to determine*, 7); run E, D continued with it to step 44, beats D29 by +9.7
+   and its dwarfs no longer slip, but it still loses to A14 (−3.5; above).
 3. **Proposed step back** (Claude, 2026-09-29; for the user to decide): on this CPU only
    "does it work" questions — correctness, learning against fixed opponents, no
    collapse; "which setting is best" waits for the GPU, since one run per setting cannot
@@ -132,8 +171,10 @@ Phase 6, *Phase 6 roadmap and decision log*** — read it before choosing what t
 4. **Stage 3b: playout cap randomisation** in our copy, after Step 1. A proposal is
    written up (`PLAN.md`, *Changes to the search and trainer*, playout caps: `p` 0.25
    for both sides, `N` 400, `n` 100, quick searches unrecorded and without root noise,
-   a switch off by default, judged against run C at equal machine time) — to decide
-   with the user, then implement and test as 3a was.
+   a switch off by default, judged against run C at equal machine time). Since measured
+   (2026-10-01/02): here it costs 7x fewer training positions an hour for moderately
+   better targets (stable against a 4,000-simulation reference) — **recommended: no run
+   F on this CPU, playout caps on the GPU; for the user to decide.**
    **Parked:** the uneven match (`~/thud-runs/night_2026-09-28.sh`, ~8 hours; per-side
    settings become a setting to tune later); the 400-simulation match (dropped for now);
    replicates of runs A and C (skipped); the backlog match with the new rule in both
@@ -1678,5 +1719,148 @@ instrumentation, and the pattern agreed for later, are in `PLAN.md` Phase 5).
   source before and during long runs. The target-quality script now waits for any part
   of run E (it would have recognised only the first script's name).
 
-**Next step:** as recorded in `## Current status` — run E (until ~22:00) and the target
-quality (until ~22:30), then the decision on playout caps and run F.
+- **2026-10-01 night.** Run E finished at step 44 (21:59, no pause since the resume); the
+  target-quality run (22:00-22:22, 864 positions) found 400-simulation targets moderately
+  better than 100-simulation ones (dwarfs: top move agreeing with a 2,000-simulation
+  reference 57.4% against 51.8%, distance −0.061; trolls −0.053), the 1,000-simulation
+  control closer still — not worth 7x fewer training positions an hour here.
+
+- **2026-10-02, 00:45-03:00: the convolutional policy head, symmetry augmentation, an
+  overfitting check.** Run E's evaluation started at 00:45 (detached,
+  `stage3b_E_eval.sh`); the target-quality check with references of 2,000 and 4,000
+  simulations is queued after it (`target_quality2.sh`; the user asked whether 2,000 is
+  itself a stable reference). Meanwhile, at the user's request (2026-10-01), all in our
+  copy or in the game, each behind a switch that is off by default, each with tests and
+  controls:
+  - **Game helpers** in `thud.h`: `PolicyPlaneIndex` (each action's entry in 120 planes
+    over the board) and the board's symmetries (`SymmetricCoord`, `SymmetricDirection`,
+    `SymmetricAction`, `SymmetricObservation`). The user asked whether an octagon has 16
+    symmetries: a regular one does, but Thud's has edges of alternately 5 and 4 squares
+    and keeps 8 (a 45-degree turn would not take squares to squares) — recorded in
+    `PLAN.md`, to keep in mind in every change. Two new tests in `thud_test.cc`
+    (`TestPolicyPlaneIndex`, `TestSymmetryHelpers`, exhaustive over all 19,800 actions;
+    now 49 test functions, all passing); four planted errors (two mirror matrices
+    swapped, a plane off by one, the observation not permuted, directions not turned)
+    each caught; `crosscheck_tests.py` unchanged (0 disagreements). No existing test
+    changed. `build-shared/libopen_spiel.so` relinked with them at 01:31 (GNU ld writes
+    a new file, so the running matches kept their copy; the next match started at
+    01:33 with the new one, which only adds functions).
+  - **The convolutional policy head**, `--nn_model=resnet_conv_policy`, built as
+    AlphaZero's and Leela Chess Zero's (sources checked: the *Science* paper's
+    supplementary materials, lczero-training's `tfprocess.py`): 420,988 weights at 64 x 4
+    against 9,244,626. `conv_policy_check` passes (layout 39,600 of 39,600 with a
+    swapped-axes control, masking, gradients, both heads fit a fixed batch, checkpoints
+    with a control); `identity_check` still 12 of 12; the trainer runs with it.
+  - **Symmetry augmentation**, `--symmetry_augmentation`: `SymmetricTrainInputs` in
+    `vpnet`, applied to each sampled position in the learner. `augmentation_check`
+    passes against positions mirrored independently as text (1,608 of 1,608), with a
+    control, and a planted error in the policy mapping is caught.
+  - **Overfitting check** (the user's "3a"): the trainer logs, before each learning
+    step, the losses on 2,048 new positions and 2,048 trained ones (`VPNetModel::Loss`,
+    `Learn`'s code without the step; `identity_check` passes after that refactoring).
+    Control: a tiny buffer trained hard shows new 7.12 against trained 3.76; an ordinary
+    short run 4.53 against 4.66.
+  - **The head check** (`thud/experiments/az_head_check.cc`): the layout check ported to
+    our copy, evaluating held-out and training positions, with `augment=1` and a measure
+    of how differently a network answers mirror images. The export was regenerated in
+    `~/thud-runs/head_check/data` (same checksums as in September: 20,036 + 4,816
+    positions). Training is deterministic (a repeat gave identical numbers), so the
+    linear head at 32 x 2 must reproduce the layout control's 77.9%. Queued, detached:
+    `head_check.sh` waits for E's evaluation and the target-quality check, then times
+    both heads and trains both at 32 x 2 and 64 x 4, seeds 1-3; `head_check_augment.sh`
+    then the 64 x 4 runs with augmentation. Estimated 05:00-07:30.
+  - Not rebuilt until the night's runs are done: `az_match`, `az_forgetting`,
+    `az_target_quality` (they compile our copy in; their resnet path is unchanged). A
+    scratch build of `az_match` on the new copy plays conv-head networks; today's
+    binary stops with "Unknown nn_model: resnet_conv_policy" (the control).
+  - **03:30, for the morning** (the user sleeps until ~11:00 and asked for meaningful
+    experiments to fill the machine): run E's evaluation ended at 03:27, so the queue
+    above would leave the machine idle from roughly 08:00-09:00. Queued after it, run
+    C' (`~/thud-runs/stage5_conv.sh`): stage 5's self-play test, one variable against
+    run C. Equal steps rather than equal time, so the user's daytime use cannot spoil
+    it (the learner trains on every 21,845 new positions whatever the speed; the new
+    head is faster, so this understates it). Not chosen: a fresh 7x run from step 1
+    (waits for E's results and the user), longer harness runs (the self-play run
+    answers the overfitting question where it matters, through the trainer's new
+    log).
+
+- **2026-10-02, 05:50-06:40, while the user sleeps** (they asked for each result to be
+  analysed as it lands, without a reminder; at 03:50 they asked whether that survives a
+  compaction: knowing does, acting needs a trigger set beforehand — a background waiter,
+  limited to 2 hours, then an hourly scheduled check, both living only as long as the
+  Claude Code session):
+  - **A stalled queue, fixed**: the reference check ended at 04:02, the head check at
+    05:16, but `head_check_augment.sh` kept waiting — its `pgrep -f 'head_check[.]sh'`
+    matched the Claude Code shell that had written and launched it at 02:06, still alive
+    and holding the script's text in its command line. Ended that shell (the script runs
+    in its own session under `nohup`, so it was unaffected); the augmented runs started
+    at 05:49, 33 minutes late. `stage5_conv.sh` waits on the same pattern and would have
+    stalled too. In `CLAUDE.md`: anchor waits to the script's own command line, checked
+    with a dummy shell as the control. The running scripts were not edited (bash reads a
+    script as it runs).
+  - **Run E's evaluation** (`PLAN.md`, *First training runs*): E44 beats D29 by +9.7
+    (+6.6 to +12.9, 33 of 40 pairs) and the anchor by +37.7 (dwarfs +8.7 against D29's
+    +3.2, p = 0.03; trolls +29.0); E36 and E40 against the anchor +30.6 and +31.1, so
+    the dwarfs' recovery came late; against A14 −3.5 (−5.7 to −1.3; D29 −5.4, the
+    difference not significant). The forgetting check finds no narrowing (archive 18:
+    4.96, D29 4.89, C29 6.57), a slow rise of ~0.2 on archives E no longer holds.
+  - **The reference check** (`PLAN.md`, playout caps): 2,000 and 4,000 simulations agree
+    on the dwarfs' top move in 88% of positions, at a quarter of 100 simulations'
+    distance; against 4,000 the gain from 100 to 400 is the same (+6.2 points, distance
+    −13%). The recommendation stands, no longer provisional.
+  - **The head check** (`PLAN.md`, the convolutional head): the linear head at 32 x 2
+    reproduces the layout control exactly (77.9%, 75.8-81.3); the new head reaches
+    98.8-99.4% hurl mass on held-out positions (linear 75-78%), no train-test gap (the
+    linear head 94-96% on training positions, a loss gap of 0.26), policy 3x closer to
+    symmetric. **Correction to the 03:30 entry:** the new head is not faster in the
+    trainer — 18.9 against 17.0 ms per batch of 32 and 514 against 448 ms per learning
+    step at 64 x 4, OMP 4; only single positions are faster (1.35 against 3.06 ms). Run
+    C' at equal steps is therefore not flattered.
+  - Uncommitted, for the user: these doc updates (`PLAN.md`, this file, `CLAUDE.md`'s
+    pgrep note) on top of the night's code.
+
+- **2026-10-02, 07:30, the hourly check:**
+  - **Symmetry augmentation on the harness** (`PLAN.md`, *Changes to the search and
+    trainer*, the 2 x 2 at 64 x 4, seeds 1-3): for the linear head held-out hurl mass
+    75.0% → 86.8% and the train-test loss gap 0.26 → 0.03; for the new head 98.8% →
+    99.1%, its policy 20% closer to symmetric. No cost in time.
+  - **Stage 5's gate passed** at 06:46 (98.8% against 75.0%); `make` in `build/` without
+    warnings, `ctest` 285 of 285 (84 s); `az_match`, `az_forgetting`,
+    `az_target_quality` rebuilt; **run C' started at 06:50**.
+  - **Correction to the 05:50 entry:** "~10-15% slower in the trainer" assumed full
+    batches of 32. The trainer's batches average far less (run C''s step 1: 8.6
+    positions, run C's 11.8), where the new head is faster (one position 1.35 against
+    3.06 ms), and C''s step 1 made 14.0 positions a second against C's 12.1. Run C''s
+    later steps will tell.
+
+- **2026-10-02, 14:30, the hourly check:** run C' trained to step 16 (06:50-13:38, exit
+  0, no pause; one battery reading at 13:28 showed 1, the next 2). **Its dwarfs are much
+  weaker than C's** at equal steps (`PLAN.md`, the convolutional head, run C'): against
+  the anchor −6.9 and −10.3 at steps 12 and 16 (C +2.4 and +9.5), the trolls equal;
+  the trainer's evaluator agrees, so not an `az_match` problem; in self-play the trolls
+  won every game. No overfitting by the new check. 12% slower than C over the run — the
+  07:30 entry's step-1 reading (faster) did not hold. The head-to-head with C16 and C'8
+  against the anchor still running.
+
+- **2026-10-02, 15:30, the last hourly check:** run C''s evaluation ended at 14:50.
+  **C'16 loses to C16 head-to-head, −8.5** (−12.6 to −4.3, 30 of 40 pairs; its dwarfs
+  −16.4 against C's trolls, C's −7.9 against its trolls); C'8 against the anchor +10.4,
+  its trolls +27.8 (C8 +15.8), its dwarfs −17.4 (C8 +4.1). The new head learnt the
+  trolls faster and the dwarfs much worse; stage 5 fails in this run, the head is not
+  adopted for now (`PLAN.md`, decision log, for the user to confirm). A possible
+  mechanism, unchecked: stage 3a's problem — strong trolls make the dwarfs' searches
+  judge every move lost. The hourly check is deleted: the night's queue is done, and
+  the machine is idle.
+
+- **2026-10-02, ~16:00, with the user:** they decided the next run — a fresh 7x run
+  from step 1 with the old head, probably with symmetry augmentation (whether with a
+  control run without it is still to settle) — and that the convolutional head is to
+  be revisited later. Committed the night's work in three commits (game helpers, tests
+  and the convolutional head; symmetry augmentation; the overfitting check, the
+  target-quality references and these docs); each intermediate state compiles (checked
+  with `-fsyntax-only`; control: `augmentation_check` fails against the first). Also
+  fixed in `PLAN.md`: roadmap row 1 still said run A2 was running (done 2026-09-28).
+
+**Next step:** as recorded in `## Current status` — settle augmentation for the fresh 7x
+run and start it; playout caps (recommended: on the GPU, no run F here) and the analysis
+of run C''s saved data stay open.

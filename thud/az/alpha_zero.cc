@@ -341,6 +341,14 @@ void learner(const open_spiel::Game& game, const AlphaZeroConfig& config,
   open_spiel::HistogramNumbered game_lengths_hist(game.MaxGameLength() + 1);
 
   open_spiel::HistogramNamed outcomes({"Player1", "Player2", "Draw"});
+  // Added, to see overfitting (thud/PLAN.md Phase 6): before each learning step,
+  // the loss on a sample of the positions new since the last step against a
+  // sample the network has trained on, taken after the last step. Same network,
+  // same mode (as it plays). Both are empty in a run's first step. Their own
+  // random numbers leave the batches the learner draws as they were.
+  constexpr int kLossSample = 2048;
+  std::vector<VPNetModel::TrainInputs> new_sample, trained_sample;
+  std::mt19937 loss_rng;
   // Actor threads have likely been contributing for a while, so put `last` in
   // the past to avoid a giant spike on the first step.
   absl::Time last = absl::Now() - absl::Seconds(60);
@@ -374,9 +382,18 @@ void learner(const open_spiel::Game& game, const AlphaZeroConfig& config,
         outcomes.Add(p1_outcome > 0 ? 0 : (p1_outcome < 0 ? 1 : 2));
 
         for (const Trajectory::State& state : trajectory->states) {
-          replay_buffer.Add(VPNetModel::TrainInputs{state.legal_actions,
-                                                    state.observation,
-                                                    state.policy, p1_outcome});
+          const VPNetModel::TrainInputs inputs{state.legal_actions,
+                                               state.observation, state.policy,
+                                               p1_outcome};
+          replay_buffer.Add(inputs);
+          // Added: a uniform sample of them (reservoir sampling).
+          if (num_states < kLossSample) {
+            new_sample.push_back(inputs);
+          } else {
+            const int j =
+                std::uniform_int_distribution<int>(0, num_states)(loss_rng);
+            if (j < kLossSample) new_sample[j] = inputs;
+          }
           num_states += 1;
         }
 
@@ -412,10 +429,32 @@ void learner(const open_spiel::Game& game, const AlphaZeroConfig& config,
 
     replay_buffer.SaveBuffer(config.path + "/replay_buffer.data");
 
-    VPNetModel::LossInfo losses;
+    VPNetModel::LossInfo losses, new_loss, trained_loss;
+    const bool compare_losses = !trained_sample.empty();  // Added.
     {  // Extra scope to return the device for use for inference asap.
       DeviceManager::DeviceLoan learn_model =
           device_manager->Get(config.train_batch_size, device_id);
+
+      // Added: the losses on new and on trained positions, before learning.
+      auto loss = [&](const std::vector<VPNetModel::TrainInputs>& sample) {
+        VPNetModel::LossInfo info;
+        for (int i = 0; i < sample.size(); i += config.train_batch_size) {
+          info += learn_model->Loss(std::vector<VPNetModel::TrainInputs>(
+              sample.begin() + i,
+              sample.begin() +
+                  std::min<int>(i + config.train_batch_size, sample.size())));
+        }
+        return info;
+      };
+      if (compare_losses) {
+        new_loss = loss(new_sample);
+        trained_loss = loss(trained_sample);
+        logger.Print("Before learning, as it plays: new positions' losses: policy "
+                     "%.4f, value %.4f; trained positions': policy %.4f, value %.4f",
+                     new_loss.Policy(), new_loss.Value(), trained_loss.Policy(),
+                     trained_loss.Value());
+      }
+      new_sample.clear();
 
       // Let the device manager know that the first device is now
       // off-limits for inference and should only be used for learning
@@ -441,6 +480,8 @@ void learner(const open_spiel::Game& game, const AlphaZeroConfig& config,
         }
         losses += learn_model->Learn(batch);
       }
+      trained_sample = replay_buffer.Sample(
+          &loss_rng, std::min<int>(kLossSample, replay_buffer.Size()));
 
       // The device manager can now once again use the first device for
       // inference (if it could not before).
@@ -493,6 +534,13 @@ void learner(const open_spiel::Game& game, const AlphaZeroConfig& config,
                      {"sum", losses.Total()},
                  })},
     };
+    if (compare_losses) {  // Added: see new_sample above.
+      record.emplace("loss_before_learning",
+                     json::Object({{"new_policy", new_loss.Policy()},
+                                   {"new_value", new_loss.Value()},
+                                   {"trained_policy", trained_loss.Policy()},
+                                   {"trained_value", trained_loss.Value()}}));
+    }
     eval->ResetBatchSizeStats();
     logger.Print("Losses: policy: %.4f, value: %.4f, l2: %.4f, sum: %.4f",
                  losses.Policy(), losses.Value(), losses.L2(), losses.Total());

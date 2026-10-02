@@ -133,6 +133,9 @@ class VPNetModel {
 
   // Training: do one (batch) step of neural net training
   LossInfo Learn(const std::vector<TrainInputs>& inputs);
+  // Our change: the losses Learn would report, with the network as it plays
+  // (Inference's mode), and no learning step.
+  LossInfo Loss(const std::vector<TrainInputs>& inputs);
 
   std::string SaveCheckpoint(int step);
   void LoadCheckpoint(int step);
@@ -141,6 +144,8 @@ class VPNetModel {
   std::string Device() const { return device_; }
 
  private:
+  LossInfo Losses(const std::vector<TrainInputs>& inputs, bool learn);
+
   std::string device_;
   std::string path_;
 
