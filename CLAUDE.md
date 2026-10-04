@@ -71,7 +71,10 @@ onto an empty square is legal" is useful. "Worked on move generation" is not.
 ## Environment
 
 These facts were established by measurement and cost real time to work out. Do not
-re-derive them.
+re-derive them — on this machine. On any other (a cloud GPU), the machine-dependent
+settings below and in the plan (buffer, network and batch sizes, threads, cadence) are
+reasoned about or benchmarked again first (user, 2026-10-03; `thud/PLAN.md`, *Cloud GPU
+options*).
 
 - **Development happens in WSL2 / Ubuntu on ARM64.** The host is a Snapdragon X, 10 cores,
   ~31.6 GB RAM — but **WSL itself sees 15 GB RAM + 4 GB swap** (its default is half the
@@ -224,10 +227,15 @@ open_spiel` (~2.5 min). The commands, and the compiler flags copied from CMake, 
 AlphaZero (`az_layout_check`, `az_throughput`, `az_reuse`, `az_buffer_stats`). Programs on
 **our copy** (`thud/az/`: the trainer `az_trainer` — upstream's example plus
 `--untried_move_value`, `--untried_move_reduction`, `--learner_batches`,
-`--nn_model=resnet_conv_policy` and `--symmetry_augmentation` — `identity_check`,
-`untried_move_check`, `conv_policy_check`, `augmentation_check`, and from
-`thud/experiments/` `az_match`, `az_forgetting`, `az_merge_buffers`, `az_target_quality`
-and `az_head_check`) are built by
+`--nn_model=resnet_conv_policy`, `--symmetry_augmentation`, `--policy_target_pruning`
+and `--replay_buffer_start_size` (2026-10-04), and since 2026-10-03
+logging per-side losses, self-play margins and endings and search statistics —
+`identity_check` (built with upstream's `model`, `vpnet` and `vpevaluator` sources as
+extra arguments, as its header says), `untried_move_check`, `conv_policy_check`,
+`augmentation_check`, `instrumentation_check`, `pruning_check`, `growing_buffer_check`, and from
+`thud/experiments/`
+`az_match`, `az_forgetting`, `az_merge_buffers`, `az_target_quality`, `az_head_check`,
+`az_reference_pilot` and `az_noise_check`) are built by
 `thud/az/build.sh MAIN.cc`, which also links Abseil's static libraries (the flag parsing
 `libopen_spiel.so` does not re-export) and runs at `nice 19`.
 

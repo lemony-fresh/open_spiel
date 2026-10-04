@@ -480,8 +480,9 @@ equal machine time. Never stack changes that have not been shown to work.
 | 3c — postponed 2026-09-29 | **Tree reuse, one tree shared by both sides** — **postponed** (user, 2026-09-29; why, how to build and how to test it in *Changes to the search and trainer*, tree reuse: AlphaZero, KataGo and Leela Chess Zero do not reuse in self-play, because reuse weakens root noise; it would add ~15-30% more visits a search — the cache spares the network calls of re-traversing the previous search's positions, not the simulations; the dwarfs' collapse involves exploration) — only if the reusable share stays large (own-tree reuse ~0. Shared-tree share = the most visited move's share, from the buffer statistics: with upstream's rule the dwarfs' 1-3%, the trolls' 57-77% while they won easily, then 17-20% (run A); **with the new rule ~13-14% for the dwarfs and ~13-17% for the trolls at 100 simulations through step 16 (run C), rising to 18-20% for both by step 23 in its continuation, and for the dwarfs to 21-30% at steps 26-29 (the trolls 18-20%) — roughly 15-30% more simulations per search, against playout caps' 1.37x**; re-read as the policy sharpens, since the watcher records it every step). **Priority** (user asked, 2026-09-28): kept after 3b — on 2026-09-28 it bought ~15-20% more simulations a search (on 2026-09-29 the dwarfs' share reached the ~30% mark below at run C's step 29: one reading so far, to discuss with the user), playout caps 1.37x in KataGo's measurement, and it is the larger change (a tree kept across moves and shared by both sides, root noise re-applied, a larger memory limit than the trainer's 10 MB); 3b's budget semantics (new simulations, or topping up to N visits) are chosen with reuse in mind. **Move it up** if the shared-tree share rises above ~30% for either side in the watcher's statistics, or when 3b is done | Same searches with reuse off; beats 3b's setting head-to-head |
 | 4 | Settings: `uct_c`, root noise α (0.03 and 0.3 against 0.1), temperature drop | Each change beats the previous setting head-to-head |
 | 5 — built 2026-10-02 | **Convolutional policy head** (user, 2026-09-26: later in the roadmap; started 2026-10-01 at the user's request) — first on the layout-check harness, with an exhaustive test of the action-to-plane map. It is the one planned change that makes our networks unloadable by unmodified OpenSpiel. **Built** behind `--nn_model=resnet_conv_policy` (as AlphaZero's and Leela Chess Zero's heads; 420,988 weights at 64 x 4 against 9,244,626), map and model tested (*Changes to the search and trainer*); **the harness passed** (2026-10-02, `az_head_check`, held-out and training positions, both heads, 32 x 2 and 64 x 4, seeds 1-3): the dwarfs' policy mass on hurls 98.8-99.4% on held-out positions against the linear head's 75-78% (which reproduces the layout control), no overfitting (the linear head: 94-96% on its training positions), 3x closer to symmetric; ~15% slower per full batch of 32 or learning step, faster per small batch, and 12% slower over run C'; then **run C'** (`~/thud-runs/stage5_conv.sh`): run C's settings with the new head as the only change, from scratch to step 16, against C as trained at equal steps and against the anchor — its gate (the harness not clearly failing) was met; trained 2026-10-02 06:50-13:38, 12% slower than C, no overfitting, but **its dwarfs much weaker** than C's at equal steps (against the anchor −10.3 at step 16, C +9.5; the trolls equal); **C'16 loses to C16 head-to-head, −8.5** (30 of 40 pairs): stage 5 fails in this run; the cause to analyse first (for the user) | Faster policy learning on the harness, no more overfitting; then no worse in self-play head-to-head |
-| 5b — built 2026-10-02 | **Symmetry augmentation** (user, 2026-10-01: right after the head, as its own change) — each sampled position turned or mirrored by a random one of the board's **8** symmetries (not 16: *Changes to the search and trainer*), behind `--symmetry_augmentation`, default off; tested; on the harness with both heads (the 2 x 2, 2026-10-02): **the linear head gains much** (held-out hurl mass 75.0% → 86.8%, its overfitting gone), **the new head little** (98.8% → 99.1%, policy 20% closer to symmetric); no measurable cost. Self-play test (C' with augmentation against C') for the user to decide, after run C' | Less overfitting or faster learning on the harness; then no worse in self-play head-to-head |
-| 6 | Cloud GPU, longer runs | Throughput measured there first |
+| 5b — built 2026-10-02 | **Symmetry augmentation** (user, 2026-10-01: right after the head, as its own change) — each sampled position turned or mirrored by a random one of the board's **8** symmetries (not 16: *Changes to the search and trainer*), behind `--symmetry_augmentation`, default off; tested; on the harness with both heads (the 2 x 2, 2026-10-02): **the linear head gains much** (held-out hurl mass 75.0% → 86.8%, its overfitting gone), **the new head little** (98.8% → 99.1%, policy 20% closer to symmetric); no measurable cost. **Self-play: G'16 beats G16 by +10.2** (2026-10-03; its dwarfs better at every step) — **adopted** (the user, 2026-10-03), in every run from now on | Less overfitting or faster learning on the harness; then no worse in self-play head-to-head |
+| 5c — decided 2026-10-02, started 2026-10-03 | **Instrumentation** (the user, 2026-10-02): per-side splits of the trainer's losses and value statistics, self-play results as margins and how games ended, search statistics per side (breadth, the prior's entropy, how far the search moves it) — **built and checked 2026-10-03**; and **a ladder of anchors with a rating** for strength (*How we evaluate networks*) — **the rating script built 2026-10-03** (`ladder.py`; anchors A14, E44, D29, C29, C16; promotion rule proposed). The fixed validation set was **shelved** (the user, 2026-10-03): the pilot showed strong searches agreeing on the best move only ~20% of the time, so its policy targets would measure a reference's style; its value-only variant judged of low value | Each statistic checked against an independent computation (done: the mixed numbers, replayed games, `az_buffer_stats`, a hand-built position per ending); the ladder's ratings reproduce the matches we have |
+| 6 | Cloud GPU, longer runs — first a weaker, cheaper GPU with many CPU cores, stronger ones as the network grows (the user, 2026-10-03; options in *Cloud GPU options*) | Throughput measured there first, and **every machine-dependent setting reasoned about or benchmarked on each new machine** (buffer, network and batch sizes, threads, cadence; *Cloud GPU options*) |
 
 **Later, when a trigger fires** (details in *Notes for later*):
 
@@ -504,6 +505,41 @@ equal machine time. Never stack changes that have not been shown to work.
   decisions*).
 - **Gumbel AlphaZero** — only if few-simulation search remains the bottleneck after 3b
   and 3c; a large change.
+- **Convolutional policy heads, again** (the user, 2026-10-03) — for both sides, or for
+  the trolls only (the hybrid), once our networks are much stronger: run C' compared
+  them at step 16 of a 64 x 4 network, where the dwarfs' policy had barely begun to
+  learn; with a stronger, larger network, a warm start or a higher learning rate for
+  the head, the verdict may differ (*Changes to the search and trainer*, run C').
+
+**What we have tried, and what to keep** (overview, 2026-10-02, at the user's request;
+the evidence is in the sections named in the decision log below):
+
+| Feature | What we found | Verdict |
+|---|---|---|
+| C++ AlphaZero instead of Python | Python's model has a layout bug and is slow | **Keep** C++ |
+| Batched inference (32 actors, 2 inference threads) | 2.7-7x faster self-play | **Keep** |
+| Our own copy of the AlphaZero code | Proven identical to upstream; needed for every change | **Keep** |
+| 100 simulations a move (against 400) | 100 won at equal machine time early in training | **Keep** for now; revisit with playout caps on the GPU |
+| Root noise α 0.1 | A compromise between the sides' move counts; never compared | **Keep**; tune on the GPU |
+| Untried moves at the siblings' mean − 0.2 (3a) | Stopped run A's collapse; much stronger dwarfs (C16 beat A16 by +20.9) | **Keep** (default) |
+| Larger replay buffer, 2x / 4x / 7x | 2x weak evidence; 4x (D) stopped forgetting, beat C29 +7.3; 7x (E) beat D29 +9.7, no forgetting; 7x from step 1 with augmentation (G') loses to C at step 16 but beats C29 by +13.3 and E44 by +8.0 at equal steps — though it stalls the dwarfs' policy | **Keep 7x**; a growing buffer still worth testing for the dwarfs' policy |
+| `learner_batches` (fixed training per step) | Lets a larger buffer keep run C's training per step | **Keep** |
+| Margins as the value target | The value learns the expected margin, our objective | **Keep** |
+| Matches with each network on its own rule, read per side | Showed the dwarfs' drift that mixed results hid | **Keep** |
+| Overfitting check in the trainer | Works (control 7.12 against 3.76); none in run C' | **Keep** (a log only) |
+| Symmetry augmentation (5b) | Harness: linear head 75% → 87%, overfitting gone; self-play: G'16 beats G16 by +10.2, its dwarfs better at every step | **Keep**, in every run |
+| Convolutional policy head (5) | Harness: 99% against 75-78%; self-play: run C' −8.5 against C — its dwarf policy barely learnt, but its trolls are much better (+18.4 against E44's dwarfs) | **Revisit as a troll-only head** (hybrid with the linear head for the dwarfs); **re-evaluate both variants once our networks are much stronger** |
+| Playout caps (3b) | Not built; 7x fewer training positions an hour for moderately better targets | **Revisit** on the GPU |
+| Tree reuse (3c) | Not built; ~15-30% more simulations a search, weakens root noise | **Revisit** after 3b, or if the reusable share passes 30% |
+| Resignation | Fits margins badly | **Drop** |
+| A 32 x 2 network | Its convolutions see only 11 x 11 squares | **Drop**; keep 64 x 4, grow when learning flattens |
+| `uct_c`, temperature drop | Not tried | **Later**, on the GPU |
+| Gumbel AlphaZero | Not tried; a large change | **Later**, only if few-simulation search stays the bottleneck |
+
+**Ideas raised, not yet tried** (2026-10-02, the user): larger filters in the
+convolutional head (5x5, 7x7); training the dwarfs more than the trolls (more learning
+on dwarf positions); a convolutional head for the trolls only. Discussed in *Changes to
+the search and trainer*, run C'.
 
 **Decided** (details and reasons in the sections named):
 
@@ -544,7 +580,22 @@ equal machine time. Never stack changes that have not been shown to work.
 | 2026-10-02 | The convolutional policy head passes the harness (no overfitting, hurls learnt on held-out positions); run C' goes ahead by its gate | measured | *Changes to the search and trainer* |
 | 2026-10-02 | Symmetry augmentation passes the harness: much better for the linear head, slightly for the new one; its self-play test waits for run C' and the user | measured | *Changes to the search and trainer* |
 | 2026-10-02 | Run C' (the new head in run C's settings) loses to C at equal steps (−8.5), its dwarfs far weaker: the head is not adopted for now, to be revisited later; analyse the cause before any further run with it | measured, by the roadmap's rule; the user (revisit later) | *Changes to the search and trainer*, run C' |
-| 2026-10-02 | Next run: fresh, a 7x memory from step 1, the old (linear) head, probably with symmetry augmentation — whether with a control run without it is open (Claude: one change at a time) | user | status block |
+| 2026-10-02 | Next runs: G — fresh, a 7x memory from step 1, the old (linear) head — and G', the same with symmetry augmentation, compared at equal steps (one change at a time) | user (Claude recommended the control run) | *Changes to the search and trainer*, symmetry augmentation |
+| 2026-10-02 | Instrumentation items 1-4 (per-side splits, self-play margins and endings, search statistics, a fixed validation set) built after runs G and G', as stage 5c | user | *Instrumentation* |
+| 2026-10-02 | Training the dwarfs more than the trolls: wait for runs G and G' — augmentation may already help the dwarfs | user | *Changes to the search and trainer*, run C' |
+| 2026-10-02 | Are the convolutional head's trolls better? C'16 and C16 each against E44 (40 pairs each), queued after runs G and G' | user | *Changes to the search and trainer*, run C' |
+| 2026-10-03 | Symmetry augmentation works in self-play (G'16 beats G16 by +10.2): use it in every run from now on | measured; the user (adopted) | *Changes to the search and trainer*, symmetry augmentation |
+| 2026-10-03 | A 7x memory from step 1 loses to C's 1x at step 16 (G16 vs C16 −7.9): grow the buffer from a small start (KataGo's formula with c = 65,536 rather than its 250,000) instead of starting large | measured; for the user to confirm | *Changes to the search and trainer*, symmetry augmentation (runs G and G') |
+| 2026-10-03 | Continue run G' (augmented, 7x) tonight from step 16: does the long memory pay off later? Compare at equal steps with C29 and D29 (and E44 if it gets that far) | user (proposed), Claude (agreed) | *Changes to the search and trainer*, symmetry augmentation (runs G and G') |
+| 2026-10-03 | Stage 5c (instrumentation) before the next new run | user | roadmap, 5c |
+| 2026-10-03 | How we evaluate networks: strength by a ladder of fixed anchors with one rating (linear cost), training health by a fixed validation set; the set versioned, with three signals that a version is outdated (no headroom, decoupling from the ratings, the reference beaten at its own budget); its reference chosen by a pilot | user (with Claude's proposal) | *Instrumentation*, *How we evaluate networks* |
+| 2026-10-04 | Ladder promotion rule: beat the top anchor in ≥ 40 pairs with the 95% interval of the pair margin above 0 (≈ Leela Zero's 55% of 400 games); G'44 promoted to top anchor | user | *How we evaluate networks* |
+| 2026-10-04 | Next change: KataGo's forced playouts and policy target pruning in our copy (behind a switch); first the noise diagnostic on pruned targets (do two noise seeds agree much more?), then a run against G' at equal steps; the hybrid head after it | user (Claude's proposal) | *Changes to the search and trainer*, runs G and G' |
+| 2026-10-04 | Run G' (fresh, 7x, augmentation) is the strongest network: beats C29, D29, E44 at equal steps and A14 (+3.2); top of the ladder (+6.9 against E44) | measured | *Changes to the search and trainer*, runs G and G' |
+| 2026-10-03 | No fixed validation set (the pilot: strong searches agree on the best move only ~20% of the time; a value-only set of low value): the ladder for strength, the trainer's statistics for training health, as Leela Zero and Leela Chess Zero do | user | *How we evaluate networks* |
+| 2026-10-03 | Re-evaluate convolutional policy heads (for both sides, or the trolls only) once our networks are much stronger | user | *Later, when a trigger fires* |
+| 2026-10-03 | Cloud GPU: start on a weaker, cheaper one with many CPU cores, move to stronger ones later; on every machine switch, reason about or benchmark the machine-dependent settings first | user | roadmap, 6; *Cloud GPU options* |
+| 2026-10-03 | The convolutional head's trolls are much better (against E44's dwarfs +9.8 against C16's −8.6), its dwarfs much worse: a hybrid head (convolutional for the trolls, linear for the dwarfs) is a strong candidate | measured; for the user to decide | *Changes to the search and trainer*, run C' |
 | 2026-09-29 | Step back: on this CPU only "does it work" questions, tuning on the GPU (3c and 4 after the switch) | Claude's proposal, **open** | status block |
 | 2026-09-26 | Replay buffer: default 65,536 positions for now | user | *Notes for later* |
 | 2026-09-26 | Untried moves: measure first | user | *Margins as the value target* |
@@ -1267,7 +1318,67 @@ first session, with no patch at all.**
   changed far more.
 
 - [ ] Cloud GPU (x86 + NVIDIA): OpenSpiel's documented setup, whose default LibTorch
-  download is the CUDA build (`global_variables.sh:89`).
+  download is the CUDA build (`global_variables.sh:89`). Or ARM + NVIDIA (GH200, below):
+  our aarch64 setup unchanged, with PyTorch's CUDA wheel for aarch64 instead of the CPU
+  one — `torch-2.10.0+cu128-cp314-cp314-manylinux_2_28_aarch64.whl` exists on
+  download.pytorch.org/whl/cu128 (checked 2026-10-03), our exact version and Python.
+
+  **Cloud GPU options** (researched 2026-10-03, the user asked; prices change — recheck
+  before renting). What decides it for us: the network is small (64 x 4, ~0.15 GFLOP an
+  evaluation), so any current GPU has far more compute than our search can feed; the
+  limit will be the **CPU cores** running the tree searches — a GPU wants batches of
+  hundreds, i.e. hundreds of games searched in parallel. So cores per GPU matter more
+  than the GPU model, until the network grows. Single-GPU instances, on-demand:
+
+  | Provider, instance | GPU | vCPUs | RAM | $/hour | Note |
+  |---|---|---|---|---|---|
+  | Lambda GH200 | H100-class, 96 GB | 64 (ARM Neoverse V2) | 432 GiB | 2.29 | Same architecture as this laptop |
+  | Lambda A10 | A10, 24 GB | 30 | 226 GiB | 1.29 | x86 |
+  | Lambda A100 (SXM or PCIe) | A100, 80 GB | 30 | ~220 GiB | 1.99 | x86 |
+  | Lambda H100 PCIe | H100, 80 GB | 26 | 225 GiB | 3.29 | x86 |
+  | RunPod L40S | L40S, 48 GB | 16 | 94 GB | 0.79 community / 1.09 secure | x86 |
+  | RunPod L4 | L4, 24 GB | 12 | 50 GB | 0.44 / 0.49 | x86 |
+  | RunPod RTX 4090 | 4090, 24 GB | 6 | 41 GB | 0.34 / 0.74 | Too few cores for us |
+  | RunPod RTX 5090 | 5090, 32 GB | 9 | 35 GB | 0.69 / 0.99 | Few cores |
+  | Vast.ai (marketplace) RTX 4090 | 4090, 24 GB | varies, filterable | varies | ~0.3-0.6 | Hosts vary in reliability |
+  | Hetzner GEX45 (dedicated, monthly) | RTX PRO 4000 Blackwell, 24 GB | i5-13500, 14 cores / 20 threads | 64 GB | €214 a month + €209 setup (~€0.29/h at 24/7) | Germany/Finland |
+  | Hetzner GEX131 (dedicated) | RTX PRO 6000 Blackwell, 96 GB | Xeon Gold 5412U, 24 cores | 256 GB | €889-1,197 a month | |
+
+  Sources: lambda.ai/pricing and runpod.io/pricing (read 2026-10-03), Hetzner's GEX45
+  and GEX131 announcements and reviews, getdeploying.com and Vast.ai's listings.
+  **Recommendation** (Claude, for the user to decide): first measure here, free, how
+  much CPU our search costs per simulation without the network (a trivial evaluator):
+  that says how many cores a GPU needs. Then a 2-3 hour throughput test (~$10-20) on
+  two contrasting machines — **Lambda GH200** (64 ARM cores, our setup unchanged) and a
+  cheap x86 machine with many cores (Lambda A10, 30 vCPUs, or a Vast.ai 4090 host with
+  ≥ 24 cores) — simulations a second at 64 x 4 and 128 x 6 with 64, 128 and 256 games
+  in parallel; then rent by measured throughput per dollar. For months of continuous
+  runs a dedicated monthly server (Hetzner) becomes cheaper per hour, if its cores
+  suffice.
+  **Budget** (the user, 2026-10-03): a first phase of tens of dollars — tune the
+  machine-dependent settings and get a feel for how well training works on a GPU —
+  then decide how much to spend on pushing further.
+  **Start on a weaker, cheaper GPU, move to stronger ones later** (the user,
+  2026-10-03): at 64 x 4 even a mid-range GPU outruns our search, so the first machine
+  should be cheap with many cores — e.g. Lambda A10 (30 vCPUs, $1.29/h) or a Vast.ai
+  4090 host with ≥ 24 cores (~$0.3-0.6/h), both x86 — and the GH200 (or bigger) once
+  the network grows. A cheap ARM option exists but does not fit: AWS g5g (Graviton2 +
+  NVIDIA T4G; g5g.8xlarge 32 vCPUs, 64 GiB, $1.37/h) needs CUDA for the T4G's compute
+  capability 7.5, which PyTorch's official aarch64 CUDA wheels leave out; only AWS's own
+  builds (2.7, 2.9.1) have it.
+
+  **On every machine switch, first reason about or benchmark the settings that depend
+  on the machine** (the user, 2026-10-03) — this CPU's values (`CLAUDE.md`,
+  *Environment*) do not carry over: the replay buffer's size (memory: ~9,700 bytes a
+  position, plus the copy written each step, and how long that write takes); the
+  network's size (what the machine runs fast enough); the inference batch size and the
+  training batch size; the threads — actors (games searched in parallel), inference
+  threads, `OMP_NUM_THREADS`, and for matches threads and batch; the learning cadence
+  and the batches per step (`replay_buffer_reuse`, `learner_batches`), which set how
+  often each position is trained on; simulations per move; the inference cache's
+  size; and the time budget of runs. As on this CPU in Phase 6 (the throughput report),
+  measured, not assumed — and the stage-1-style comparisons (100 against 400
+  simulations, network sizes) may come out differently there.
 
 **Margins as the value target** (checked 2026-09-25). Thud's returns are the final margin
 over 32 (`THUD_RULES.md` §7), which is the objective we want: a match is won on the
@@ -1409,17 +1520,17 @@ defaults in brackets; the ones Thud makes most uncertain first:
    and increasing to about 22 million by the end of the main run" — N_window = c(1 +
    β((N_total/c)^α − 1)/α), c = 250,000, α = 0.75, β = 0.4, sublinear in the positions
    generated so far (arXiv 1902.10565, section 3 and appendix C); an ablation "showed
-   major overfitting due to lack of data" until its window was doubled. At our scale it
+   major overfitting due to lack of data" until its buffer (its "window") was doubled. At our scale it
    gives ~280,000 positions at C's step 15 and ~390,000 at step 29: run D's 262,144 (4x)
-   is in line, our former 65,536 a quarter of KataGo's smallest window. A larger fixed
+   is in line, our former 65,536 a quarter of KataGo's smallest buffer. A larger fixed
    buffer costs no training time with `learner_batches` (64 batches whatever the size;
    saving it each step took ~16 s at 4x), but memory: the trainer used 5.3 GB at 4x, ~8 GB
    at 8x, plus the buffer watcher's copy — WSL's 15 GB allow ~8x at most, 16x needs more of
    the host's 31.6 GB. And a longer memory learns from older, weaker games, which is why
-   KataGo grows it sublinearly. So, for long runs (the GPU): a growing window in our copy
-   — sample only from the most recent N_window positions — rather than a bigger fixed
-   buffer. KataGo's 22 million came after ~225 million positions (the window then 10% of
-   all data); by its rule our window should be ~4.3x the former 65,536 after 330,000
+   KataGo grows it sublinearly. So, for long runs (the GPU): a growing buffer in our copy
+   — sample only from the most recent N_buffer positions — rather than a bigger fixed
+   buffer. KataGo's 22 million came after ~225 million positions (the buffer then 10% of
+   all data); by its rule our buffer should be ~4.3x the former 65,536 after 330,000
    positions (85% of all data), ~5.9x after 640,000, ~7.5x after 1 million, ~21x after 5
    million. Sizes need not be powers of two (65,536 is only upstream's default; the
    buffer indexes with `% max_size`): 6x = 393,216 with `replay_buffer_reuse` 18, or 7x =
@@ -1444,6 +1555,285 @@ The last value of a flag wins, so flags after `--flagfile` override it; each run
 `config.json` records what it used (checked 2026-09-25, including that `#` comment lines
 are ignored). `OMP_NUM_THREADS=1` is an environment variable and goes on the command line.
 Add each setting here as it is decided.
+
+**Instrumentation** (the user asked, 2026-10-02: what can we see in our logs, would we
+see overfitting, what should we add to judge runs faster?).
+
+*What we have.* The trainer's `learner.jsonl`, per step: throughput (positions and
+games a second, inference batch sizes, cache hits); game length (mean, histogram);
+wins per side (nearly useless while the trolls win almost every game); the training
+losses (policy, value, L2), averaged over both sides; since 2026-10-02 the losses on
+new against already trained positions before each step (both sides mixed);
+`value_accuracy` (whether the search's value had the winner's sign) and
+`value_prediction` (its size, i.e. confidence) at 7 points of each game; the built-in
+evaluator against MCTS with random rollouts (a moving average per level, both sides
+mixed, a weak opponent). The text logs hold more: each actor logs **every self-play game
+with its returns and full move list**, the evaluator every game against MCTS (its side
+recoverable from the returns line). Saved on disk: a checkpoint per step and the final
+replay buffer — for runs with a 7x buffer through step 16 that is every position of
+the run, otherwise only the last ~3 steps (runs C and E had an archive besides). Our
+tools work from these after the fact: `az_buffer_stats` (search breadth per side),
+`az_forgetting` (a network's fit to older positions), `az_target_quality` (targets
+against deeper searches), `az_match` (strength as trained, per side), `az_head_check`.
+
+*Can we see overfitting?* Partly. The new-against-trained check shows a generalisation
+gap, but (1) it mixes the sides, whose policy losses differ (~5 against ~3 nats), so
+a dwarf-only problem can hide; (2) new positions come from the current network's own
+play, so they flatter it (in run C' new positions often had the lower loss); (3) it
+compares against self-play targets that change as the network does, so losses are not
+comparable across steps or runs. What would show it cleanly is a **fixed validation
+set**: a few thousand positions never trained on, from varied games, each with a deep
+search's visit counts as the policy target and its game's final margin, evaluated by
+every checkpoint, per side. Its losses are comparable across steps and across runs
+(C, C', G, G' on the same positions), and they measure what we want — closeness to a
+deep search — rather than fit to the run's own targets. It would have shown C''s
+dwarf weakness during the run.
+
+*What we wanted in the past, and the signal that would have shown it early:* run A's
+dwarf collapse — the dwarfs' search breadth per step (99 moves visited); C29's
+narrowing — the dwarf policy's entropy falling and its top move matching the search
+more often (88%); C''s weak dwarfs — the dwarfs' mean final margin in self-play per
+step, a validation loss per side, an early match against the anchor; throughput and
+pauses — already logged (the scripts' clock logs).
+
+*Proposed, in order of value for effort* — **items 1-4 decided** (the user, 2026-10-02:
+"I think this will benefit us in the future"), **to build after runs G and G'**, as
+roadmap stage 5c; items 1-3 built 2026-10-03, item 4 shelved the same day (the pilot);
+items 5-7 not decided:
+
+1. **Per-side splits** of everything now mixed: the training losses, the
+   new-against-trained check, `value_accuracy` and `value_prediction`. The learner has
+   each position's side to move. Small change in our copy.
+2. **Self-play results as margins, per step**: the dwarfs' mean final margin and its
+   spread, and how games ended (all of one side captured, no legal move, the 200- or
+   800-turn limit). Wins alone say nothing while one side wins everything.
+3. **Search statistics per step and side**, from the new positions: moves visited,
+   the most visited move's share, effective moves (what `az_buffer_stats` computes
+   after the fact); plus, with the root's prior kept in the trajectory, the prior's
+   entropy, how far the search moved the policy (KL divergence of the visit counts
+   from the prior) and how often the prior's top move is the search's. A search that
+   no longer changes the prior teaches the network nothing; one that overrides it
+   every time shows a weak policy.
+4. **The fixed validation set** above (built once with `az_target_quality`'s
+   references; evaluated each step, or afterwards from the checkpoints).
+5. **An evaluation watcher** beside the trainer: every few checkpoints a short match
+   as trained against the anchor and a strong fixed opponent (E44), per side, at nice
+   19 — a strength curve during the run (C' would have shown its dwarfs at −17 at step
+   8, 3.5 hours before its training ended). Harmless for equal-steps comparisons.
+6. **After-the-fact tools**: a game analyser over the actors' logs (margins, captures,
+   hurls and shoves per side, how games ended, how varied the openings are), and a
+   per-step slicing of a 7x run's buffer for the statistics above.
+7. Lower: gradient and weight norms, batch-norm statistics — only if training turns
+   unstable.
+
+Runs G and G' (from 2026-10-02) need none of this to be judged: their final buffers
+hold every position, with checkpoints for every step and the actors' game logs, so
+items 2, 3 (without the prior: it can be recomputed from the checkpoints), 4 and 6
+can be computed afterwards.
+
+**Items 1-3 built and checked** (2026-10-03, our copy's trainer; no switch, they only
+log): `learner.jsonl` gains `loss_by_side` (each side's policy and value loss and
+positions; the model now also returns each position's losses, detached), the
+new-against-trained check's `new_by_side` / `trained_by_side`, `selfplay` (player 0's
+return — in Thud the dwarfs' — with a histogram of 21 buckets of 0.1, and the counts of
+each `endings` category) and `by_side` (per side: positions, median legal moves, moves
+visited, top share, effective moves, the prior's median effective moves, the mean KL
+divergence of the visit counts from the prior, how often the prior's top move is the
+most visited, and the values' sign accuracy and size at 7 points of the side's own
+turns); the learner's text log a line of losses by side, and each actor's game line
+its ending. **Checks:** `identity_check` 12 of 12 (one learning step equal to
+upstream's: the losses unchanged); in a 3-step smoke run (32 x 2, 20 simulations,
+augmentation on) the two sides' losses weighted by their positions reproduce the mixed
+ones to ~1e-7 (training losses and both halves of the new-against-trained check); all
+32 logged games replayed in `pyspiel` give the logged ending and return, the margin
+matching the pieces left; the per-step search statistics match `az_buffer_stats` on the
+same 6,736 positions; `instrumentation_check` (new) plays one hand-built position to
+each of the five endings (each with a control one move earlier) plus a cut-off game
+and another game's end, 12 of 12, and catches a planted error (the turn limit's `>=`
+as `>`); `conv_policy_check` and `augmentation_check` still pass. The prior statistics
+are plausible on the smoke run's untrained network (its prior near uniform: 269.7
+effective moves of 270) but were not recomputed independently. **First real use:** run
+G' continued from 2026-10-03 (`~/thud-runs/stage5b_Gaug_continue.sh`).
+
+*Design of items 1-4* (Claude, 2026-10-02; each behind no switch — they only log — but
+each with a check that it measures what it claims, as every change here):
+
+- **1. Per-side splits.** The side to move is in every stored position: the
+  observation's "trolls to move" plane (`thud::kTrollsToMovePlane`, plane 3 counting
+  from 0, one value over the whole plane; `thud.h`), so no format change. The model's loss function gets a variant returning per-position
+  policy and value losses (the trainer's means are their averages), and the learner
+  averages them per side: the training losses, the new-against-trained check, and
+  `value_accuracy` / `value_prediction` (from each state's `current_player`). Check:
+  the two sides' averages, weighted by their counts, reproduce today's mixed numbers.
+- **2. Self-play results as margins.** Per step: the dwarfs' mean final margin, its
+  spread and a histogram (the trajectories' returns), and how each game ended — all
+  dwarfs or all trolls captured, no legal move, the 200-turn no-capture limit, the
+  800-turn limit — read from the final state in the actor and carried in the
+  trajectory. Check: on a few logged games, replayed from their move lists, the same
+  margins and endings.
+- **3. Search statistics per side.** Per step, from the new positions' targets: moves
+  visited, the most visited move's share, effective moves (exp of the entropy), as
+  `az_buffer_stats` computes them (check: equal on a saved buffer). And from each
+  root, recorded by the actor as three numbers per position: the network's prior's
+  entropy (its own prior, before root noise: the evaluator's cached one, no extra
+  network call), the KL divergence of the visit counts from it (how far the search
+  moved the policy), and whether the prior's top move is the most visited.
+- **4. A fixed validation set** — **shelved 2026-10-03** (the user; *How we evaluate
+  networks*, the pilot's result; kept here for reference). Built by a new tool (from `az_target_quality`):
+  positions from self-play games of several networks (the untrained anchor, A14, C16,
+  D29, E44: varied play, both sides), every 7th position, ~4,000 (~2,000 per side:
+  top-move agreement to about ±2 points); each searched without root noise by the
+  **reference chosen by a pilot** (*How we evaluate networks*, below; the candidates
+  A14 at 8,000 simulations with upstream's rule, pure MCTS, E44) — its visit counts the
+  policy target, its root value and the game's final margin the value targets. Stored
+  **versioned**: the positions in one file, each version's targets in another (the
+  replay buffer's format, so our tools read it), with a note of how the targets were
+  made. Never in any training buffer (its games are its own). Scored per checkpoint
+  and side: policy loss against the reference visits, top-move agreement, distance (as
+  `az_target_quality`), value error. Two ways to use it: the trainer loads it
+  (`--validation_set=PATH`) and logs the scores before each learning step (~4,000
+  inferences, a few seconds), and an offline tool scores any run's saved checkpoints
+  — so runs A, C, C', D, E, G and G' can be compared on the same positions
+  retroactively. Checks: the untrained network scores worst; the set ranks our
+  networks as the matches did (G'16 above G16, C16 above C'16, E44 above D29 above
+  C29); a second build with another seed gives the same ranking. The reference
+  network itself is excluded from judging (its own score is inflated).
+
+**How we evaluate networks** (decided with the user, 2026-10-03 — the reasoning, to
+keep for the rest of the project):
+
+- **Two jobs, two tools.** (1) *Strength*, by matches. Playing every new network
+  against every past one costs quadratically; instead a **ladder of fixed anchors**:
+  each new network plays the 2-3 anchors nearest its strength (as trained, pairs with
+  the sides swapped, read per side), and one rating fitted to all ladder results
+  (Elo-like, e.g. Bradley-Terry on the margins) places it — linear cost. **Built
+  2026-10-03: `thud/experiments/ladder.py`** — every game's margin fitted by least
+  squares, a player having a dwarf strength D and a troll strength T, a battle with x
+  as the dwarfs and y as the trolls expected to end at 32 tanh((D_x − T_y) / 32) (the
+  margin's ceiling of ±32; fits better than linear: 42 against 40 of 53 matches
+  inside their intervals with every match in); a player is a network as it searched
+  (another rule is another player); rating R = D + T, the expected margin per pair
+  against the anchor, **E44**, with standard errors and a fit check against every
+  match. **The untrained network does not belong on the ladder**: with its matches in,
+  the misfits were exactly those — A14, which beats our strong networks, beats it by
+  only +26.1 where C16 searching broadly beats it by +46.4: beating a near-random
+  opponent does not predict strength between strong ones. So its matches are left out
+  (they stay per-side diagnostics). **First ratings** (17 matches between trained
+  networks, 13 within their intervals; as trained, against E44): A14 +1.7 ± 2.1, E44 0,
+  D29 −5.4 ± 2.1, C29 −10.3 ± 2.5, G'16 −10.5 ± 5.2, C16 −13.3 ± 2.2, G16 −21.4 ± 3.9,
+  C'16 −21.5 ± 3.3 — the order of every head-to-head we have (G'16 above G16 by 10.9,
+  observed 10.2; C16 above C'16); per side, C''s trolls +7.4 against E44's (its dwarfs
+  −28.9), A14's +12.4 (its dwarfs −10.6). **Anchors:** G'44 (promoted 2026-10-04), A14,
+  E44, D29, C29, C16 (as trained). **Promotion rule** (decided by the user,
+  2026-10-04): a network joins the anchors when it beats the top anchor head-to-head
+  in at least 40 pairs with the 95% interval of its pair margin above 0 — about 97.5%
+  one-sided confidence, as Leela Zero's gate (55% of 400 games, ~2 standard errors
+  above 50%); the margin carries more information per game than a win, so fewer
+  games suffice. Unlike Leela Zero's gate, ours does not choose which network
+  generates the training games — it only adds a reference point — so a wrong
+  promotion costs little. **G'44 promoted** (2026-10-04: beat A14 by +3.2, +0.7 to
+  +5.8, 60 pairs). Each new network plays the 2-3 anchors nearest its rating, 40
+  pairs each. When a network
+  clearly beats the top anchor, a frozen copy joins the ladder. Anchors so far: the
+  untrained network (A0), C16, D29, E44, A14. Rating against fixed opponents is, as far
+  as we know, the usual practice in AlphaZero-style projects (cite a source before
+  relying on details). (2) *Training health*, by the **validation set**: minutes, every
+  step, per side, comparable across steps and runs — whether a run still learns and
+  where (plateaus, overfitting, one side falling behind). It need not measure absolute
+  strength, and stays informative while our networks are clearly below its reference.
+- **The reference and its bias.** Any target made by a search carries the bias of what
+  guides the search; the search corrects the network only partly (the user: it
+  "partially eliminates" the network's effect, not wholly) — moves with a low prior get
+  few visits, and the value head judges every leaf. Considered:
+  - *A network's deep search, e.g. E44's*: favours its own lineage (E44's targets
+    favour C, D and E) and inflates its own score.
+  - *Pure MCTS* (random rollouts, no network): network-free, but shallow — with ~260
+    dwarf moves even 100,000 simulations reach 2-3 plies, below which random play
+    decides, while battles last ~300 moves — and blind to hurls (0.2-0.4% of the
+    dwarfs' moves, so rollouts almost never play one: it misjudges dwarf threats; Phase
+    5). As our networks improve, their agreement with it could fall: a metric that
+    stops tracking strength. Cost ~0.3 ms a simulation on one core: 100,000
+    simulations ~30 s a position, 4,000 positions ~3.5 hours on 10 cores; a million
+    ~35 hours. How many it needs is unknown (likely 100,000 or more for its top move to
+    settle) — bias, not budget, is the problem.
+  - *A14's deep search* (8,000 simulations): the strongest network by the matches (E44
+    loses to it by −3.5), outside every lineage now compared (C, C', D, E, G, G' descend
+    from other runs), and under upstream's rule, as A trained, a losing side's search —
+    usually the dwarfs' — tries every move before concentrating, so at high budgets its
+    root depends much less on its prior; the bias left is mainly its value head. ~5
+    hours for 4,000 positions (2.5 at 4,000 simulations, 10 at 16,000).
+  - **Chosen by a pilot**: A14 at 2,000 / 4,000 / 8,000 / 16,000 (upstream's rule),
+    pure MCTS at 25,000 / 100,000, E44 and G'16 at 4,000 (the default rule) — each one's
+    stability (agreement with itself at double the budget), the agreement between them
+    (where they agree, the target depends on no single network) and the cost. Expected:
+    A14 at ~8,000 as the reference, pure MCTS as a network-free cross-check.
+    **Result** (2026-10-03 12:17-13:41, `thud/experiments/az_reference_pilot.cc` and
+    `.py`, `~/thud-runs/reference_pilot/pilot.jsonl`; 161 positions from E44's and
+    G'16's self-play, 80 dwarf and 81 troll; intervals ±1.96 standard errors):
+
+    | | Dwarfs: same top move | Dwarfs: distance | Trolls: same top move | Trolls: distance |
+    |---|---|---|---|---|
+    | A14 2,000 vs 4,000 | 69% ±10 | 0.15 | 75% ±9 | 0.12 |
+    | A14 4,000 vs 8,000 | 65% ±11 | 0.14 | 77% ±9 | 0.11 |
+    | A14 8,000 vs 16,000 | 71% ±10 | 0.15 | 85% ±8 | 0.11 |
+    | pure MCTS 25,000 vs 100,000 | 25% ±10 | 0.013 | 17% ±8 | 0.013 |
+    | A14 8,000 vs E44 4,000 | 19% ±9 | 0.69 | 21% ±9 | 0.42 |
+    | A14 8,000 vs G'16 4,000 | 20% ±9 | 0.47 | 31% ±10 | 0.39 |
+    | E44 4,000 vs G'16 4,000 | 23% ±9 | 0.60 | 19% ±9 | 0.39 |
+    | A14 16,000 vs pure MCTS 100,000 | 21% ±9 | 0.53 | 15% ±8 | 0.41 |
+
+    - **Pure MCTS is unusable**: at 100,000 simulations its visits are almost uniform
+      (0.013 from its own 25,000), its top move a near-random pick among ties — random
+      rollouts barely tell moves apart.
+    - **A14's deep search is moderately stable** (71% / 85% from 8,000 to 16,000), less
+      than E44's (88% / 81% from 2,000 to 4,000, *Is 2,000 a stable reference?*) —
+      upstream's rule spreads its visits over every legal move (median 204.5 of 204.5
+      for the dwarfs; E44 visits 96).
+    - **Strong searches disagree on the best move** — ~20% agreement between any two of
+      A14, E44 and G'16 — **but agree on who is winning** (root values correlate
+      0.89-0.94). A single reference's top move is mostly its style; part of it is that
+      many moves are nearly equal, which "same top move" punishes.
+    - Cost: A14 at 8,000 ~165 s a search with 32 at once (~1,550 simulations a second
+      in all: 4,000 positions ~5.7 hours); pure MCTS at 100,000 12 s with 6 at once.
+    - **Proposed instead** (Claude, 2026-10-03; for the user to decide): values as the
+      primary signal — error against the consensus of several deep searches' root
+      values (A14, E44, G'16: they agree); for the policy, **regret** instead of
+      agreement — how much value the network's preferred move gives up against the
+      best move by a deep search's per-move values, so that equally good moves cost
+      nothing (A14's search, visiting every move, estimates each one; the pilot tool
+      would also record each move's mean value); and before trusting either, calibrate
+      on known match results (G'16 > G16, C16 > C'16, E44 > D29 > C29). A set of ~1,000
+      positions with all three references costs ~2.5 hours — after run G''s matches.
+  - **Decided instead (the user, 2026-10-03): no validation set — the ladder for
+    strength, the trainer's statistics (items 1-3) for training health**, as Leela Zero
+    (a new network promoted only if it beats the best in matches: 400 games, 55%) and
+    Leela Chess Zero (matches, plus a held-out tenth of its own self-play data as a test
+    set — no external reference) do. Why: items 1-3 already show training health per
+    step and side (they would have shown C''s dwarf policy stuck near uniform during the
+    run), and the new-against-trained check, now per side, is in effect Leela Chess
+    Zero's held-out test loss; the set's unique promise — comparability across runs, a
+    cheap stand-in for strength — is what the pilot undermined (the policy targets are
+    a reference's style), and the ladder gives both by measuring strength itself. A
+    value-only set (the consensus of several deep searches' root values, cheap: A14's
+    values settle by 2,000 simulations) was judged of low value: it cannot see the
+    policy, our recurring weak point (C''s value head was decent). The pilot tool and
+    these results stay, should a specific need arise.
+- **Every reference is outgrown; the first set is version 1.** Signals that a version
+  is outdated:
+  1. *No headroom*: when building it, record the reference's agreement with itself at
+     double the budget (e.g. A14 at 8,000 against 16,000, perhaps ~85-90%) — the
+     ceiling. When our best networks' raw policies come near it, the set has nothing
+     left to measure.
+  2. *Decoupling*: at every promotion to the ladder, check that the set ranks the new
+     anchor above the older ones; when its ranking stops following the ratings, it is
+     outdated. Free.
+  3. *Direct* (rare, ~8 hours on this CPU): when a network clearly tops the ladder,
+     play it at the reference's budget against the reference searcher; if ours wins,
+     rebuild.
+- **Rebuilding is cheap**: re-search the *same positions* with the then-best network at
+  a high budget (hours here, minutes on a GPU) as a new version; score the last few
+  networks on both versions to chain the scales; refresh the positions themselves now
+  and then — future networks play different games (distribution shift).
 
 **Notes for later** (user, 2026-09-26):
 
@@ -1508,7 +1898,7 @@ Add each setting here as it is decided.
   triggers below — though regressions are a known part of self-play: AlphaGo Zero let a
   new network generate games only after it won "by a margin of 55%", while AlphaZero
   "simply maintains a single neural network that is updated continually", as OpenSpiel
-  does (arXiv 1712.01815). Two jobs to keep apart: the **training window** (what the
+  does (arXiv 1712.01815). Two jobs to keep apart: the **replay buffer** (what the
   running network learns from; run A2 tests 2x, 131,072 positions at reuse 3 — a learning
   step every ~43 minutes, the learner's CPU share unchanged) and a **data archive** for
   growing the network or training another head later, which must learn from far more
@@ -1902,8 +2292,9 @@ goes into our own copy, decided 2026-09-26 — stages 3 and 5 of the roadmap, on
     8 and 16, 0.006 at 12). The trainer's own
     evaluator against MCTS, which does not go through `az_match`, agrees (step 16:
     −0.04 / −0.16 / −0.49 at its three levels, C −0.01 / −0.00 / −0.29). In self-play the
-    trolls won every game at every step and the value predictions stayed at 0.8-0.97; in
-    C's the dwarfs won 8 games at step 12 and the predictions fell to 0.2-0.5 by step 16.
+    trolls won every game at every step and the searches' values stayed confident (their
+    size, the trainer's `value_prediction`, 0.8-0.97); in C's the dwarfs won 8 games at
+    step 12 and the values' size fell to 0.2-0.5 by step 16.
   - **No overfitting** (the trainer's new check): before each learning step the new
     positions' policy loss is at or below that of positions already trained on (step 10:
     4.38 against 4.51; step 16: 4.33 against 4.32), the value losses alike after step 3.
@@ -1911,17 +2302,80 @@ goes into our own copy, decided 2026-09-26 — stages 3 and 5 of the roadmap, on
     second from step 3 on, C 16-18; the user asleep until ~11:00, nothing else running);
     only step 1, on the untrained network, was faster (14.0 against 12.1). The head
     check's full-batch timing (~15% slower) was the better guide.
-  - A possible mechanism, not checked: stage 3a's problem — the stronger the trolls,
-    the more the dwarfs' searches judge every move lost and spread out, so their
-    targets stay flat. Here the trolls were strong from step 8, and the dwarfs never won
-    a self-play game.
   - Caveats: one run each, and run-to-run variation at this scale is unmeasured; the
     harness tests fitting fixed targets, self-play also what the search does with the
-    priors. Analyses of saved data that could locate the cause (for the user to decide):
-    the dwarfs' search breadth in C''s buffers (`az_buffer_stats`; C's dwarfs visited a
-    median 19 moves) — a sharp but wrong prior keeps their searches narrow under the
-    untried-move rule; C'16's dwarf policy on C's archives (`az_forgetting`); then, if
-    still unclear, a second run of C'.
+    priors.
+  - **Diagnosis from its saved data** (2026-10-02 from 17:20, the user's go-ahead,
+    `~/thud-runs/stage5b_G.sh`, part 1). **Search breadth: unchanged** (`az_buffer_stats`
+    on its final buffer, steps 14-16, against C's after step 16): the dwarfs' searches
+    visit a median 19 moves in both, the most visited holding 14.1% in both, 16.7
+    effective moves against 15.9; only the outcome differs, the dwarfs' mean return
+    −0.86 against C's −0.47. So the first suspicion — stage 3a's problem, strong trolls
+    making the dwarfs' searches spread out over moves judged lost, flattening their
+    targets — is ruled out, and so is a sharp wrong prior narrowing them: the searches
+    look the same, the dwarfs choose worse moves within them. **Mostly the policy,
+    partly the value**: searching broadly (upstream's rule for both sides, every move
+    tried once, picked by the values; `Cconv_step16_vs_A_start.jsonl`), C'16's dwarfs
+    score +14.6 against the anchor, +24.9 over their −10.3 as trained; C16's rise by
+    +12.1 (+21.6 against +9.5). So two thirds of the gap to C16 at the dwarf side (19.8
+    as trained, 7.1 broad, p = 0.001) is the policy, one third the value; the trolls
+    equal either way. **Why the policy: it barely learnt the dwarfs.** On its own final
+    buffer (`az_forgetting`, 4,096 positions; the trainer's logged loss agrees: (5.33 +
+    3.36) / 2 = 4.35) C'16's dwarf policy loss is 5.33 against the untrained network's
+    5.38, its top move the most visited in 2.9% of dwarf positions (untrained 0.6%) —
+    near uniform after 16 steps — while its trolls learnt (4.01 → 3.36, 7.4% → 11.2%).
+    Run C learnt its dwarfs late too, but did: C8's dwarf loss on C's archive 9 was 5.36
+    (untrained 5.39), C16's on archive 15 5.01, its top move the most visited in 12% of
+    them, 59% on the later archives. (On C's archives C''s networks fit the dwarfs like
+    an untrained one and the trolls worse than one: each run's trolls learnt their own
+    repertoire — C16 fits C''s troll positions worse than uniform too, 4.66 against
+    4.06 — and a near-uniform dwarf policy predicts nothing.) **Why the harness
+    misled:** its learning rate is 10x the trainer's (1e-3 against 1e-4), and its policy
+    target is simple and local (uniform over the capturing moves), where self-play's are
+    visit counts over ~263 moves. The validation set (*Instrumentation*, item 4) is the
+    better proxy: real deep-search targets. **For revisiting the head:** a higher
+    learning rate for it, or a warm start — the head trained first on a finished run's
+    buffer (E's 458,752 positions) — would skip the slow start; the slow start may also
+    be what the dwarfs' policy needs most generally (C's took ~10 steps to begin).
+  - **Ideas raised** (the user, 2026-10-02), each to wait for the diagnosis:
+    - *Larger filters (5x5, 7x7) in the head.* The size advantage stays (7x7 in both
+      head convolutions: ~0.89M weights against the linear head's 9.2M), the speed
+      advantage goes (the head's two convolutions would cost ~130M multiply-adds a
+      position against the torso's ~70M, ~5x the 3x3 head's). And it may not reach the
+      problem: the torso's nine stacked 3x3 convolutions already see 19 x 19 squares, the
+      whole board, from every square; a larger filter adds direct sight of 2-3 squares
+      around a piece, while a dwarf moves up to 14. If the policy is to blame for long
+      moves, a head that scores each move from the features at both its start and its
+      destination square fits better (Leela Chess Zero's later attention policy works
+      on start and destination squares; to verify before building on it).
+    - *Training the dwarfs more than the trolls* — weighting dwarf positions more in
+      the learner's batches; better mixed into every batch than in alternating
+      dwarf-only phases, which pull the shared torso and value head back and forth.
+      Cheap to build (a sampling weight per side). Each position is now sampled ~3
+      times in its life, so doubling the dwarfs' share risks fitting their targets'
+      noise; augmentation and the validation set proposed under *Instrumentation*
+      would show whether it helps. **Waits for runs G and G'** (the user: augmentation
+      may already help the dwarfs).
+    - *A convolutional head for the trolls only*, the linear one for the dwarfs (both
+      heads, chosen by the side to move). Two cautions: the new head's troll advantage
+      was early speed (+27.8 against +15.8 at step 8) — by steps 12-16 C's trolls had
+      caught up against the anchor, which is too weak to separate strong trolls; and if
+      stronger trolls early hurt the dwarfs' learning in self-play, it would repeat
+      that. A cleaner test of the trolls first: C'16 and C16 against the same strong
+      dwarfs (each against E44), comparing their troll games. **Result** (2026-10-03
+      10:19-11:48, `~/thud-runs/conv_trolls_check.sh`, 40 pairs each, as trained):
+      **the new head's trolls are much better** — against E44's dwarfs C'16's trolls
+      score +9.8, C16's −8.6 (18.4 better, p < 0.001); against E44's trolls C'16's
+      dwarfs score −24.2, C16's −4.5 (19.7 worse, p < 0.001); per pair −14.4 and −13.0,
+      the two effects cancelling. At step 16 the new head's trolls beat the best dwarfs
+      we have (E44, trained to step 44). The diagnosis above weakens the first caution
+      (C''s dwarf searches were as broad as C's; its dwarf policy simply did not
+      learn), so **the hybrid — the convolutional head for the trolls, the linear one
+      for the dwarfs — is a strong candidate** (for the user to decide; after stage
+      5c). Building it: both heads in one network, each position's logits from the
+      head of its side to move (`thud::kTrollsToMovePlane`), each head trained only on
+      its side's positions; ~9.6M weights (the linear head's 9.2M plus the new head's
+      ~0.1M).
   **Compatibility:** a network with this head is a new model type, which unmodified
   OpenSpiel cannot build or load (user asked, 2026-09-26); every other planned change
   leaves the network file as upstream's. If that matters, publish our copy with the
@@ -1979,8 +2433,271 @@ goes into our own copy, decided 2026-09-26 — stages 3 and 5 of the roadmap, on
     squares. The new head without augmentation is far ahead of the linear head with it.
   - Values: lower losses with augmentation for both heads at the last evaluation, but
     the value numbers jump between evaluations (constant learning rate); no cost in time.
-  - Next, if the user wants it: the self-play test, run C' with `--symmetry_augmentation`
-    against C' at equal steps (one variable at a time), after run C'. AlphaGo Zero also evaluated positions in a randomly chosen symmetry during
+  - **Self-play test: runs G and G'** (the user, 2026-10-02; `~/thud-runs/stage5b_G.sh`,
+    `~/thud-runs/stage5b_G_7x/`, `stage5b_Gaug_7x/`): fresh, run C's settings with E's 7x
+    memory, to step 16, G' with augmentation the only difference (G 2026-10-02 17:42 to
+    00:09, G' to 07:01; mains throughout, no pause). Each position is sampled ~3 times in
+    its life there (64 batches of 1,024 a step, ~21 steps in the buffer), against ~10
+    passes on the harness. **Results**, each network as trained (C's matches from Step 1):
+
+    | Match | Pairs | Per pair (95%) | Won / drawn / lost | As dwarfs / as trolls |
+    |---|---|---|---|---|
+    | **G'16 vs G16** | 40 | **+10.2** (+7.0 to +13.4) | 32 / 5 / 3 | −2.0 / +12.3 |
+    | **G16 vs C16** | 40 | **−7.9** (−10.8 to −5.0) | 10 / 0 / 30 | −7.9 / +0.0 |
+    | G8 / G'8 / C8 vs the anchor | 20 each | +17.8 / +16.2 / +19.9 | | dwarfs −5.2 / +4.0 / +4.1; trolls +23.0 / +12.2 / +15.8 |
+    | G12 / G'12 / C12 vs the anchor | 20 each | +25.7 / +36.7 / +31.0 | | dwarfs +0.5 / +13.1 / +2.4; trolls +25.2 / +23.6 / +28.6 |
+    | G16 / G'16 / C16 vs the anchor | 20 each | +26.5 / +35.3 / +36.3 | | dwarfs +5.1 / +12.7 / +9.5; trolls +21.4 / +22.6 / +26.8 |
+
+    - **Augmentation helps clearly, through the dwarfs**: G'16 beats G16 by +10.2 (32 of
+      40 pairs); against the anchor G''s dwarfs beat G's at every step (+9.2, +12.7,
+      +7.7 at steps 8, 12, 16; p = 0.008, 0.001, 0.016); the trolls equal at 12 and 16
+      (at step 8 G''s lower, −10.9). In self-play G''s dwarfs won 18 games at step 16 (G
+      13, C 0). G' took 6.75 hours to step 16, G 6.32 (G' ran overnight on an idle
+      machine, so the ~7% is likely the learner's transformation of 65,536 positions a
+      step on one thread).
+    - **A 7x memory from step 1 is worse than C's 1x at step 16**: G16 loses to C16 by
+      −7.9 (30 of 40 pairs); against the anchor G's trolls trail C's at steps 12 and 16
+      (−3.4, −5.4; p = 0.018, 0.001), its dwarfs at step 8 (−9.3, p = 0.001). The only
+      difference is the buffer (same learning cadence, 21,845 positions a step, and the
+      same 64 batches a step): through step 16 G keeps training on every position since
+      step 1, the weak early games included. KataGo's rule, taken literally, would have
+      done much the same: its buffer starts at c = 250,000 positions and holds all data
+      below that — every position through our step ~11, ~290,000 at step 16 (*Settings
+      to determine*, 7) — so its constants do not transfer to our scale, where C's
+      65,536 learnt faster early, and E's gain came from a longer memory *later*, in a
+      run already trained. So **grow the buffer from a small start**: KataGo's formula
+      with c = 65,536 (α 0.75, β 0.4) gives ~2.3x at step 16, ~4.6x after a million
+      positions. Needs a growing buffer in our copy (sample only the newest N_buffer
+      positions of a larger buffer).
+    - G' against C (not played directly): against the anchor about equal in total
+      (+35.3 against +36.3), its dwarfs a little better (+3.2, p = 0.29), its trolls
+      worse (−4.2, p = 0.008) — augmentation about makes up for the large buffer's
+      handicap.
+    - The trainer's overfitting check shows nothing here: with the large buffer, new
+      positions score *better* than trained ones (G'16: 4.17 against 4.52), because the
+      trained sample spans the run's whole history, its old targets flatter — the drift
+      *Instrumentation* predicts; the validation set will measure this properly.
+    - Caveat as always: one run per setting.
+  - **G' continued** (from 2026-10-03 13:41, `~/thud-runs/stage5b_Gaug_continue.sh`, the
+    first run on the instrumented trainer; matches after step 44). What the new
+    statistics show by step 39 (22:00):
+    - **The dwarfs' prior is almost uniform, all along**: its effective moves equal the
+      legal moves within a few percent at every step from 17 to 39 (200 of 201 at step
+      17, 244 of 261 at 39), its likeliest move is the search's most visited in 1-2.5%
+      of dwarf positions; confirmed by another code path, the new positions' dwarf
+      policy loss, only 0.05-0.3 below log(legal moves), a uniform prior's loss (step
+      39: 5.25 against 5.56). The trolls' prior learns, slowly (policy loss 3.67 →
+      3.03; effective 20.5 of 24 moves; 13% top agreement). The dwarfs' play is
+      therefore the value head choosing among ~19 nearly arbitrary candidates — which
+      fits the broad-search results (C16's dwarfs +12.1 with every move tried, C''s
+      +24.9).
+    - **Hypothesis, unchecked: root noise sets the dwarfs' targets.** With a prior of
+      ~0.004 per move, the noise (ε 0.25 spread by α 0.1 over ~26 of ~250 moves, ~0.01
+      each) outweighs the prior several times, so the ~19 moves a dwarf search visits
+      are mostly the noise's picks; the target records them, the network cannot predict
+      noise, the prior stays flat — a loop. Remedies to examine: **KataGo's forced
+      playouts and policy target pruning** (arXiv 1902.10565, section 3.2, read
+      2026-10-03 via ar5iv): each root child gets at least n_forced(c) = (k P(c) Σ N)^½
+      playouts from the noised prior, and afterwards, from every child but the most
+      visited, up to n_forced playouts are subtracted from the policy target as long as
+      that child's PUCT value stays below the best's — because "the vast majority of the
+      time, noise moves are bad moves, and in AlphaZero since the policy target is the
+      playout distribution, we would train the policy to predict these extra bad
+      playouts"; it decouples "the policy target in AlphaZero from the dynamics of MCTS
+      or the use of explorative noise". Also weaker or per-side noise, and more
+      simulations for the dwarfs.
+    - **Tested the same evening — confirmed for G'** (`thud/experiments/az_noise_check.cc`,
+      2026-10-03 22:05-22:25: the reference pilot's 80 dwarf and 81 troll positions, each
+      searched as self-play records it, 100 simulations with root noise under two seeds,
+      and once without noise):
+
+      | Dwarfs | Prior below uniform | Two noise seeds' most visited agree | Agrees with the noise-free search | Visits on noise-boosted moves (chance) |
+      |---|---|---|---|---|
+      | G'39 | **0.04 nats** | **2%** | **4%** | 71% (60%) |
+      | C16 | 0.40 | 25% | 34% | 58% (59%) |
+      | E44 | 0.94 | 49% | 60% | 41% (48%) |
+      | C29 | 2.50 | 88% | 89% | 10% (26%) |
+
+      In G''s dwarf searches the noise decides: another seed almost never gives the same
+      most visited move, and the visits crowd onto the noise-boosted moves. E44's and
+      C29's priors have learnt and their searches follow them rather than the noise; C
+      had begun by step 16. (Trolls: G'39's seeds agree 7%, E44's 19%, C29's 38%, C16's
+      30% — their 20-30 moves leave more room to the noise for every network.) **Why G'
+      never started** (22:25-22:40, same positions):
+
+      | Dwarfs | Prior below uniform | Seeds agree | With the noise-free search |
+      |---|---|---|---|
+      | G16 (7x buffer from step 1) | 0.10 nats | 2% | 6% |
+      | G'16 (the same with augmentation) | 0.003 | 0% | 3% |
+      | G'29 | 0.01 | 0% | 2% |
+      | D29 (C's line, 4x from step 15) | 0.61 | 42% | 47% |
+
+      **The 7x buffer from step 1 stalls the dwarfs' policy** (G16 0.10 against C16
+      0.40 nats, the buffer the only difference) **and augmentation stalls it further**
+      (G'16 0.003) — a near-uniform start plus noise-made targets kept from the very
+      first steps, then eight orientations of them. In C → D → E the long memory came
+      after C's small buffer had started the dwarfs' policy. Yet G'16 beat G16 by
+      +10.2: augmentation's gain came through the value head (G''s value losses are
+      lower), the dwarfs playing by value-guided search among noise-chosen moves. So
+      the two directions this points to: **policy target pruning** (keep the noise out
+      of the targets, so the policy learns from the value-driven part of the visits) and
+      **a buffer grown from a small start**. For the user to decide; the CPU is free
+      after G''s matches (tomorrow morning).
+    - **G''s results** (trained to step 44 by 2026-10-03 23:40, 10 hours on mains, no
+      pause; matches until 2026-10-04 03:23; each network as trained):
+
+      | Match | Pairs | Per pair (95%) | Won / drawn / lost | G' as dwarfs / as trolls |
+      |---|---|---|---|---|
+      | G'29 vs C29 | 40 | **+13.3** (+9.9 to +16.6) | 36 / 1 / 3 | −4.2 / +17.4 |
+      | G'29 vs D29 | 40 | **+11.9** (+8.4 to +15.4) | 36 / 0 / 4 | +1.5 / +10.4 |
+      | G'44 vs E44 | 40 | **+8.0** (+4.1 to +11.8) | 30 / 0 / 10 | −2.4 / +10.4 |
+      | **G'44 vs A14** | 60 | **+3.2** (+0.7 to +5.8) | 36 / 8 / 16 | −3.5 / +6.8 |
+      | G'20 / 24 / 29 / 44 vs the anchor | 20 each | +24.3 / +26.3 / +33.8 / +31.5 | | dwarfs +9.8 / +10.8 / +11.0 / +12.1; trolls +14.6 / +15.5 / +22.8 / +19.4 |
+
+      - **G' is the strongest network so far and the first to beat A14** (+3.2, 36 of 60
+        pairs won, 16 lost): it beats C29 and D29 at equal steps by +13.3 and +11.9, and
+        E44 at equal steps by +8.0. **Ladder** (`ladder.py`, 21 matches, 17 within
+        their intervals): G'44 +6.9 ± 2.5, G'29 +6.3 ± 3.3, A14 +2.0, E44 0, D29 −5.1,
+        C29 −9.6. By the proposed promotion rule (the top anchor beaten in ≥ 40 pairs,
+        interval above 0) G'44 becomes the top anchor — the rule awaits the user.
+      - **Its dwarfs are the best we have**: against A14 −3.5, E44's −13.7 (+10.1, p <
+        0.001), its trolls weaker (+6.8 against E44's +10.1, p = 0.009); against the
+        anchor its dwarfs +12.1, E44's +8.7 (p = 0.14), its trolls +19.4, E44's +29.0 (p
+        < 0.001) — while its dwarf prior was near uniform: the value head carries them.
+      - **The long memory from step 1 pays off by step 29**: G16 lost to C16 (−7.9), G'29
+        beats C29 by +13.3 — the early handicap is overtaken (G without augmentation was
+        not continued, so the two changes are not separated after step 16). This weakens
+        the case for a growing buffer as far as strength goes; the stalled dwarf policy
+        remains its argument.
+      - **The dwarfs' prior begins to learn at the end**: its likeliest move is the most
+        visited in 2.5%, 3.1%, 3.6%, 4.1%, 5.6%, 7.7% of dwarf positions at steps 39-44
+        (effective moves 244 of 261 → 201 of 219); in self-play the dwarfs' mean return
+        stays ~−0.1, battles ending with the dwarfs gone ~50-60 and the trolls gone
+        ~20-28 times a step. Huge headroom if the dwarfs' policy learns properly — the
+        argument for policy target pruning. **Decided next** (the user, 2026-10-04):
+        forced playouts and policy target pruning, behind a switch. Note: pruning
+        changes each position's policy target, not the number of positions stored;
+        with our 100 simulations it removes only ~(k P N)^½ ≈ 1-4 visits from each
+        noise-boosted move (KataGo's searches have 600-1,000 visits), so whether it
+        cleans our targets enough is measured first — the noise diagnostic on pruned
+        targets (two seeds' agreement, G' raw: 2%); if too little, weaker noise for
+        the dwarfs is the next lever. Then a run against G' at equal steps; the hybrid
+        head decided after it (the user: first see that the dwarfs learn).
+        **Built 2026-10-04** (our copy, behind `--policy_target_pruning`, default off):
+        `MCTSBot`'s new `forced_playouts_k` (0 off) gives a root child with playouts
+        but fewer than (k P N)^½ an infinite selection value; `PrunedRootVisits` (in
+        `thud/az/mcts.h`) subtracts up to that many playouts from every child but the
+        most visited while its PUCT value, the mean held, stays below the best's, and
+        zeroes a child left with one; k = 2 as KataGo. In self-play the actors search
+        with forced playouts and record the pruned counts as the policy target; the move
+        is still chosen from the unpruned counts, the evaluator's and the matches'
+        searches unchanged. **Tests** (`thud/az/pruning_check.cc`, new): five hand-built
+        children against values worked out by hand (the most visited kept; one above
+        the best's PUCT at once kept; one pruned to a single playout dropped to 0; one
+        stopped by the PUCT bound before n_forced; an unvisited one 0), a planted error
+        (the single-playout rule removed) caught; in 40 real searches (G'44, 100
+        simulations, root noise) visited root children left below n_forced: 6 of 809
+        with forced playouts, 62 of 807 without — at 100 simulations n_forced is only
+        ~1-4 playouts, so forcing binds for few children; `identity_check` 12 of 12
+        with the switch off. **Test plan** (the user asked, 2026-10-04): equal steps,
+        not equal time — pruning is free and forced playouts keep 100 simulations a
+        move, so a step costs the same; first the noise diagnostic on pruned targets,
+        then a run of G''s settings with pruning to step 16 (one night), judged first
+        by the new statistics (the dwarfs' prior moving away from uniform by steps 8-16:
+        G'16 0.003 nats, C16 0.40) and then by matches against G'16.
+        **The diagnostic says it does not work at our scale** (2026-10-04,
+        `az_noise_check` extended to pruned targets; the pilot's positions, two noise
+        seeds): G'44's dwarf targets carry 65% of their mass on noise-boosted moves raw
+        and 65% pruned, 15.2 against 14.7 effective moves, the two seeds' targets 0.758
+        and 0.761 apart; E44 alike (41% / 41%). Why: pruning removes only *forced*
+        extra playouts, and at 100 simulations there are almost none; the noise acts
+        earlier — with a near-flat prior it reshapes the prior PUCT itself uses, so the
+        noise-boosted moves are visited legitimately and pruning leaves them. So no
+        training run with it. (The diagnostic also shows G'44's dwarf prior 0.076 nats
+        below uniform, against 0.039 at step 39: learning slowly at the end of G'.)
+        **Next candidate: a policy target from the search's values, not its visits** —
+        Gumbel AlphaZero's (Danihelka et al., "Policy improvement by planning with
+        Gumbel", ICLR 2022; the paper cited above for "AlphaZero can fail to improve its
+        policy network, if not visiting all actions at the root"): π' = softmax(log π +
+        σ(completed Q)), the completed Q being each visited move's search value and, for
+        unvisited moves, the mixed value (the network's value blended with the
+        prior-weighted mean of the visited moves' values), rescaled to [0, 1]; σ(q) = (50
+        + the largest visit count) × 0.1 × q (DeepMind's `mctx`,
+        `qtransform_completed_by_mix_value`, read 2026-10-04: `maxvisit_init` 50,
+        `value_scale` 0.1, `rescale_values` on). The target raises the moves the search
+        judged good and lowers those it judged bad by their values, wherever the
+        visits went — so noise choosing which moves get evaluated no longer becomes the
+        target. Used here with our PUCT search (the paper pairs it with its own Gumbel
+        root search — an adaptation to test). The user asked whether training toward
+        values is wise (picking the final move by value instead of visits plays
+        badly — the "robust child" rule): the target does not choose the move (we still
+        play the most visited), it shifts the prior's log-probabilities by a bounded
+        σ(Q) rather than taking the maximum, and unvisited moves get an average; but
+        with ~5 visits a move our Q values are noisy, so it trades root noise for value
+        noise — not settled by the literature for our case. Kept in reserve. If ever
+        used with our PUCT search: σ does not discount rarely visited moves (its scale
+        follows the *largest* visit count; a move with 1 visit enters with full weight —
+        Gumbel's own search gives its candidates equal visits), so add the user's
+        threshold (moves under m visits count as unvisited) or shrink each Q toward
+        the mixed value by n / (n + n0).
+        **More simulations do not fix it either** (2026-10-04, `az_noise_check
+        sims=N`, G'44's dwarf searches): two noise seeds' most visited moves agree 6% at
+        100 simulations, 11% at 200, 10% at 400 (with the noise-free search 10%, 16%,
+        14%); the extra simulations spread the search (effective moves 15, 24, 37)
+        instead of settling it — with a flat prior over ~220 moves even 400 is ~2
+        visits a move. E44, whose prior learnt, agrees 49% at 100. **So the cure is a
+        prior that learns early**: C's small buffer started the dwarfs' prior by step 16
+        (0.40 nats; seeds 25%), G's 7x did not (0.10), the buffer the only difference —
+        **the growing buffer** (C's 65,536 at first, then KataGo's formula with c =
+        65,536) with augmentation is the best-supported candidate, Gumbel's target in
+        reserve. Open risk: augmentation slowed the dwarfs' prior (G'16 0.003 against
+        G16 0.10), and C with augmentation was never run; the per-step statistics show
+        it within a few steps.
+        **Built 2026-10-04** (the user's go-ahead; `--replay_buffer_start_size`, default 0
+        = every position stored, as upstream): `GrowingBufferSize` and `SampleNewest` in
+        `thud/az/alpha_zero.h` — the learner (and the new-against-trained check's
+        trained sample) draws only from the newest W(N) positions, W = N up to the
+        start, then start (1 + 0.4 ((N / start)^0.75 − 1) / 0.75); distinct samples by
+        Floyd's algorithm; `growing_buffer_size` logged per step. **Tests**
+        (`thud/az/growing_buffer_check.cc`, new): the formula against values worked out by hand
+        (153,375 at 350,000 generated, 300,431 at a million, start 65,536); samples all
+        among the newest, distinct, as many as asked, before and after the buffer wraps;
+        uniform by a chi-square test (311 and 332 for 299 degrees of freedom, below the
+        99.9% point 375; a first min/max bound was poorly calibrated — the extremes of
+        300 counts — and replaced); control, upstream's whole-buffer `Sample` draws
+        older positions too; a smoke run (start 3,000) logged buffer sizes 2,160, 3,526,
+        4,259 — the formula's values. **Run W** (`~/thud-runs/stage5b_W.sh`, queued
+        2026-10-04 after the target-quality run): G''s settings with
+        `--replay_buffer_start_size=65536`, fresh, to step 16; judged first by the dwarfs'
+        prior (G'16 0.003 nats, C16 0.40), then W16 against G'16 and C16, W against the
+        anchor, `az_noise_check` on W16.
+        **Do more simulations bring the dwarfs' targets closer to a deep search?** (the
+        user, 2026-10-04: with a near-flat prior, 200 simulations may approximate the
+        truth better than 100 — the question an equal-time comparison does not answer)
+        `~/thud-runs/target_quality_Gaug44.sh`: G'44's positions at 100 / 200 / 400 with
+        noise against 4,000 and 16,000 without (a million simulations would take ~10
+        minutes a position and still be judged by the same value head; 4,000 against
+        16,000 shows whether the reference has settled). If 200 is clearly closer, a
+        per-side budget (200 for the dwarfs, 100 for the trolls, ~1.5x the compute) is
+        the next test. **Result** (2026-10-04 15:52-16:36, 111 dwarf and 113 troll
+        positions, `target_quality_Gaug44.jsonl`): **only slightly closer** — the
+        dwarfs' top move agrees with the 16,000-simulation search 5.4% at 100, 7.2% at
+        200, 9.9% at 400 (neither gain significant), the distance 0.833, 0.756 (−0.078,
+        −0.099 to −0.056), 0.670 (−0.164); against 4,000: 9.9%, 14.4%, 15.3%. All far
+        from a deep search — D29, whose prior had learnt, agreed ~52% at 100 against its
+        2,000 — and the deep reference itself has not settled for the dwarfs (4,000
+        against 16,000: 52% agreement, distance 0.215; trolls 68%). So a per-side budget
+        buys a little, not a fix; the prior is the problem. **Parked** for the GPU phase,
+        where simulations are cheap; run W (the growing buffer) is the experiment that
+        matters. A cheap test: dwarf searches of G'39 at 100 simulations with two
+      noise seeds and without noise — how much the visited moves and the most visited
+      move follow the noise.
+    - **A crisis and a recovery, steps 33-37**: the dwarfs' mean return in self-play fell
+      from ~−0.2 to −0.89 and recovered to −0.09 by step 39; the trolls' legal moves
+      doubled (~30 → 64: new kinds of positions); the value loss on new dwarf positions
+      jumped from 0.04 to 0.54 while staying ~0.05 on trained ones — self-play found
+      positions the value head did not know, and it adapted within ~5 steps. Exactly
+      what the new-against-trained check per side is for. AlphaGo Zero also evaluated positions in a randomly chosen symmetry during
   the search (the same paper); not built — a candidate if augmentation helps.
 - **The value of untried moves**: the parent's value minus a reduction (KataGo, Leela
   Chess Zero) or a loss (AlphaZero) instead of OpenSpiel's 0. The first runs showed the
