@@ -61,6 +61,11 @@ struct AlphaZeroConfig {
   // Thud's 8 board symmetries (SymmetricTrainInputs in thud/az/vpnet.h), as AlphaGo
   // Zero did with Go's; false is upstream's behaviour.
   bool symmetry_augmentation;
+  // Added: KataGo's forced playouts and policy target pruning in self-play
+  // (arXiv 1902.10565, section 3.2; PrunedRootVisits in thud/az/mcts.h), so that
+  // the policy target is what the search concluded rather than where root noise
+  // sent it; false is upstream's behaviour.
+  bool policy_target_pruning;
   int checkpoint_freq;
   int evaluation_window;
 
@@ -100,6 +105,7 @@ struct AlphaZeroConfig {
         {"replay_buffer_reuse", replay_buffer_reuse},
         {"learner_batches", learner_batches},
         {"symmetry_augmentation", symmetry_augmentation},
+        {"policy_target_pruning", policy_target_pruning},
         {"checkpoint_freq", checkpoint_freq},
         {"evaluation_window", evaluation_window},
         {"uct_c", uct_c},
@@ -143,6 +149,8 @@ struct AlphaZeroConfig {
     // A run from before the setting existed trained without it.
     symmetry_augmentation = config_json.count("symmetry_augmentation") &&
                             config_json.at("symmetry_augmentation").GetBool();
+    policy_target_pruning = config_json.count("policy_target_pruning") &&
+                            config_json.at("policy_target_pruning").GetBool();
     checkpoint_freq = config_json.at("checkpoint_freq").GetInt();
     evaluation_window = config_json.at("evaluation_window").GetInt();
     uct_c = config_json.at("uct_c").GetDouble();

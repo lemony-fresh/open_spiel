@@ -161,6 +161,35 @@ double MCTSBot::UntriedValue(const SearchNode& node) const {
   SpielFatalError("Unknown untried move value");
 }
 
+std::vector<std::pair<Action, double>> PrunedRootVisits(const SearchNode& root,
+                                                        double uct_c, double k) {
+  std::vector<std::pair<Action, double>> visits;
+  if (root.children.empty()) return visits;
+  const SearchNode& best = root.BestChild();
+  double playouts = 0;
+  for (const SearchNode& child : root.children) playouts += child.explore_count;
+  // PUCT with the mean value held at `mean` and `n` playouts, as PUCTValue.
+  auto puct = [&](double mean, double prior, double n) {
+    return mean + uct_c * prior * std::sqrt(root.explore_count) / (n + 1);
+  };
+  const double best_puct = puct(best.total_reward / best.explore_count, best.prior,
+                                best.explore_count);
+  for (const SearchNode& child : root.children) {
+    double n = child.explore_count;
+    if (&child != &best && n > 0) {
+      const double mean = child.total_reward / child.explore_count;
+      const double forced = std::sqrt(k * child.prior * playouts);
+      while (n > 0 && child.explore_count - (n - 1) <= forced &&
+             puct(mean, child.prior, n - 1) < best_puct) {
+        n -= 1;
+      }
+      if (n == 1) n = 0;
+    }
+    visits.push_back({child.action, n});
+  }
+  return visits;
+}
+
 bool SearchNode::CompareFinal(const SearchNode& b) const {
   double out = (player >= 0 && player < outcome.size() ? outcome[player] : 0);
   double out_b =
@@ -259,7 +288,7 @@ MCTSBot::MCTSBot(const Game& game, std::shared_ptr<Evaluator> evaluator,
                  double dirichlet_alpha, double dirichlet_epsilon,
                  bool dont_return_chance_node, double max_wall_clock_time,
                  UntriedMoveValue untried_move_value,
-                 double untried_move_reduction)
+                 double untried_move_reduction, double forced_playouts_k)
     : uct_c_{uct_c},
       max_simulations_{max_simulations},
       max_wall_clock_time_{max_wall_clock_time},
@@ -272,6 +301,7 @@ MCTSBot::MCTSBot(const Game& game, std::shared_ptr<Evaluator> evaluator,
       min_utility_(game.MinUtility()),
       untried_move_value_(untried_move_value),
       untried_move_reduction_(untried_move_reduction),
+      forced_playouts_k_(forced_playouts_k),
       dirichlet_alpha_(dirichlet_alpha),
       dirichlet_epsilon_(dirichlet_epsilon),
       dont_return_chance_node_(dont_return_chance_node),
@@ -382,6 +412,14 @@ std::unique_ptr<State> MCTSBot::ApplyTreePolicy(
             child_selection_policy_ == ChildSelectionPolicy::PUCT
                 ? UntriedValue(*current_node)
                 : 0;
+        // Our change: KataGo's forced playouts at the root (see the constructor).
+        const bool forced = forced_playouts_k_ > 0 && current_node == root;
+        double root_playouts = 0;
+        if (forced) {
+          for (const SearchNode& child : current_node->children) {
+            root_playouts += child.explore_count;
+          }
+        }
         for (SearchNode& child : current_node->children) {
           double val;
           switch (child_selection_policy_) {
@@ -392,6 +430,11 @@ std::unique_ptr<State> MCTSBot::ApplyTreePolicy(
               val = child.PUCTValue(current_node->explore_count, uct_c_,
                                     untried_value);
               break;
+          }
+          if (forced && child.explore_count > 0 &&
+              child.explore_count <
+                  std::sqrt(forced_playouts_k_ * child.prior * root_playouts)) {
+            val = std::numeric_limits<double>::infinity();
           }
           if (val > max_value) {
             max_value = val;

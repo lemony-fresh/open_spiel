@@ -151,7 +151,8 @@ Trajectory PlayGame(Logger* logger, int game_num, const open_spiel::Game& game,
                     std::vector<std::unique_ptr<MCTSBot>>* bots,
                     std::mt19937* rng, double temperature, int temperature_drop,
                     double cutoff_value, bool verbose = false,
-                    VPNetEvaluator* prior_source = nullptr) {
+                    VPNetEvaluator* prior_source = nullptr,
+                    double pruning_k = 0, double uct_c = 0) {
   std::unique_ptr<open_spiel::State> state = game.NewInitialState();
   std::vector<std::string> history;
   Trajectory trajectory;
@@ -179,11 +180,21 @@ Trajectory PlayGame(Logger* logger, int game_num, const open_spiel::Game& game,
       } else {
         action = open_spiel::SampleAction(policy, *rng).first;
       }
+      // Our change (thud/PLAN.md, policy target pruning): the policy target is
+      // the visit counts with KataGo's pruning, if on; the move above was still
+      // chosen from the unpruned counts, as before.
+      open_spiel::ActionsAndProbs target;
+      if (pruning_k > 0) {
+        for (const auto& [a, n] : PrunedRootVisits(*root, uct_c, pruning_k)) {
+          target.emplace_back(a, std::pow(n, 1.0 / temperature));
+        }
+        NormalizePolicy(&target);
+      }
 
       double root_value = root->total_reward / root->explore_count;
       trajectory.states.push_back(Trajectory::State{
           state->ObservationTensor(), player, state->LegalActions(), action,
-          std::move(policy), root_value});
+          pruning_k > 0 ? std::move(target) : std::move(policy), root_value});
       // Our change (thud/PLAN.md, Instrumentation): the network's own prior
       // (before root noise: the evaluator's, cached since the search's first
       // evaluation), its entropy, the KL divergence of the root's visit counts
@@ -236,6 +247,10 @@ Trajectory PlayGame(Logger* logger, int game_num, const open_spiel::Game& game,
   return trajectory;
 }
 
+// Our change (thud/PLAN.md, policy target pruning): KataGo's k (arXiv 1902.10565,
+// section 3.2).
+constexpr double kForcedPlayoutsK = 2;
+
 std::unique_ptr<MCTSBot> InitAZBot(const AlphaZeroConfig& config,
                                    const open_spiel::Game& game,
                                    std::shared_ptr<Evaluator> evaluator,
@@ -250,7 +265,9 @@ std::unique_ptr<MCTSBot> InitAZBot(const AlphaZeroConfig& config,
       evaluation ? 0 : config.policy_epsilon,
       /*dont_return_chance_node*/ true, /*max_wall_clock_time=*/-1,
       UntriedMoveValueFromString(config.untried_move_value),
-      config.untried_move_reduction);
+      config.untried_move_reduction,
+      // Our change: KataGo's forced playouts in self-play, with the pruning.
+      !evaluation && config.policy_target_pruning ? kForcedPlayoutsK : 0);
 }
 
 // An actor thread runner that generates games and returns trajectories.
@@ -277,7 +294,9 @@ void actor(const open_spiel::Game& game, const AlphaZeroConfig& config, int num,
     if (!trajectory_queue->Push(
             PlayGame(logger.get(), game_num, game, &bots, &rng,
                      config.temperature, config.temperature_drop, cutoff,
-                     /*verbose=*/false, /*prior_source=*/vp_eval.get()),
+                     /*verbose=*/false, /*prior_source=*/vp_eval.get(),
+                     config.policy_target_pruning ? kForcedPlayoutsK : 0,
+                     config.uct_c),
             absl::Seconds(10))) {
       logger->Print("Failed to push a trajectory after 10 seconds.");
     }

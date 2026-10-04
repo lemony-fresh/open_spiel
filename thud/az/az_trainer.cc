@@ -69,6 +69,10 @@ ABSL_FLAG(int, learner_batches, 0,
 ABSL_FLAG(bool, symmetry_augmentation, false,
           "Train on each sampled position turned or mirrored by a random one of "
           "Thud's 8 board symmetries; false as upstream.");
+ABSL_FLAG(bool, policy_target_pruning, false,
+          "KataGo's forced playouts and policy target pruning in self-play: the "
+          "policy target leaves out the playouts root noise forced; false as "
+          "upstream.");
 ABSL_FLAG(int, replay_buffer_size, 1 << 16,
           "How many states to store in the replay buffer.");
 ABSL_FLAG(double, replay_buffer_reuse, 3,
@@ -176,6 +180,7 @@ int main(int argc, char** argv) {
     config.untried_move_reduction = absl::GetFlag(FLAGS_untried_move_reduction);
     config.learner_batches = absl::GetFlag(FLAGS_learner_batches);
     config.symmetry_augmentation = absl::GetFlag(FLAGS_symmetry_augmentation);
+    config.policy_target_pruning = absl::GetFlag(FLAGS_policy_target_pruning);
     open_spiel::thud_az::UntriedMoveValueFromString(
         config.untried_move_value);  // Fails early if unknown.
     config.temperature = absl::GetFlag(FLAGS_temperature);

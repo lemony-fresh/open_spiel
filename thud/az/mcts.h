@@ -176,6 +176,17 @@ struct SearchNode {
 };
 
 // A SpielBot that uses the MCTS algorithm as its policy.
+// Our change (thud/PLAN.md, policy target pruning): KataGo's policy target pruning
+// (arXiv 1902.10565, section 3.2). The root's visit counts with the forced
+// playouts taken out again: from every child but the most visited (BestChild), up
+// to n_forced(c) = sqrt(k P(c) N) playouts are subtracted — P(c) the child's prior
+// as the search used it (root noise included), N the sum of the children's
+// playouts — as long as the child's PUCT value, its mean value held constant,
+// stays below the most visited child's; a child left with one playout gets 0. The
+// counts are for the policy target only; the move played is chosen as before.
+std::vector<std::pair<Action, double>> PrunedRootVisits(const SearchNode& root,
+                                                        double uct_c, double k);
+
 class MCTSBot : public Bot {
  public:
   // The evaluator is passed as a shared pointer to make it explicit that
@@ -199,7 +210,12 @@ class MCTSBot : public Bot {
       bool dont_return_chance_node = false, double max_wall_clock_time = -1,
       UntriedMoveValue untried_move_value =
           UntriedMoveValue::kSiblingMeanMinusReduction,
-      double untried_move_reduction = 0.2);
+      double untried_move_reduction = 0.2,
+      // Our change (thud/PLAN.md, policy target pruning): KataGo's forced
+      // playouts, k in n_forced(c) = sqrt(k P(c) sum of the root's playouts); a
+      // root child with playouts but fewer than that is chosen next. 0 (the
+      // default) turns them off, as upstream.
+      double forced_playouts_k = 0);
   ~MCTSBot() = default;
 
   void Restart() override {}
@@ -250,6 +266,7 @@ class MCTSBot : public Bot {
   double min_utility_;
   UntriedMoveValue untried_move_value_;
   double untried_move_reduction_;
+  double forced_playouts_k_;
   double dirichlet_alpha_;
   double dirichlet_epsilon_;
   bool dont_return_chance_node_;
