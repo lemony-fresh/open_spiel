@@ -22,11 +22,18 @@
 #ifndef THUD_AZ_ALPHA_ZERO_H_
 #define THUD_AZ_ALPHA_ZERO_H_
 
+#include <algorithm>
+#include <cmath>
+#include <cstdint>
 #include <iostream>
+#include <iterator>
+#include <random>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 #include "open_spiel/spiel.h"
+#include "open_spiel/utils/circular_buffer.h"
 #include "open_spiel/utils/file.h"
 #include "open_spiel/utils/json.h"
 #include "open_spiel/utils/thread.h"
@@ -66,6 +73,11 @@ struct AlphaZeroConfig {
   // the policy target is what the search concluded rather than where root noise
   // sent it; false is upstream's behaviour.
   bool policy_target_pruning;
+  // Added: a growing buffer (thud/PLAN.md, runs G and G'): the learner samples only
+  // the newest GrowingBufferSize(positions generated, replay_buffer_start_size)
+  // positions stored, the buffer growing towards replay_buffer_size; 0 samples
+  // every position stored, as upstream.
+  int replay_buffer_start_size;
   int checkpoint_freq;
   int evaluation_window;
 
@@ -106,6 +118,7 @@ struct AlphaZeroConfig {
         {"learner_batches", learner_batches},
         {"symmetry_augmentation", symmetry_augmentation},
         {"policy_target_pruning", policy_target_pruning},
+        {"replay_buffer_start_size", replay_buffer_start_size},
         {"checkpoint_freq", checkpoint_freq},
         {"evaluation_window", evaluation_window},
         {"uct_c", uct_c},
@@ -151,6 +164,9 @@ struct AlphaZeroConfig {
                             config_json.at("symmetry_augmentation").GetBool();
     policy_target_pruning = config_json.count("policy_target_pruning") &&
                             config_json.at("policy_target_pruning").GetBool();
+    replay_buffer_start_size = config_json.count("replay_buffer_start_size")
+                                   ? config_json.at("replay_buffer_start_size").GetInt()
+                                   : 0;
     checkpoint_freq = config_json.at("checkpoint_freq").GetInt();
     evaluation_window = config_json.at("evaluation_window").GetInt();
     uct_c = config_json.at("uct_c").GetDouble();
@@ -177,6 +193,41 @@ struct AlphaZeroConfig {
 };
 
 bool AlphaZero(AlphaZeroConfig config, StopToken* stop, bool resuming);
+
+// Our change (thud/PLAN.md, runs G and G'): the size of a growing buffer — KataGo's
+// rule (arXiv 1902.10565, section 3 and appendix C; KataGo calls it a "growing moving
+// window") with the start size c = `start`: all positions while at most c have been
+// generated, then c (1 + 0.4 ((N / c)^0.75 - 1) / 0.75) for N generated. Our small
+// runs learnt the dwarfs' policy early only with a small buffer (run C) and kept
+// improving later only with a large one (runs E, G').
+inline int64_t GrowingBufferSize(int64_t generated, int64_t start) {
+  if (generated <= start) return generated;
+  const double alpha = 0.75, beta = 0.4;
+  return static_cast<int64_t>(
+      start * (1 + beta * (std::pow(static_cast<double>(generated) / start, alpha) - 1) /
+                       alpha));
+}
+
+// Our change: `num` distinct elements drawn uniformly from the newest `newest` that
+// `buffer` holds (all it holds if fewer) — as CircularBuffer::Sample over all.
+template <typename T>
+std::vector<T> SampleNewest(const open_spiel::CircularBuffer<T>& buffer,
+                            std::mt19937* rng, int64_t newest, int num) {
+  const std::vector<T>& data = buffer.Data();
+  const int64_t size = data.size(), added = buffer.TotalAdded();
+  newest = std::min(newest, size);
+  // Floyd's algorithm: num distinct offsets in [0, newest), each set equally likely.
+  std::unordered_set<int64_t> offsets;
+  for (int64_t j = newest - std::min<int64_t>(num, newest); j < newest; ++j) {
+    const int64_t t = std::uniform_int_distribution<int64_t>(0, j)(*rng);
+    offsets.insert(offsets.count(t) ? j : t);
+  }
+  std::vector<T> out;
+  out.reserve(offsets.size());
+  // The newest is the element added last, at index (added - 1) % size once full.
+  for (int64_t offset : offsets) out.push_back(data[(added - 1 - offset) % size]);
+  return out;
+}
 
 // Our change (thud/PLAN.md, Instrumentation): how a finished game ended, as the
 // trainer logs it — "cutoff" if the trainer cut it off by its value, for Thud one

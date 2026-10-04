@@ -69,6 +69,11 @@ ABSL_FLAG(int, learner_batches, 0,
 ABSL_FLAG(bool, symmetry_augmentation, false,
           "Train on each sampled position turned or mirrored by a random one of "
           "Thud's 8 board symmetries; false as upstream.");
+ABSL_FLAG(int, replay_buffer_start_size, 0,
+          "A growing buffer: the learner samples only the newest positions stored, "
+          "all while at most this many were generated, then more by KataGo's rule "
+          "up to replay_buffer_size (thud/az/alpha_zero.h, GrowingBufferSize); 0: "
+          "every position stored, as upstream.");
 ABSL_FLAG(bool, policy_target_pruning, false,
           "KataGo's forced playouts and policy target pruning in self-play: the "
           "policy target leaves out the playouts root noise forced; false as "
@@ -181,6 +186,7 @@ int main(int argc, char** argv) {
     config.learner_batches = absl::GetFlag(FLAGS_learner_batches);
     config.symmetry_augmentation = absl::GetFlag(FLAGS_symmetry_augmentation);
     config.policy_target_pruning = absl::GetFlag(FLAGS_policy_target_pruning);
+    config.replay_buffer_start_size = absl::GetFlag(FLAGS_replay_buffer_start_size);
     open_spiel::thud_az::UntriedMoveValueFromString(
         config.untried_move_value);  // Fails early if unknown.
     config.temperature = absl::GetFlag(FLAGS_temperature);

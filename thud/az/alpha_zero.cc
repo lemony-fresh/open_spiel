@@ -667,6 +667,7 @@ void learner(const open_spiel::Game& game, const AlphaZeroConfig& config,
     replay_buffer.SaveBuffer(config.path + "/replay_buffer.data");
 
     VPNetModel::LossInfo losses, new_loss, trained_loss;
+    int64_t growing_buffer_size = 0;  // Added: the positions the learner sampled from.
     const bool compare_losses = !trained_sample.empty();  // Added.
     {  // Extra scope to return the device for use for inference asap.
       DeviceManager::DeviceLoan learn_model =
@@ -706,10 +707,26 @@ void learner(const open_spiel::Game& game, const AlphaZeroConfig& config,
       logger.Print("Learning on %d batches of %d%s", batches, config.train_batch_size,
                    config.symmetry_augmentation ? ", each position turned or "
                                                   "mirrored at random" : "");
+      // Added: the growing buffer, if on (GrowingBufferSize in alpha_zero.h).
+      const int64_t buffer_size =
+          config.replay_buffer_start_size > 0
+              ? std::min<int64_t>(GrowingBufferSize(replay_buffer.TotalAdded(),
+                                                    config.replay_buffer_start_size),
+                                  replay_buffer.Size())
+              : replay_buffer.Size();
+      if (config.replay_buffer_start_size > 0) {
+        logger.Print("Growing buffer: sampling the newest %d of %d positions stored",
+                     buffer_size, replay_buffer.Size());
+      }
+      auto sample = [&](std::mt19937* r, int num) {
+        return config.replay_buffer_start_size > 0
+                   ? SampleNewest(replay_buffer, r, buffer_size, num)
+                   : replay_buffer.Sample(r, num);
+      };
       std::uniform_int_distribution<int> symmetry(0, thud::kNumSymmetries - 1);
       for (int i = 0; i < batches; i++) {
         std::vector<VPNetModel::TrainInputs> batch =
-            replay_buffer.Sample(&rng, config.train_batch_size);
+            sample(&rng, config.train_batch_size);
         if (config.symmetry_augmentation) {  // Added: thud/PLAN.md Phase 6.
           for (VPNetModel::TrainInputs& inputs : batch) {
             inputs = SymmetricTrainInputs(inputs, symmetry(rng));
@@ -717,8 +734,8 @@ void learner(const open_spiel::Game& game, const AlphaZeroConfig& config,
         }
         losses += learn_model->Learn(batch);
       }
-      trained_sample = replay_buffer.Sample(
-          &loss_rng, std::min<int>(kLossSample, replay_buffer.Size()));
+      trained_sample = sample(&loss_rng, std::min<int64_t>(kLossSample, buffer_size));
+      growing_buffer_size = buffer_size;
 
       // The device manager can now once again use the first device for
       // inference (if it could not before).
@@ -784,6 +801,9 @@ void learner(const open_spiel::Game& game, const AlphaZeroConfig& config,
     // Added: thud/PLAN.md, Instrumentation — the losses per side to move, the
     // step's self-play results, and the searches per side.
     record.emplace("loss_by_side", LossesBySide(losses, step_stats));
+    if (config.replay_buffer_start_size > 0) {
+      record.emplace("growing_buffer_size", static_cast<int>(growing_buffer_size));
+    }
     record.emplace("selfplay", step_stats.SelfPlayJson());
     record.emplace("by_side", step_stats.BySideJson());
     eval->ResetBatchSizeStats();
