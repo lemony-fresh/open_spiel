@@ -458,6 +458,11 @@ std::vector<torch::Tensor> ModelImpl::losses(torch::Tensor inputs,
   // Policy loss (cross-entropy).
   torch::Tensor policy_loss = torch::sum(
       -policy_targets * torch::log_softmax(policy_predictions, 1), -1);
+  // Our change: each position's losses, for statistics per side to move
+  // (thud/PLAN.md, Instrumentation). Detached: the learning step is unchanged.
+  torch::Tensor policy_loss_each = policy_loss.detach();
+  torch::Tensor value_loss_each =
+      torch::square(value_predictions - value_targets).detach().flatten();
   policy_loss = torch::mean(policy_loss);
 
   // Value loss (mean-squared error).
@@ -483,7 +488,8 @@ std::vector<torch::Tensor> ModelImpl::losses(torch::Tensor inputs,
         weight_decay_ * torch::sum(torch::square(named_parameter.value())) / 2;
   }
 
-  return {policy_loss, value_loss, l2_regularization_loss};
+  return {policy_loss, value_loss, l2_regularization_loss, policy_loss_each,
+          value_loss_each};
 }
 
 std::vector<torch::Tensor> ModelImpl::forward_(torch::Tensor x,

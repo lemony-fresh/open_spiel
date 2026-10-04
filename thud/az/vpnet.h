@@ -64,6 +64,11 @@ class VPNetModel {
       value_ += other.value_;
       l2_ += other.l2_;
       batches_ += other.batches_;
+      for (int side = 0; side < 2; ++side) {
+        side_policy_[side] += other.side_policy_[side];
+        side_value_[side] += other.side_value_[side];
+        side_positions_[side] += other.side_positions_[side];
+      }
       return *this;
     }
 
@@ -73,11 +78,28 @@ class VPNetModel {
     double L2() const { return l2_ / batches_; }
     double Total() const { return Policy() + Value() + L2(); }
 
+    // Our change (thud/PLAN.md, Instrumentation): the losses per side to move,
+    // averaged over positions (with batches of equal size, the two sides'
+    // averages weighted by their positions give Policy() and Value()).
+    void AddPosition(int side, double policy, double value) {
+      side_policy_[side] += policy;
+      side_value_[side] += value;
+      side_positions_[side] += 1;
+    }
+    int Positions(int side) const { return side_positions_[side]; }
+    double Policy(int side) const {
+      return side_policy_[side] / side_positions_[side];
+    }
+    double Value(int side) const { return side_value_[side] / side_positions_[side]; }
+
    private:
     double policy_ = 0;
     double value_ = 0;
     double l2_ = 0;
     int batches_ = 0;
+    double side_policy_[2] = {0, 0};
+    double side_value_[2] = {0, 0};
+    int side_positions_[2] = {0, 0};
   };
 
   // A struct to handle the inputs for inference.
@@ -145,6 +167,11 @@ class VPNetModel {
 
  private:
   LossInfo Losses(const std::vector<TrainInputs>& inputs, bool learn);
+  // Our change: adds each position's losses to `info` by side to move, if the
+  // game says which side moves in its observation (Thud: kTrollsToMovePlane).
+  void AddLossesBySide(const std::vector<TrainInputs>& inputs,
+                       torch::Tensor policy_each, torch::Tensor value_each,
+                       LossInfo* info) const;
 
   std::string device_;
   std::string path_;
@@ -166,6 +193,9 @@ class VPNetModel {
   Model model_;
   torch::optim::Adam model_optimizer_;
   torch::Device torch_device_;
+  // Our change: where the observation says which side moves (Thud: the first
+  // entry of kTrollsToMovePlane, 1 when the trolls move), or -1.
+  int side_to_move_index_;
 };
 
 // Our change, for training on randomly turned and mirrored positions: `inputs` as

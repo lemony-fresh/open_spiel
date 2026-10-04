@@ -137,7 +137,11 @@ VPNetModel::VPNetModel(const Game& game, const std::string& path,
           model_->parameters(),
           torch::optim::AdamOptions(  // NOLINT(misc-include-cleaner)
               model_config_.learning_rate)),
-      torch_device_(TorchDeviceName(device)) {
+      torch_device_(TorchDeviceName(device)),
+      side_to_move_index_(game.GetType().short_name == "thud"
+                              ? thud::kTrollsToMovePlane * thud::kBoardSize *
+                                    thud::kBoardSize
+                              : -1) {
   // Some assumptions that we can remove eventually. The value net returns
   // a single value in terms of player 0 and the game is assumed to be zero-sum,
   // so player 1 can just be -value.
@@ -304,9 +308,10 @@ VPNetModel::LossInfo VPNetModel::Losses(const std::vector<TrainInputs>& inputs,
     std::vector<torch::Tensor> torch_outputs =
         model_->losses(torch_train_inputs, torch_train_legal_mask,
                        torch_policy_targets, torch_value_targets);
-    return LossInfo(torch_outputs[0].item<float>(),
-                    torch_outputs[1].item<float>(),
-                    torch_outputs[2].item<float>());
+    LossInfo info(torch_outputs[0].item<float>(), torch_outputs[1].item<float>(),
+                  torch_outputs[2].item<float>());
+    AddLossesBySide(inputs, torch_outputs[3], torch_outputs[4], &info);
+    return info;
   }
 
   // Run a training step and get the losses.
@@ -324,9 +329,24 @@ VPNetModel::LossInfo VPNetModel::Losses(const std::vector<TrainInputs>& inputs,
 
   model_optimizer_.step();
 
-  return LossInfo(torch_outputs[0].item<float>(),
-                  torch_outputs[1].item<float>(),
-                  torch_outputs[2].item<float>());
+  LossInfo info(torch_outputs[0].item<float>(), torch_outputs[1].item<float>(),
+                torch_outputs[2].item<float>());
+  AddLossesBySide(inputs, torch_outputs[3], torch_outputs[4], &info);
+  return info;
+}
+
+void VPNetModel::AddLossesBySide(const std::vector<TrainInputs>& inputs,
+                                 torch::Tensor policy_each, torch::Tensor value_each,
+                                 LossInfo* info) const {
+  if (side_to_move_index_ < 0) return;
+  policy_each = policy_each.to(torch::kCPU).contiguous();
+  value_each = value_each.to(torch::kCPU).contiguous();
+  const float* policy = policy_each.data_ptr<float>();
+  const float* value = value_each.data_ptr<float>();
+  for (int i = 0; i < inputs.size(); ++i) {
+    const int side = inputs[i].observations[side_to_move_index_] > 0.5 ? 1 : 0;
+    info->AddPosition(side, policy[i], value[i]);
+  }
 }
 
 VPNetModel::TrainInputs SymmetricTrainInputs(const VPNetModel::TrainInputs& inputs,

@@ -238,6 +238,8 @@ class ModelImpl : public torch::nn::Module {
  public:
   ModelImpl(const ModelConfig& config, const std::string& device);
   std::vector<torch::Tensor> forward(torch::Tensor x, torch::Tensor mask);
+  // The policy, value and L2 losses; our change: then each position's policy and
+  // value loss, detached (thud/PLAN.md, Instrumentation: statistics per side).
   std::vector<torch::Tensor> losses(torch::Tensor inputs, torch::Tensor masks,
                                     torch::Tensor policy_targets,
                                     torch::Tensor value_targets);

@@ -22,13 +22,16 @@
 #include "thud/az/alpha_zero.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
 #include <iostream>
+#include <limits>
 #include <memory>
 #include <random>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -108,16 +111,47 @@ struct Trajectory {
     open_spiel::Action action;
     open_spiel::ActionsAndProbs policy;
     double value;
+    // Our change (thud/PLAN.md, Instrumentation): how the search moved the
+    // network's own prior at the root, if the actor measured it (see PlayGame).
+    double prior_entropy = std::numeric_limits<double>::quiet_NaN();
+    double prior_kl = std::numeric_limits<double>::quiet_NaN();
+    int prior_top_agrees = -1;  // 1 or 0; -1 if not measured.
   };
 
   std::vector<State> states;
   std::vector<double> returns;
+  std::string ending;  // Our change: how the game ended (GameEnding).
 };
+
+// Our change (thud/PLAN.md, Instrumentation): how a finished game ended. For
+// Thud the five ways of THUD_RULES.md section 6, checked in ThudState's order.
+std::string GameEnding(const open_spiel::State& state, bool cut_off) {
+  if (cut_off) return "cutoff";
+  const auto* thud_state = dynamic_cast<const thud::ThudState*>(&state);
+  const auto* thud_game = dynamic_cast<const thud::ThudGame*>(state.GetGame().get());
+  if (thud_state == nullptr || thud_game == nullptr) return "terminal";
+  if (thud_state->TurnsPlayed() >= thud_game->max_turns()) return "turn_limit";
+  if (thud_state->TurnsWithoutCapture() >= thud_game->max_turns_without_capture()) {
+    return "no_capture_limit";
+  }
+  int dwarfs = 0, trolls = 0;
+  for (int row = 0; row < thud::kBoardSize; ++row) {
+    for (int col = 0; col < thud::kBoardSize; ++col) {
+      if (!thud::IsOnBoard(row, col)) continue;
+      dwarfs += thud_state->CellAt(row, col) == thud::Cell::kDwarf;
+      trolls += thud_state->CellAt(row, col) == thud::Cell::kTroll;
+    }
+  }
+  if (dwarfs == 0) return "dwarfs_gone";
+  if (trolls == 0) return "trolls_gone";
+  return "no_legal_move";
+}
 
 Trajectory PlayGame(Logger* logger, int game_num, const open_spiel::Game& game,
                     std::vector<std::unique_ptr<MCTSBot>>* bots,
                     std::mt19937* rng, double temperature, int temperature_drop,
-                    double cutoff_value, bool verbose = false) {
+                    double cutoff_value, bool verbose = false,
+                    VPNetEvaluator* prior_source = nullptr) {
   std::unique_ptr<open_spiel::State> state = game.NewInitialState();
   std::vector<std::string> history;
   Trajectory trajectory;
@@ -150,6 +184,32 @@ Trajectory PlayGame(Logger* logger, int game_num, const open_spiel::Game& game,
       trajectory.states.push_back(Trajectory::State{
           state->ObservationTensor(), player, state->LegalActions(), action,
           std::move(policy), root_value});
+      // Our change (thud/PLAN.md, Instrumentation): the network's own prior
+      // (before root noise: the evaluator's, cached since the search's first
+      // evaluation), its entropy, the KL divergence of the root's visit counts
+      // from it, and whether its likeliest move is the most visited.
+      if (prior_source != nullptr && root->explore_count > 0) {
+        std::unordered_map<open_spiel::Action, double> prior;
+        double entropy = 0;
+        open_spiel::Action prior_top = open_spiel::kInvalidAction;
+        for (const auto& [a, p] : prior_source->Prior(*state)) {
+          prior[a] = p;
+          if (p > 0) entropy -= p * std::log(p);
+          if (prior_top == open_spiel::kInvalidAction || p > prior[prior_top]) {
+            prior_top = a;
+          }
+        }
+        double kl = 0;
+        for (const SearchNode& c : root->children) {
+          if (c.explore_count == 0) continue;
+          const double v = static_cast<double>(c.explore_count) / root->explore_count;
+          kl += v * std::log(v / std::max(prior[c.action], 1e-30));
+        }
+        Trajectory::State& recorded = trajectory.states.back();
+        recorded.prior_entropy = entropy;
+        recorded.prior_kl = kl;
+        recorded.prior_top_agrees = prior_top == root->BestChild().action;
+      }
       std::string action_str = state->ActionToString(player, action);
       history.push_back(action_str);
       state->ApplyAction(action);
@@ -158,18 +218,20 @@ Trajectory PlayGame(Logger* logger, int game_num, const open_spiel::Game& game,
       }
       if (state->IsTerminal()) {
         trajectory.returns = state->Returns();
+        trajectory.ending = GameEnding(*state, /*cut_off=*/false);
         break;
       } else if (std::abs(root_value) > cutoff_value) {
         trajectory.returns.resize(2);
         trajectory.returns[player] = root_value;
         trajectory.returns[1 - player] = -root_value;
+        trajectory.ending = GameEnding(*state, /*cut_off=*/true);
         break;
       }
     }
   }
 
-  logger->Print("Game %d: Returns: %s; Actions: %s", game_num,
-                absl::StrJoin(trajectory.returns, " "),
+  logger->Print("Game %d: Returns: %s; Ending: %s; Actions: %s", game_num,
+                absl::StrJoin(trajectory.returns, " "), trajectory.ending,
                 absl::StrJoin(history, " "));
   return trajectory;
 }
@@ -214,7 +276,8 @@ void actor(const open_spiel::Game& game, const AlphaZeroConfig& config, int num,
                                                : game.MaxUtility() + 1);
     if (!trajectory_queue->Push(
             PlayGame(logger.get(), game_num, game, &bots, &rng,
-                     config.temperature, config.temperature_drop, cutoff),
+                     config.temperature, config.temperature_drop, cutoff,
+                     /*verbose=*/false, /*prior_source=*/vp_eval.get()),
             absl::Seconds(10))) {
       logger->Print("Failed to push a trajectory after 10 seconds.");
     }
@@ -311,6 +374,158 @@ void evaluator(const open_spiel::Game& game, const AlphaZeroConfig& config,
   logger.Print("Got a quit.");
 }
 
+// Our change (thud/PLAN.md, Instrumentation): statistics of one learning step's
+// new self-play games — the final margins (player 0's return; in Thud the
+// dwarfs') and how the games ended; per side to move, the searches' breadth (as
+// thud/experiments/az_buffer_stats.cc computes it), how far each search moved
+// the network's prior, and the values' sign accuracy and size at 7 points of the
+// side's own turns.
+class StepStats {
+ public:
+  explicit StepStats(const open_spiel::Game& game)
+      : sides_(game.GetType().short_name == "thud"
+                   ? std::array<std::string, 2>{"dwarfs", "trolls"}
+                   : std::array<std::string, 2>{"player0", "player1"}),
+        endings_(kEndings) {}
+
+  void Reset() {
+    returns_.Reset();
+    returns_hist_.Reset();
+    endings_.Reset();
+    for (Side& side : by_side_) side = Side();
+  }
+
+  void Add(const Trajectory& trajectory) {
+    returns_.Add(trajectory.returns[0]);
+    // 21 buckets of 0.1 over [-1, 1], centred on -1.0, -0.9, ..., 1.0.
+    returns_hist_.Add(std::clamp<int>(
+        static_cast<int>(std::lround((trajectory.returns[0] + 1) * 10)), 0, 20));
+    const auto ending = absl::c_find(kEndings, trajectory.ending);
+    endings_.Add(ending == kEndings.end() ? kEndings.size() - 1
+                                          : ending - kEndings.begin());
+    std::array<std::vector<const Trajectory::State*>, 2> turns;
+    for (const Trajectory::State& state : trajectory.states) {
+      if (state.current_player < 0 || state.current_player > 1) continue;
+      Side& side = by_side_[state.current_player];
+      turns[state.current_player].push_back(&state);
+      double visited = 0, top = 0, entropy = 0;
+      for (const auto& [action, p] : state.policy) {
+        if (p <= 0) continue;
+        visited += 1;
+        top = std::max(top, p);
+        entropy -= p * std::log(p);
+      }
+      side.legal.push_back(state.legal_actions.size());
+      side.visited.push_back(visited);
+      side.top_share.push_back(top);
+      side.effective_moves.push_back(std::exp(entropy));
+      if (state.prior_top_agrees >= 0) {
+        side.prior_effective_moves.push_back(std::exp(state.prior_entropy));
+        side.prior_kl.push_back(state.prior_kl);
+        side.prior_top_agrees += state.prior_top_agrees;
+      }
+    }
+    for (int p = 0; p < 2; ++p) {
+      if (turns[p].empty()) continue;
+      for (int stage = 0; stage < kStages; ++stage) {
+        const Trajectory::State& s =
+            *turns[p][(turns[p].size() - 1) * stage / (kStages - 1)];
+        by_side_[p].value_accuracy[stage].Add(
+            (s.value >= 0) == (trajectory.returns[p] >= 0));
+        by_side_[p].value_prediction[stage].Add(std::abs(s.value));
+      }
+    }
+  }
+
+  json::Object SelfPlayJson() const {
+    return json::Object({
+        {"player0_return", returns_.ToJson()},
+        {"player0_return_hist", returns_hist_.ToJson()},
+        {"endings", endings_.ToJson()},
+    });
+  }
+
+  json::Object BySideJson() const {
+    json::Object result;
+    for (int p = 0; p < 2; ++p) {
+      const Side& side = by_side_[p];
+      json::Object o({
+          {"positions", static_cast<int>(side.visited.size())},
+          {"median_legal", Median(side.legal)},
+          {"median_visited", Median(side.visited)},
+          {"mean_visited", Mean(side.visited)},
+          {"median_top_share", Median(side.top_share)},
+          {"median_effective_moves", Median(side.effective_moves)},
+          {"value_accuracy",
+           json::TransformToArray(side.value_accuracy,
+                                  [](auto v) { return v.ToJson(); })},
+          {"value_prediction",
+           json::TransformToArray(side.value_prediction,
+                                  [](auto v) { return v.ToJson(); })},
+      });
+      if (!side.prior_kl.empty()) {
+        o.emplace("median_prior_effective_moves", Median(side.prior_effective_moves));
+        o.emplace("mean_kl_visits_prior", Mean(side.prior_kl));
+        o.emplace("prior_top_is_most_visited",
+                  static_cast<double>(side.prior_top_agrees) / side.prior_kl.size());
+      }
+      result.emplace(sides_[p], std::move(o));
+    }
+    return result;
+  }
+
+  const std::string& SideName(int p) const { return sides_[p]; }
+
+ private:
+  static constexpr int kStages = 7;
+  inline static const std::vector<std::string> kEndings = {
+      "turn_limit", "no_capture_limit", "dwarfs_gone", "trolls_gone",
+      "no_legal_move", "cutoff", "terminal", "other"};
+  struct Side {
+    std::vector<double> legal, visited, top_share, effective_moves,
+        prior_effective_moves, prior_kl;
+    int prior_top_agrees = 0;
+    std::vector<open_spiel::BasicStats> value_accuracy =
+        std::vector<open_spiel::BasicStats>(kStages);
+    std::vector<open_spiel::BasicStats> value_prediction =
+        std::vector<open_spiel::BasicStats>(kStages);
+  };
+
+  static double Median(std::vector<double> values) {
+    if (values.empty()) return std::numeric_limits<double>::quiet_NaN();
+    auto middle = values.begin() + values.size() / 2;
+    std::nth_element(values.begin(), middle, values.end());
+    if (values.size() % 2 == 1) return *middle;
+    return (*middle + *std::max_element(values.begin(), middle)) / 2;
+  }
+  static double Mean(const std::vector<double>& values) {
+    if (values.empty()) return std::numeric_limits<double>::quiet_NaN();
+    double sum = 0;
+    for (double v : values) sum += v;
+    return sum / values.size();
+  }
+
+  std::array<std::string, 2> sides_;
+  open_spiel::BasicStats returns_;
+  open_spiel::HistogramNumbered returns_hist_{21};
+  open_spiel::HistogramNamed endings_;
+  std::array<Side, 2> by_side_;
+};
+
+// Our change: a LossInfo's losses per side, as JSON (empty if not measured).
+json::Object LossesBySide(const VPNetModel::LossInfo& losses,
+                          const StepStats& names) {
+  json::Object result;
+  for (int p = 0; p < 2; ++p) {
+    if (losses.Positions(p) == 0) continue;
+    result.emplace(names.SideName(p),
+                   json::Object({{"policy", losses.Policy(p)},
+                                 {"value", losses.Value(p)},
+                                 {"positions", losses.Positions(p)}}));
+  }
+  return result;
+}
+
 void learner(const open_spiel::Game& game, const AlphaZeroConfig& config,
              DeviceManager* device_manager,
              std::shared_ptr<VPNetEvaluator> eval,
@@ -341,6 +556,7 @@ void learner(const open_spiel::Game& game, const AlphaZeroConfig& config,
   open_spiel::HistogramNumbered game_lengths_hist(game.MaxGameLength() + 1);
 
   open_spiel::HistogramNamed outcomes({"Player1", "Player2", "Draw"});
+  StepStats step_stats(game);  // Added: thud/PLAN.md, Instrumentation.
   // Added, to see overfitting (thud/PLAN.md Phase 6): before each learning step,
   // the loss on a sample of the positions new since the last step against a
   // sample the network has trained on, taken after the last step. Same network,
@@ -365,6 +581,7 @@ void learner(const open_spiel::Game& game, const AlphaZeroConfig& config,
     for (auto& value_prediction : value_predictions) {
       value_prediction.Reset();
     }
+    step_stats.Reset();
 
     // Collect trajectories
     int queue_size = trajectory_queue->Size();
@@ -380,6 +597,7 @@ void learner(const open_spiel::Game& game, const AlphaZeroConfig& config,
 
         double p1_outcome = trajectory->returns[0];
         outcomes.Add(p1_outcome > 0 ? 0 : (p1_outcome < 0 ? 1 : 2));
+        step_stats.Add(*trajectory);
 
         for (const Trajectory::State& state : trajectory->states) {
           const VPNetModel::TrainInputs inputs{state.legal_actions,
@@ -539,11 +757,25 @@ void learner(const open_spiel::Game& game, const AlphaZeroConfig& config,
                      json::Object({{"new_policy", new_loss.Policy()},
                                    {"new_value", new_loss.Value()},
                                    {"trained_policy", trained_loss.Policy()},
-                                   {"trained_value", trained_loss.Value()}}));
+                                   {"trained_value", trained_loss.Value()},
+                                   {"new_by_side", LossesBySide(new_loss, step_stats)},
+                                   {"trained_by_side",
+                                    LossesBySide(trained_loss, step_stats)}}));
     }
+    // Added: thud/PLAN.md, Instrumentation — the losses per side to move, the
+    // step's self-play results, and the searches per side.
+    record.emplace("loss_by_side", LossesBySide(losses, step_stats));
+    record.emplace("selfplay", step_stats.SelfPlayJson());
+    record.emplace("by_side", step_stats.BySideJson());
     eval->ResetBatchSizeStats();
     logger.Print("Losses: policy: %.4f, value: %.4f, l2: %.4f, sum: %.4f",
                  losses.Policy(), losses.Value(), losses.L2(), losses.Total());
+    if (losses.Positions(0) > 0 && losses.Positions(1) > 0) {  // Added.
+      logger.Print("Losses by side: %s policy %.4f, value %.4f; %s policy %.4f, "
+                   "value %.4f", step_stats.SideName(0), losses.Policy(0),
+                   losses.Value(0), step_stats.SideName(1), losses.Policy(1),
+                   losses.Value(1));
+    }
 
     LRUCacheInfo cache_info = eval->CacheInfo();
     if (cache_info.size > 0) {

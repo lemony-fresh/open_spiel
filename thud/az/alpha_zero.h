@@ -26,6 +26,7 @@
 #include <string>
 #include <vector>
 
+#include "open_spiel/spiel.h"
 #include "open_spiel/utils/file.h"
 #include "open_spiel/utils/json.h"
 #include "open_spiel/utils/thread.h"
@@ -168,6 +169,12 @@ struct AlphaZeroConfig {
 };
 
 bool AlphaZero(AlphaZeroConfig config, StopToken* stop, bool resuming);
+
+// Our change (thud/PLAN.md, Instrumentation): how a finished game ended, as the
+// trainer logs it — "cutoff" if the trainer cut it off by its value, for Thud one
+// of "turn_limit", "no_capture_limit", "dwarfs_gone", "trolls_gone",
+// "no_legal_move" (THUD_RULES.md section 6), for other games "terminal".
+std::string GameEnding(const open_spiel::State& state, bool cut_off);
 
 }  // namespace torch_az
 }  // namespace thud_az
