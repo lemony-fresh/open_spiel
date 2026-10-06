@@ -51,6 +51,7 @@
 #include "thud/az/vpevaluator.h"
 #include "thud/az/vpnet.h"
 #include "thud/az/mcts.h"
+#include "thud/az/replay_buffer.h"
 #include "open_spiel/spiel.h"
 #include "open_spiel/spiel_utils.h"
 #include "open_spiel/utils/circular_buffer.h"
@@ -276,7 +277,9 @@ void actor(const open_spiel::Game& game, const AlphaZeroConfig& config, int num,
            std::shared_ptr<VPNetEvaluator> vp_eval, StopToken* stop) {
   std::unique_ptr<Logger> logger;
   if (num < 20) {  // Limit the number of open files.
-    logger.reset(new FileLogger(config.path, absl::StrCat("actor-", num)));
+    // Our change (thud/PLAN.md, Instrumentation, item 6): appended, as the learner's
+    // log is, so a resumed run keeps the games of its earlier segments.
+    logger.reset(new FileLogger(config.path, absl::StrCat("actor-", num), "a"));
   } else {
     logger.reset(new NoopLogger());
   }
@@ -354,7 +357,7 @@ class EvalResults {
 void evaluator(const open_spiel::Game& game, const AlphaZeroConfig& config,
                int num, EvalResults* results,
                std::shared_ptr<VPNetEvaluator> vp_eval, StopToken* stop) {
-  FileLogger logger(config.path, absl::StrCat("evaluator-", num));
+  FileLogger logger(config.path, absl::StrCat("evaluator-", num), "a");  // Our change: appended.
   std::mt19937 rng;
   auto rand_evaluator = std::make_shared<RandomRolloutEvaluator>(1, num);
 
@@ -560,8 +563,9 @@ void learner(const open_spiel::Game& game, const AlphaZeroConfig& config,
   logger.Print("Running the learner on device %d: %s", device_id,
                device_manager->Get(0, device_id)->Device());
 
-  SerializableCircularBuffer<VPNetModel::TrainInputs> replay_buffer(
-      config.replay_buffer_size);
+  // Our change (thud/PLAN.md, Instrumentation: the buffer's memory): a buffer whose Add
+  // moves each position into its slot, so each slot holds its own position's size.
+  ReplayBuffer<VPNetModel::TrainInputs> replay_buffer(config.replay_buffer_size);
   if (start_info.start_step > 1) {
     replay_buffer.LoadBuffer(config.path + "/replay_buffer.data");
   }
@@ -619,10 +623,9 @@ void learner(const open_spiel::Game& game, const AlphaZeroConfig& config,
         step_stats.Add(*trajectory);
 
         for (const Trajectory::State& state : trajectory->states) {
-          const VPNetModel::TrainInputs inputs{state.legal_actions,
-                                               state.observation, state.policy,
-                                               p1_outcome};
-          replay_buffer.Add(inputs);
+          // A copy of the trajectory's vectors, so of their exact sizes.
+          VPNetModel::TrainInputs inputs{state.legal_actions, state.observation,
+                                         state.policy, p1_outcome};
           // Added: a uniform sample of them (reservoir sampling).
           if (num_states < kLossSample) {
             new_sample.push_back(inputs);
@@ -631,6 +634,8 @@ void learner(const open_spiel::Game& game, const AlphaZeroConfig& config,
                 std::uniform_int_distribution<int>(0, num_states)(loss_rng);
             if (j < kLossSample) new_sample[j] = inputs;
           }
+          // Our change (the buffer's memory): moved in, after the sample's copy.
+          replay_buffer.Add(std::move(inputs));
           num_states += 1;
         }
 

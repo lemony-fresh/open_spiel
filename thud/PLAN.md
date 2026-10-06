@@ -481,7 +481,7 @@ equal machine time. Never stack changes that have not been shown to work.
 | 4 | Settings: `uct_c`, root noise α (0.03 and 0.3 against 0.1), temperature drop | Each change beats the previous setting head-to-head |
 | 5 — built 2026-10-02 | **Convolutional policy head** (user, 2026-09-26: later in the roadmap; started 2026-10-01 at the user's request) — first on the layout-check harness, with an exhaustive test of the action-to-plane map. It is the one planned change that makes our networks unloadable by unmodified OpenSpiel. **Built** behind `--nn_model=resnet_conv_policy` (as AlphaZero's and Leela Chess Zero's heads; 420,988 weights at 64 x 4 against 9,244,626), map and model tested (*Changes to the search and trainer*); **the harness passed** (2026-10-02, `az_head_check`, held-out and training positions, both heads, 32 x 2 and 64 x 4, seeds 1-3): the dwarfs' policy mass on hurls 98.8-99.4% on held-out positions against the linear head's 75-78% (which reproduces the layout control), no overfitting (the linear head: 94-96% on its training positions), 3x closer to symmetric; ~15% slower per full batch of 32 or learning step, faster per small batch, and 12% slower over run C'; then **run C'** (`~/thud-runs/stage5_conv.sh`): run C's settings with the new head as the only change, from scratch to step 16, against C as trained at equal steps and against the anchor — its gate (the harness not clearly failing) was met; trained 2026-10-02 06:50-13:38, 12% slower than C, no overfitting, but **its dwarfs much weaker** than C's at equal steps (against the anchor −10.3 at step 16, C +9.5; the trolls equal); **C'16 loses to C16 head-to-head, −8.5** (30 of 40 pairs): stage 5 fails in this run; the cause to analyse first (for the user) | Faster policy learning on the harness, no more overfitting; then no worse in self-play head-to-head |
 | 5b — built 2026-10-02 | **Symmetry augmentation** (user, 2026-10-01: right after the head, as its own change) — each sampled position turned or mirrored by a random one of the board's **8** symmetries (not 16: *Changes to the search and trainer*), behind `--symmetry_augmentation`, default off; tested; on the harness with both heads (the 2 x 2, 2026-10-02): **the linear head gains much** (held-out hurl mass 75.0% → 86.8%, its overfitting gone), **the new head little** (98.8% → 99.1%, policy 20% closer to symmetric); no measurable cost. **Self-play: G'16 beats G16 by +10.2** (2026-10-03; its dwarfs better at every step) — **adopted** (the user, 2026-10-03), in every run from now on | Less overfitting or faster learning on the harness; then no worse in self-play head-to-head |
-| 5c — decided 2026-10-02, started 2026-10-03 | **Instrumentation** (the user, 2026-10-02): per-side splits of the trainer's losses and value statistics, self-play results as margins and how games ended, search statistics per side (breadth, the prior's entropy, how far the search moves it) — **built and checked 2026-10-03**; and **a ladder of anchors with a rating** for strength (*How we evaluate networks*) — **the rating script built 2026-10-03** (`ladder.py`; anchors A14, E44, D29, C29, C16; promotion rule proposed). The fixed validation set was **shelved** (the user, 2026-10-03): the pilot showed strong searches agreeing on the best move only ~20% of the time, so its policy targets would measure a reference's style; its value-only variant judged of low value | Each statistic checked against an independent computation (done: the mixed numbers, replayed games, `az_buffer_stats`, a hand-built position per ending); the ladder's ratings reproduce the matches we have |
+| 5c — decided 2026-10-02, started 2026-10-03 | **Instrumentation** (the user, 2026-10-02): per-side splits of the trainer's losses and value statistics, self-play results as margins and how games ended, search statistics per side (breadth, the prior's entropy, how far the search moves it) — **built and checked 2026-10-03**; and **a ladder of anchors with a rating** for strength (*How we evaluate networks*) — **the rating script built 2026-10-03** (`ladder.py`; anchors A14, E44, D29, C29, C16, and G'44 at the top since the promotion rule was decided, 2026-10-04). The fixed validation set was **shelved** (the user, 2026-10-03): the pilot showed strong searches agreeing on the best move only ~20% of the time, so its policy targets would measure a reference's style; its value-only variant judged of low value. **The evaluation watcher and the game analyser** (items 5 and 6) **built 2026-10-05**, for the GPU phase's tuning | Each statistic checked against an independent computation (done: the mixed numbers, replayed games, `az_buffer_stats`, a hand-built position per ending); the ladder's ratings reproduce the matches we have |
 | 6 | Cloud GPU, longer runs — first a weaker, cheaper GPU with many CPU cores, stronger ones as the network grows (the user, 2026-10-03; options in *Cloud GPU options*) | Throughput measured there first, and **every machine-dependent setting reasoned about or benchmarked on each new machine** (buffer, network and batch sizes, threads, cadence; *Cloud GPU options*) |
 
 **Later, when a trigger fires** (details in *Notes for later*):
@@ -522,7 +522,8 @@ the evidence is in the sections named in the decision log below):
 | 100 simulations a move (against 400) | 100 won at equal machine time early in training | **Keep** for now; revisit with playout caps on the GPU |
 | Root noise α 0.1 | A compromise between the sides' move counts; never compared | **Keep**; tune on the GPU |
 | Untried moves at the siblings' mean − 0.2 (3a) | Stopped run A's collapse; much stronger dwarfs (C16 beat A16 by +20.9) | **Keep** (default) |
-| Larger replay buffer, 2x / 4x / 7x | 2x weak evidence; 4x (D) stopped forgetting, beat C29 +7.3; 7x (E) beat D29 +9.7, no forgetting; 7x from step 1 with augmentation (G') loses to C at step 16 but beats C29 by +13.3 and E44 by +8.0 at equal steps — though it stalls the dwarfs' policy | **Keep 7x**; a growing buffer still worth testing for the dwarfs' policy |
+| Larger replay buffer, 2x / 4x / 7x | 2x weak evidence; 4x (D) stopped forgetting, beat C29 +7.3; 7x (E) beat D29 +9.7, no forgetting; 7x from step 1 with augmentation (G') loses to C at step 16 but beats C29 by +13.3 and E44 by +8.0 at equal steps — though it stalls the dwarfs' policy | **Keep 7x from step 1** |
+| Growing buffer (from 65,536, KataGo's rule; run W) | Started the dwarfs' policy ~15-20 steps earlier than G', but W29 loses to G'29 by −20.2 — its trolls drifted (against the anchor +3.8 at step 29, G' +22.8) | **Drop** (`--replay_buffer_start_size` stays, off) |
 | `learner_batches` (fixed training per step) | Lets a larger buffer keep run C's training per step | **Keep** |
 | Margins as the value target | The value learns the expected margin, our objective | **Keep** |
 | Matches with each network on its own rule, read per side | Showed the dwarfs' drift that mixed results hid | **Keep** |
@@ -589,6 +590,13 @@ the search and trainer*, run C'.
 | 2026-10-03 | Continue run G' (augmented, 7x) tonight from step 16: does the long memory pay off later? Compare at equal steps with C29 and D29 (and E44 if it gets that far) | user (proposed), Claude (agreed) | *Changes to the search and trainer*, symmetry augmentation (runs G and G') |
 | 2026-10-03 | Stage 5c (instrumentation) before the next new run | user | roadmap, 5c |
 | 2026-10-03 | How we evaluate networks: strength by a ladder of fixed anchors with one rating (linear cost), training health by a fixed validation set; the set versioned, with three signals that a version is outdated (no headroom, decoupling from the ratings, the reference beaten at its own budget); its reference chosen by a pilot | user (with Claude's proposal) | *Instrumentation*, *How we evaluate networks* |
+| 2026-10-05 | The growing buffer is not adopted: run W started the dwarfs' policy earlier but W29 loses to G'29 by −20.2 (its trolls drifted); G''s settings (7x from step 1, augmentation) stay the baseline; the dwarfs' policy is not what limits strength at this stage | measured; the user (confirmed) | *Changes to the search and trainer*, run W |
+| 2026-10-05 | Tune the algorithm settings (`uct_c` with the untried-move reduction, root noise, the temperature's drop) on the GPU, not on this CPU; continue run G' tonight meanwhile | user | *Cloud GPU options*, How we tune the algorithm settings |
+| 2026-10-05 | Instrumentation items 5 and 6 (the evaluation watcher, the game analyser) built now, for the GPU tuning; item 7 only if training turns unstable | user | *Instrumentation* |
+| 2026-10-05 | The replay buffer moves each position into its slot and compacts itself after loading (our copy, `thud/az/replay_buffer.h`; upstream's kept every slot at the largest position it held and loaded with 45% spare); run G' stopped after step 54 to resume on it | user | *Instrumentation*, the buffer's memory |
+| 2026-10-05 | The batching evaluator's moves reverted: they saved neither compute nor RAM, and similarity to upstream helps | user | *Instrumentation*, the buffer's memory |
+| 2026-10-05 | Send the replay buffer fix upstream as its own small PR (generic, no Thud content; after the Google CLA, with the GitHub noreply address) — opened 2026-10-06 as [#1637](https://github.com/google-deepmind/open_spiel/pull/1637) | user | *Upstreaming*, a first, smaller PR |
+| 2026-10-05 | The load test's second half not run: its first half's answer is clear (the evaluation watcher costs ~25-35% of self-play beside the trainer on this machine, mostly efficiency) | user | *Instrumentation*, item 5 |
 | 2026-10-04 | Ladder promotion rule: beat the top anchor in ≥ 40 pairs with the 95% interval of the pair margin above 0 (≈ Leela Zero's 55% of 400 games); G'44 promoted to top anchor | user | *How we evaluate networks* |
 | 2026-10-04 | Next change: KataGo's forced playouts and policy target pruning in our copy (behind a switch); first the noise diagnostic on pruned targets (do two noise seeds agree much more?), then a run against G' at equal steps; the hybrid head after it | user (Claude's proposal) | *Changes to the search and trainer*, runs G and G' |
 | 2026-10-04 | Run G' (fresh, 7x, augmentation) is the strongest network: beats C29, D29, E44 at equal steps and A14 (+3.2); top of the ladder (+6.9 against E44) | measured | *Changes to the search and trainer*, runs G and G' |
@@ -1355,6 +1363,40 @@ first session, with no patch at all.**
   in parallel; then rent by measured throughput per dollar. For months of continuous
   runs a dedicated monthly server (Hetzner) becomes cheaper per hour, if its cores
   suffice.
+  **How many CPU cores a GPU needs** — `thud/experiments/az_search_cost.cc` (new,
+  2026-10-04): our search's CPU cost per simulation with a stand-in network that
+  costs nothing (per side, one core, then threads), and the rate through the
+  trainer's batching evaluator with a nearly free network (an MLP of width 8, the
+  trainer's cache). Smoke numbers under load (run W running; not results): ~14 µs a
+  simulation for dwarf positions, ~6 µs for troll positions, on one core; batched only
+  ~5,500 simulations a second with 32 threads — if that holds on an idle machine, the
+  batching path, not the search, caps throughput, and a GPU would not help past it.
+  **Result** (2026-10-05 13:02-13:20, idle machine, `~/thud-runs/search_cost.jsonl`;
+  a first run of 200 positions took 8 seconds, too short, and was redone with 2,000):
+  - **The search itself is cheap**: 3.8 µs a simulation for dwarf positions, 2.7 µs
+    for troll positions, on one core (~306,000 a second); 1.2 million with 4 threads,
+    1.9-2.3 million with 8 — near linear.
+  - **Through the trainer's batching evaluator, with a network that costs almost
+    nothing (an MLP of width 8), it caps**: with 2 inference threads (the trainer's
+    setting) 4,400 / 12,400 / 24,400 / 24,800 / 24,800 simulations a second at 8 / 32 /
+    64 / 128 / 256 search threads (batches of 32; of 128 it climbs more slowly to the
+    same 25,600); **with 4 inference threads ~38,600**, with 8 no more (36,300); more
+    cache shards (8, 32) change nothing (~37,000).
+  - **It is not the cores**: at 256 search threads and 4 inference threads the program
+    used 29.9 CPU-seconds in 6.9 s of wall time (user 23.7 s, sys 6.2 s) — ~4-5 of the 10
+    cores; the kernel time suggests threads waking and sleeping on each other. Each
+    simulation costs ~140 µs of CPU through the batching path against 3.3 µs for the
+    search: **the evaluator's overhead is ~40x the search**. (`DeviceManager` does not
+    lock the model; the cause is somewhere in the evaluator's queue, futures and the
+    per-batch tensor work — 19,800 actions a position — to profile before scaling.)
+  - **What it means for the GPU**: our trainer self-plays at ~1,700 simulations a
+    second here (64 x 4), so a GPU can speed self-play up by up to ~20x before this
+    CPU-side cap of ~25,000-40,000 a second binds, whatever the GPU — worthwhile, but
+    capped. **Cores per GPU**: ~8-16 suffice for that cap (the cap, not the cores,
+    limits); beyond it, more cores do not help — profiling and fixing the batching path
+    does (fewer wake-ups per simulation, cheaper output handling). On the first GPU
+    machine: measure the same cap there (`az_search_cost`), then the real network.
+  `az_search_cost` takes `batched_threads=`, `inference_threads=`, `cache_shards=`.
   **Budget** (the user, 2026-10-03): a first phase of tens of dollars — tune the
   machine-dependent settings and get a feel for how well training works on a GPU —
   then decide how much to spend on pushing further.
@@ -1379,6 +1421,57 @@ first session, with no patch at all.**
   size; and the time budget of runs. As on this CPU in Phase 6 (the throughput report),
   measured, not assumed — and the stage-1-style comparisons (100 against 400
   simulations, network sizes) may come out differently there.
+
+  **The settings to revisit on a new machine, by kind** (agreed with the user,
+  2026-10-05):
+  1. *Machine settings* — speed only, not what is learnt; re-measured on every machine
+     by a short benchmark, no training: actors (games searched at once: ~32 here, a GPU
+     wants hundreds to fill its batches); inference threads and the inference batch
+     size (2 and 32 here; the CPU study found 4 threads better); `OMP_NUM_THREADS`;
+     the inference cache's size and shards; network copies (devices — several on one
+     GPU may get past the batching cap); match threads and batch; memory and disk (a
+     7x buffer ~4.4 GB of RAM plus its copy written each step, ~26 s here; checkpoints
+     ~110 MB a step at 64 x 4).
+  2. *Compute-budget settings* — what becomes affordable; they change learning, and
+     our CPU answers were shaped by scarce compute: simulations a move (100 won here at
+     equal time early in training — try 200-800); playout caps (3b); the network's size
+     (grow when learning flattens); batches per learning step and the training batch
+     size; the learning rate (tied to the batch size, never tuned); the buffer and the
+     cadence (defined per position, so they carry over, but a faster machine fills the
+     buffer in fewer hours).
+  3. *Algorithm settings* — machine-independent but never tuned; on the GPU with
+     several runs per setting: `uct_c` (2), the untried-move reduction (0.2), root noise
+     (α 0.1, perhaps per side; ε 0.25), the temperature and its drop (10 moves);
+     augmentation stays on.
+  4. *Evaluation settings* — pairs per match (40), simulations in matches (100), the
+     ladder's anchors: independent of the machine, only the cost per pair changes.
+  **Order on a new machine**: (1) set up and check correctness — the build, our test
+  programs, `identity_check`, a short tic-tac-toe control; (2) benchmark group 1, ~1
+  hour — `az_search_cost`, then actors x inference threads x batch with the real
+  network; (3) **a baseline repeat**: G''s settings to step ~16, which should learn
+  per step as on this CPU — the positive control for the move; (4) then groups 2 and 3,
+  one change at a time, 2-3 runs per setting. **Rule**: what is defined per step (the
+  cadence, the buffer in positions, equal-steps comparisons) carries over between
+  machines; what is defined per hour (time limits, equal-time comparisons) does not.
+
+  **How we tune the algorithm settings** (group 3; decided with the user, 2026-10-05: on
+  the GPU, not here): (1) a cheap filter first, search only — a fixed strong network
+  (e.g. G''s latest) against itself with different search settings (`uct_c` 1 / 2 / 4,
+  the untried-move reduction 0.1 / 0.2 / 0.4, …), 40 pairs each: minutes on a GPU; it
+  shows which settings make a trained network *play* better, not which make it *learn*
+  better, so it only prunes the candidates; (2) training branches from a common
+  checkpoint (as run D branched from C), each candidate ~10 steps, **2-3 runs per
+  value** — branching is far cheaper than training from scratch and tests the setting
+  where training stands (early-training effects are not covered); (3) evaluated by the
+  ladder (each branch against the 2-3 nearest anchors, 40 pairs; adopted only if its
+  rating beats the baseline's across the runs) and by the trainer's statistics per side
+  (losses, the dwarfs' prior, self-play margins — catching a setting that helps one side
+  and stalls the other, or a drift like run W's); (4) one or two settings at a time:
+  `uct_c` with the untried-move reduction (both shape exploration), then root noise α
+  (perhaps per side), then the temperature's drop. At the GPU's speed a 10-step branch
+  takes ~15-30 minutes: 3 values x 3 runs, a few hours per setting. The evaluation
+  watcher (*Instrumentation*, item 5) shows early when a branch falls behind, so it can
+  be stopped, and the game analyser (item 6) how its play differs.
 
 **Margins as the value target** (checked 2026-09-25). Thud's returns are the final margin
 over 32 (`THUD_RULES.md` §7), which is the objective we want: a match is won on the
@@ -1536,7 +1629,8 @@ defaults in brackets; the ones Thud makes most uncertain first:
    buffer indexes with `% max_size`): 6x = 393,216 with `replay_buffer_reuse` 18, or 7x =
    458,752 with 21, keeps C's cadence; at ~9,700 bytes a position the trainer needs ~6.5
    GB at 6x and ~7.1 GB at 7x, the buffer watcher's copy ~3.8 or ~4.4 GB more at its peak
-   (2026-09-30).
+   (2026-09-30, estimated; measured on run G''s trainer, 2026-10-05: ~9.9 GB once its
+   inference cache was full, 7.4 GB in its first hour).
 
 Speed only, not what is learned: `--actors`, `--inference_batch_size`,
 `--inference_threads`, `--inference_cache`, `OMP_NUM_THREADS`. Measurement only:
@@ -1599,7 +1693,9 @@ pauses — already logged (the scripts' clock logs).
 *Proposed, in order of value for effort* — **items 1-4 decided** (the user, 2026-10-02:
 "I think this will benefit us in the future"), **to build after runs G and G'**, as
 roadmap stage 5c; items 1-3 built 2026-10-03, item 4 shelved the same day (the pilot);
-items 5-7 not decided:
+items 5 and 6 built 2026-10-05 (the user: "if that's helpful for our GPU work we should
+implement it now" — the tuning's branches are judged by them); item 7 only if training
+turns unstable:
 
 1. **Per-side splits** of everything now mixed: the training losses, the
    new-against-trained check, `value_accuracy` and `value_prediction`. The learner has
@@ -1617,12 +1713,15 @@ items 5-7 not decided:
 4. **The fixed validation set** above (built once with `az_target_quality`'s
    references; evaluated each step, or afterwards from the checkpoints).
 5. **An evaluation watcher** beside the trainer: every few checkpoints a short match
-   as trained against the anchor and a strong fixed opponent (E44), per side, at nice
-   19 — a strength curve during the run (C' would have shown its dwarfs at −17 at step
-   8, 3.5 hours before its training ended). Harmless for equal-steps comparisons.
+   as trained against the ladder's anchors nearest its strength, rated on the ladder,
+   overall and per side, at a priority that leaves the trainer its CPU — a strength
+   curve during the run (C' would have shown its dwarfs at −17 at step 8, 3.5 hours
+   before its training ended). Harmless for equal-steps comparisons. (Proposed against
+   the anchor and E44 at nice 19; built as described below.)
 6. **After-the-fact tools**: a game analyser over the actors' logs (margins, captures,
    hurls and shoves per side, how games ended, how varied the openings are), and a
-   per-step slicing of a 7x run's buffer for the statistics above.
+   per-step slicing of a 7x run's buffer for the statistics above (not built: item 3
+   logs them per step since 2026-10-03; only older runs would need it).
 7. Lower: gradient and weight norms, batch-norm statistics — only if training turns
    unstable.
 
@@ -1654,6 +1753,158 @@ as `>`); `conv_policy_check` and `augmentation_check` still pass. The prior stat
 are plausible on the smoke run's untrained network (its prior near uniform: 269.7
 effective moves of 270) but were not recomputed independently. **First real use:** run
 G' continued from 2026-10-03 (`~/thud-runs/stage5b_Gaug_continue.sh`).
+
+**Items 5 and 6 built and checked** (2026-10-05, Python beside our programs; neither
+changes training):
+
+- **5. The evaluation watcher**, `thud/experiments/watch_run.py RUN_DIR`. Every 4 steps
+  (`--every`) it plays the run's newest complete checkpoint (the trainer writes the
+  network, then the optimizer: complete once `checkpoint-N-optimizer.pt` exists) as
+  trained against the 2 ladder anchors nearest its last rating (`--nearest`; the first
+  checkpoint against the weakest, or the anchors nearest `--guess`), 20 pairs each
+  (`--pairs`), each run's rule for untried moves from its `config.json`. Then it refits
+  the ladder (`ladder.py`, whose fit is now a function, `fit()`, its output unchanged)
+  and appends the checkpoint's rating with its standard error and its dwarf and troll
+  strengths, against E44, to `RUN_DIR/watch.jsonl` and to the progress log. Its matches
+  join the ladder (`~/thud-runs/stage1_matches/watch_RUN_stepN_vs_ANCHOR.jsonl`). When
+  several checkpoints are due it takes the newest, so it falls behind gracefully; it
+  stops once `command.txt` has a "finished" line (or at `--until`), and resumes where
+  `watch.jsonl` ends; `--all` (2026-10-06) evaluates every due checkpoint, oldest first,
+  for a stopped or finished run after the fact. It must not slow or endanger the run. Its matches run in the
+  idle scheduling class (SCHED_IDLE, `chrt --idle 0`, allowed unprivileged), not at
+  nice 19, which competes as an equal with our trainers (themselves at nice 19); but
+  the idle class is not "leftovers only": it weighs 3 against a nice-19 task's 15 (the
+  kernel's `WEIGHT_IDLEPRIO`, `sched_prio_to_weight`), so it still gets ~1/6 of a core
+  the two contend for — in a first check (two 20-second blocks each way, beside G''s
+  trainer) the trainer used ~6.0 cores with two idle-class matches running and ~7.3
+  with them paused. Whether that costs the trainer speed is the **load test** below.
+  `--nice` runs the matches at nice 19 instead. And only with memory to spare: its
+  matches keep a cache of 32,768 evaluations (`az_match`'s default, 262,144, took a
+  match to 1.4 GB; a cache changes no game, and in matches it answers only ~5% of the
+  value requests), which levels off at ~0.76 GB a match (20 threads); with 1.0 GB per
+  match plus 1.5 GB available they run at once (OMP 1, a thread per pair, as
+  `CLAUDE.md` advises), else one at a time, else it waits — G''s trainer levels off at
+  ~9.9 GB of WSL's 15 (7.4 GB in its first hour, its cache still filling), and the
+  out-of-memory killer would pick the largest process. (Both numbers were first
+  measured too early, at 0.6 and 7.4 GB: on 2026-10-05 the first test's two matches
+  grew to 1.4 GB each, swap reached 2.9 of 4 GB and 0.8 GB stayed available before the
+  test was stopped.) It only reports: stopping a run stays a decision. **Check:** the
+  first test (W24 against C16 and C29, 6 pairs each; expected near W16/W29's −16) was
+  stopped for memory before a pair finished; to redo once the machine is free. Its
+  first real use was the load test: G'46 against G'44 (20 pairs, finished) and A14
+  (stopped with G' at 19:16).
+- **The load test** (the user asked, 2026-10-05: does the evaluation watcher slow the
+  trainer, e.g. through shared memory bandwidth?), running the night of 2026-10-05/06
+  beside G''s trainer (`~/thud-runs/stage5b_load_test.sh`): the evaluation watcher on
+  G' every 2 steps from 46 (so it always has matches to play) is the load, and
+  `thud/experiments/load_toggle.py` pauses it (SIGSTOP; a match plays the same games
+  however it is timed) in one random block of each pair of 20-minute blocks, until
+  07:45, logging per block the trainer's and the load's CPU time.
+  `load_test_analysis.py` then compares the trainer's self-play speed: the seconds per
+  position of the games played entirely inside a block (an actor's game starts where
+  its previous one ended), corrected for overlap with learning phases (a full overlap
+  costs ~65%), paired within each pair, with a 95% interval. A per-step comparison
+  would not do: G''s throughput varies 12-13% from step to step, and spreading games
+  over blocks would smear the contrast; on quiet nights (runs E and G) the
+  per-block measure varies 2-5%, on W's night (the user on the laptop) 15-17%.
+  **Checks:** on G''s and E's old logs with made-up blocks, a planted 5% slowdown is
+  found (+6.0%, +2.6 to +9.4; +7.2%, +3.1 to +11.2) and nothing planted reads as
+  nothing (19 of 20 random schedules' intervals contain 0); the toggler's 20-second
+  check had the load at 0.0 CPU seconds when paused, and resumed it at the end. With
+  the CPU time per block it can tell a lost CPU share (the trainer gets less CPU)
+  from lost efficiency (the same CPU, less done: memory bandwidth or caches; the test
+  does not tell those two apart). If the watcher does slow the trainer, the likely fix
+  is the trainer at nice 10 (weight 110, so the idle class gets under 3%, while the
+  user's programs at nice 0, weight 1,024, still come first).
+  **First result** (5 pairs, 15:48-19:16, until G' was stopped for the buffer fix):
+  with the load, self-play was slower in every pair — 34-45% a position in 4 pairs (the
+  games inside a block; the fifth +227% on only 6 games), and 13-51%, mean 25%, counting
+  every position spread over its game's duration (a measure that smears the contrast,
+  so it can only underestimate) — while the trainer's CPU fell only from 7.4-8.0 to
+  6.6-7.0 cores (~10%). **So the evaluation watcher is not harmless beside training on
+  this machine: it costs ~1/4-1/3 of self-play, mostly in efficiency, not CPU share** —
+  the matches' two networks and 20 threads compete with the trainer for the shared
+  caches and memory bandwidth (the trainer gets as much CPU but does less with it). The
+  trainer at nice 10 would not fix that (it addresses the CPU share only). The second
+  half (on the fixed trainer, from step 56) was not run (the user: leave G' alone — the
+  answer is clear, and it would have cost G' ~3-4 steps). Consequences: on this
+  machine, evaluate between runs, or with far fewer match threads; on the GPU machine,
+  measure again (its trainer's inference runs on the GPU).
+- **6. The game analyser**, `thud/experiments/analyse_games.py RUN_DIR [--by 4]
+  [--jsonl FILE]`. It replays the actors' logged games in `pyspiel` (~2 s for 700
+  games) and reports per group of steps: the dwarfs' margin and how games ended; per
+  side the captures — hurls (and long ones, 2+ squares), the trolls' capture steps and
+  shoves, dwarfs taken per troll capture; the median turn of each side's first capture;
+  and the openings' variety (distinct sequences of the first 2, 4, 8 and 16 moves, as
+  a share of the games). A game belongs to step k when it was logged between the
+  learner's "Step: k−1" and "Step: k" lines — the same games the trainer's own per-step
+  statistics count. Two limits of the logs: upstream logs only the first 20 actors (with
+  our 32, ~62% of the games), and each resume starts the actor logs anew (they hold the
+  latest segment only: G''s steps 1-44 are gone). **Done at the next trainer build**
+  (2026-10-05, the buffer fix below): the actor and evaluator logs now append, as the
+  learner's does, so a resumed run keeps its games (G' from its resume at 19:56).
+  **Checks:** every replay of W's
+  698 logged games reproduces its logged returns, and its ending, computed from the
+  replay by the trainer's rules, matches the logged one (698 of 698, 4 of them at the
+  no-capture limit); the captures counted move by move add up to the pieces missing;
+  the per-step margins match the trainer's `selfplay` statistics within sampling noise
+  (W steps 17-29, ~62% of each step's games: step 19 −18.66 against −18.60, step 20
+  −15.82 against −15.25 — an assignment off by one step would show there); three
+  corrupted logs are caught (returns −0.25 for −0.125, a wrong ending, a dropped move).
+  It shows known events: **run A's dwarf collapse** at steps 17-18 (the dwarfs' margin
+  −8.4 → −22.9, hurls per game 5.6 → 2.3); **run C's narrowing** (65-68% of 2-move
+  openings distinct at steps 26-31, against 97-100% in E, G, C' and W before step 25);
+  **C''s dwarfs not learning** (~1 hurl per game through step 16, G 6.1 at steps
+  13-16). And one new: **W's trolls give pieces away early** — from step 25 the
+  dwarfs' first hurl comes at turn 4 (the median; E 24-30, G 31-32 at steps 13-17), before the
+  trolls' first capture (turn 7-9), and only 79-80% of W's 2-move openings are distinct
+  — consistent with its trolls' drift on the ladder.
+- **The buffer's memory, and copies a move would save** (2026-10-05; the memory log
+  beside G' found its trainer growing, 9.75 GB at 15:39 to 10.62 GB at 19:16, 6.1-6.4 GB
+  of it in the main heap, where the learner writes the buffer). Two causes in upstream's
+  buffer (`open_spiel/utils/circular_buffer.h`, `serializable_circular_buffer.h`), shown
+  by `thud/az/replay_buffer_check.cc` on positions shaped like ours: (1) once full,
+  `Add` copy-assigns a position into the oldest slot, and a copy-assigned `std::vector`
+  keeps its storage when that is large enough, so each slot keeps the largest position
+  it ever held — a slot that held a dwarf position (median ~240 legal moves, 24 bytes
+  each in the legal moves and the policy target) keeps that size when a troll position
+  (~16-22) replaces it: +72% over what the positions need after 3 turnovers; (2)
+  `LoadBuffer` (libnop reads each vector element by element) leaves spare capacity in
+  every vector: +45% right after a resume — for G''s 7x buffer (4.66 GB on disk) ~6.8
+  GB. **Fixed in our copy, no upstream change** (`thud/az/replay_buffer.h`,
+  `ReplayBuffer`): `Add` moves the position into its slot (the learner takes its
+  reservoir sample's copy first), and `LoadBuffer` replaces every element by a copy of
+  itself, which holds exactly its size. **Checks:** the same contents, samples and saved
+  file as upstream's buffer, and exactly the bytes the positions need after loading and
+  after 3 turnovers (upstream's +45% and +72% are the controls); a smoke run of the
+  trainer, fresh to step 2 and resumed to 3 (8 actors, 20 simulations, 32 x 2, a buffer
+  of 1,024 overwritten every step). **The audit of our other C++** (the user asked: what
+  else would a move improve?): the game code has nothing worth changing; the learner
+  copies each sampled batch (per step, negligible) and upstream's trajectory queue
+  copies each finished game twice (~2.5 MB, once a game: small); the hot spot is the
+  batching evaluator, where a simulation's inputs (~7 KB) go through upstream's
+  `ThreadedQueue`, which copies in `Push` and again in `Pop` under its lock, and the
+  results are copied into the outputs (`vpnet.cc`) and into the promises (and the
+  cache's results: upstream's `LRUCache::Get` returns a copy, two of ~4 KB per hit). We
+  passed them by pointer and moved them, checked that, and **reverted it** (the user,
+  2026-10-05: they save neither compute nor RAM, and similarity to upstream helps).
+  **Checks:** a match plays the
+  same games before and after (4 pairs, identical); the CPU study's batching benchmark:
+  12,025 / 12,275 → 12,293 / 12,459 simulations a second at 32 threads, 24,287 / 24,472
+  → 24,277 / 24,571 at 64 — **no measurable gain**: these copies are not what caps the
+  batching path (its ~140 µs a simulation lie elsewhere, most likely the thread
+  handoffs), and they hold no memory (freed within microseconds), so they save no RAM.
+  Both changes ran under AddressSanitizer and
+  UndefinedBehaviorSanitizer (`-fsanitize=address,undefined`; a match and the smoke run,
+  no report) — which needed `-DNDEBUG_SANITIZER`: with AddressSanitizer, abseil adds
+  generation fields to its hash tables unless that is defined (`raw_hash_set.h`), so
+  our sanitized code and the uninstrumented abseil in `libopen_spiel.so` disagreed on
+  the layout, giving two false reports (a null load in the cache's map, a new-delete
+  size mismatch in the flag registry) until it was set. **Run G' resumed on the fixed
+  trainer** from step 54 at 19:56 (stopped at 19:16 right after its checkpoint, the
+  user allowed it); its memory: the memory log. Freed spare capacity mostly stays with
+  the process as reusable space, so the fix should show as no further growth rather
+  than a drop (`malloc_trim` after loading would return it; not built).
 
 *Design of items 1-4* (Claude, 2026-10-02; each behind no switch — they only log — but
 each with a check that it measures what it claims, as every change here):
@@ -2392,7 +2643,9 @@ goes into our own copy, decided 2026-09-26 — stages 3 and 5 of the roadmap, on
   its "training data was augmented by generating 8 symmetries for each position"; the
   AlphaZero paper (arXiv 1712.01815), quoting that, does not augment for chess and shogi,
   whose rules are not symmetric. One random symmetry per sampled position gives all 8 in
-  expectation. **Thud's board has 8 symmetries, not the 16 of
+  expectation. AlphaGo Zero also evaluated positions in a randomly chosen symmetry during
+  the search (the same paper); not built — a candidate if augmentation helps. **Thud's
+  board has 8 symmetries, not the 16 of
   a regular octagon** (user asked, 2026-10-01; checked): the identity, three quarter
   turns and four mirror images. A regular octagon's dihedral group has order 16, but
   Thud's octagon has edges of alternately 5 and 4 squares — an octagon with alternating
@@ -2670,7 +2923,53 @@ goes into our own copy, decided 2026-09-26 — stages 3 and 5 of the roadmap, on
         2026-10-04 after the target-quality run): G''s settings with
         `--replay_buffer_start_size=65536`, fresh, to step 16; judged first by the dwarfs'
         prior (G'16 0.003 nats, C16 0.40), then W16 against G'16 and C16, W against the
-        anchor, `az_noise_check` on W16.
+        anchor, `az_noise_check` on W16. **Result to step 16** (2026-10-04 16:36 to
+        2026-10-05 01:16; the buffer 22,036 → 153,778 positions): **the dwarfs' prior did
+        not start** — effective moves within 1-2 of the legal moves at every step, its
+        top move the most visited in 0.6-1.2% of dwarf positions; on the pilot's positions
+        0.010 nats below uniform, two noise seeds agreeing 0% (C16 0.40 and 25%, G16 0.10
+        and 2%, G'16 0.003 and 0%). **And W16 is weaker than G'16**: W16 vs G'16 −10.4
+        (−14.7 to −6.1, 31 of 40 pairs lost), vs C16 −1.5 (−5.5 to +2.6); against the
+        anchor W8 / W12 / W16 −2.3 / +18.4 / +25.6 — its dwarfs as G''s (+13.4 at 12 and
+        16, G' +13.1, +12.7), **its trolls far behind** (+0.2, +5.0, +12.2 against G''s
+        +12.2, +23.6, +22.6; p < 0.001 at each step). Ladder: W16 −16.1 ± 3.7 against E44
+        (G'16 −7.1, C16 −13.1). Reading, with the caveat of one run per setting (early
+        training varies between runs, and run-to-run variation is unmeasured): the pattern
+        of the dwarfs' prior at step 16 — C 0.40 (small buffer, no augmentation), G 0.10
+        (7x, none), W 0.010 (growing, augmentation), G' 0.003 (7x, augmentation) — points
+        to **augmentation as the main brake on the dwarfs' early policy**, the buffer's
+        size second; the growing buffer did not help it and coincided with slower trolls.
+        Run W continues to step 29 (`stage5b_W_continue.sh`), to see whether its prior
+        starts later and how W29 compares with G'29.
+        **Result to step 29** (resumed 2026-10-05 01:17, step 29 at 06:42, matches until
+        09:23; the user working on the laptop overnight — equal steps, unaffected):
+        - **The dwarfs' prior started at step ~21**, 15-20 steps before G''s: its top move
+          the most visited in 3.0%, 4.6%, 7.0%, 8.7% … 15.4% of dwarf positions at steps
+          21-29 (G' at 39-44: 2.5% → 7.7%); on fresh positions its dwarf policy beats a
+          uniform prior by 0.72 nats at step 29 (0.23 at 20); on the pilot's positions
+          0.165 nats below uniform, two noise seeds agreeing 20% (G'29 0.013 and 0%).
+        - **But W29 is far weaker**: against G'29 **−20.2** (−24.5 to −15.9, 35 of 40
+          pairs lost), C29 −6.6, D29 −11.7. Against the anchor its dwarfs equal G''s at
+          every step (+8.5, +14.6, +10.2 at 20, 24, 29), **its trolls fall away** — +12.2,
+          +8.8, −3.2, +3.8 at steps 16, 20, 24, 29 against G''s +22.6, +14.6, +15.5, +22.8
+          (p < 0.001 at 24 and 29). In its own self-play the sides became balanced (the
+          dwarfs' mean return ~0 from step 22; at step 29 the trolls captured out 51 times,
+          the dwarfs 24): its trolls learnt to play its own dwarfs and lost strength
+          against everyone else — the drift run C showed for the dwarfs with a small
+          buffer, now on the trolls' side. Steps 19-20 a crisis like G''s at 33-37 (the
+          trolls' legal moves ~22 → 56; the value loss on new troll positions 0.49 against
+          0.055 trained).
+        - Ladder: W29 −16.9 ± 3.0, W16 −16.3 against E44; G'29 +5.5, G'44 +6.9.
+        - **Reading** (one run per setting): the growing buffer starts the dwarfs' policy
+          earlier but cost far more strength than it bought; **G' — a stalled dwarf
+          policy, a large buffer, augmentation — is still the strongest**, its dwarfs
+          carried by the value head. So the dwarfs' policy is not, at this stage, what
+          limits strength (the user had wondered whether we were worrying about it too
+          much: the evidence now says so, for the CPU's short runs). **G''s settings stay
+          our baseline** (confirmed by the user, 2026-10-05; G' and W differ only in
+          `replay_buffer_start_size`, besides their clock-seeded random numbers); the
+          growing buffer is not adopted. The dwarfs' policy remains
+          worth watching in the long GPU runs (G''s started by itself at ~40).
         **Do more simulations bring the dwarfs' targets closer to a deep search?** (the
         user, 2026-10-04: with a near-flat prior, 200 simulations may approximate the
         truth better than 100 — the question an equal-time comparison does not answer)
@@ -2697,8 +2996,27 @@ goes into our own copy, decided 2026-09-26 — stages 3 and 5 of the roadmap, on
       doubled (~30 → 64: new kinds of positions); the value loss on new dwarf positions
       jumped from 0.04 to 0.54 while staying ~0.05 on trained ones — self-play found
       positions the value head did not know, and it adapted within ~5 steps. Exactly
-      what the new-against-trained check per side is for. AlphaGo Zero also evaluated positions in a randomly chosen symmetry during
-  the search (the same paper); not built — a candidate if augmentation helps.
+      what the new-against-trained check per side is for.
+    - **G' continued again, steps 45-73** (2026-10-05 14:44 to 2026-10-06 03:07; stopped
+      at step 54 for the replay buffer fix and resumed at 19:56; stopped after step 73 at
+      the user's request, the power adapter very hot; its evaluation not yet run). **The
+      dwarfs' prior took off, then collapsed onto few moves**: its effective moves 92% of
+      the legal ones at step 44, 69% at 54, 32% at 62, 5% at 72 (~14 of ~285); its top
+      move the search's choice 8% → 41% → 68% → 78%; its gain over uniform on new
+      positions 0.32 → 1.12 → 2.18 → 3.40 nats; the search visiting a median 20 → 16 →
+      12 → 7 moves and moving the prior ever less (2.34 → 1.90 → 1.46 → 0.79 nats).
+      Meanwhile the dwarfs' self-play margin rose from ~−4 to +0.6 (step 60) and fell to
+      −9.3 (72); games more than doubled (238 → 540 turns a game, steps 45-48 against
+      69-72), more of them at a limit (2 → 7-11 a step), the dwarfs' wipe-outs of the
+      trolls 29 a step (56) → 3 (72); long hurls nearly gone (0.12 → 0.04 a game) and the
+      2-move openings 97% → 70% distinct (`analyse_games.py`, 1,082 games). The trolls'
+      policy sharpened too (0.08 → 0.37 nats over uniform). No value crisis (new and
+      trained value losses 0.03-0.04). This looks much like run C's narrowing (its long
+      hurls 0.02-0.04, openings 65-68% distinct) — a policy teaching itself to narrow,
+      the search no longer correcting it — but G' has the 7x buffer and augmentation, and
+      a sharper policy may simply be right: only fixed opponents can tell, per side
+      (the evaluation, and the evaluation watcher after the fact on checkpoints 48-72:
+      `~/thud-runs/stage5b_Gaug_eval73.sh`, written, not started).
 - **The value of untried moves**: the parent's value minus a reduction (KataGo, Leela
   Chess Zero) or a loss (AlphaZero) instead of OpenSpiel's 0. The first runs showed the
   dwarfs' searches far too broad (*Margins as the value target*), so it is stage 3a,
@@ -2822,6 +3140,51 @@ carrying only the upstreamable commits. This is the whole reason `master` stays 
 diff to existing files inside `open_spiel/` stays at the two registration points.
 
 **8. Expect a wait.** PRs are merged in batches, roughly every two weeks.
+
+### A first, smaller PR: the replay buffer's memory (agreed with the user, 2026-10-05)
+
+Generic, no Thud content, so none of the copyright steps above apply: upstream's
+`CircularBuffer::Add` copies into full slots, which keep their largest size, and
+`SerializableCircularBuffer::LoadBuffer` leaves spare capacity (*Instrumentation*, the
+buffer's memory). Upstream's guide calls bug fixes "straightforward to be included" and asks
+for an issue first only for large or design changes, so a PR directly. None of the three
+files has changed upstream since our copy (checked against upstream `master`, 2026-08-31).
+
+1. **The Google CLA**, signed by the user for the GitHub account `lemony-fresh`
+   (<https://cla.developers.google.com/>), covering the commit address.
+2. **Commits only as `lemony-fresh <6112333+lemony-fresh@users.noreply.github.com>`**, the
+   GitHub noreply address (the personal one is never to appear in a public commit: the fork's
+   32 commits were rewritten to the noreply address on 2026-10-05).
+3. **A branch off upstream `master`**, not `thud` — **prepared 2026-10-06** (branch
+   `replay-buffer-memory`, a git worktree in `~/open_spiel-buffer-memory`, not committed;
+   the draft description, for the maintainers, in `~/open_spiel-buffer-memory_PR.md`):
+   `open_spiel/utils/circular_buffer.h` — `Add(T value)`, moved into its slot (the
+   pass-by-value idiom for a stored argument: every caller is fixed without a change, an
+   lvalue copied into the parameter as before, so upstream's `alpha_zero.cc` needs none);
+   `serializable_circular_buffer.h` — `LoadBuffer` replaces each element by a copy of
+   itself (libnop reads vectors of non-integral elements by `push_back`, deliberately
+   without `reserve()`, `nop/base/vector.h`); a test in each of `circular_buffer_test.cc`
+   (a slot replaced by a small vector keeps less than the large one's capacity) and
+   `serializable_circular_buffer_test.cc` (a loaded vector of 1,025 floats keeps less than
+   1.5 times its size) — no exact-capacity assertions (implementation-dependent). **Checked
+   so far** (compiled directly against `libopen_spiel.so`): both test programs pass with
+   the change, and **fail at exactly the new checks without it** (the controls), and run
+   cleanly under AddressSanitizer and UndefinedBehaviorSanitizer.
+4. **Checks — done 2026-10-06** (the worktree with its own CMake builds, upstream's default
+   "Testing" one and a Release one with LibTorch, 6 jobs): `circular_buffer_test` and
+   `serializable_circular_buffer_test` pass through `ctest`; so do `torch_integration_test`,
+   `torch_model_test`, `torch_vpnet_test` and `dqn_torch_test` (DQN, the buffer's third
+   user upstream); and upstream's `alpha_zero_torch_example`
+   trains tic-tac-toe 2 steps (its buffer of 512 full at step 2) and resumes from its
+   `config.json` to step 3 (loading the buffer, then overwriting full slots), exit 0 both.
+5. **The user reviews** the diff and the description (our measurements, in our own words);
+   push and PR only on the user's go-ahead. **Done 2026-10-06: PR
+   [#1637](https://github.com/google-deepmind/open_spiel/pull/1637)** (commit `0c73c409`,
+   only the noreply address; no co-author line, which Google's CLA check would also
+   check). The CLA check (`cla/google`) passed at once: the user's CLA, signed with their
+   Google account and the GitHub username, covers commits with the noreply address. Next:
+   upstream's CI (`check-changes`) and the maintainers' review; merged in batches, at
+   least every two weeks.
 
 ## Deferred decisions
 

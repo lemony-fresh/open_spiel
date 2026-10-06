@@ -91,7 +91,14 @@ endings, and search statistics per side (built and checked); **the ladder**
 promotion rule decided: beat the top anchor in ≥ 40 pairs, interval above 0); the
 validation set shelved (the reference pilot: strong searches agree on values, ~0.9, but
 on the best move only ~20%). How we evaluate, and why: `PLAN.md`, *How we evaluate
-networks*.
+networks*. **Items 5 and 6 built 2026-10-05** (the user: for the GPU tuning; `PLAN.md`,
+*Instrumentation*): **the evaluation watcher** (`watch_run.py`: beside a run, every 4
+steps the newest checkpoint as trained against the 2 nearest anchors, its ladder
+rating overall and per side; its matches in the idle scheduling class and only with
+memory to spare) and **the game analyser** (`analyse_games.py`: replays the actors'
+logged games — captures per side, each side's first capture, the openings' variety;
+it shows run A's collapse, C's narrowing and C''s dwarfs not learning, and that W's
+trolls give pieces away early).
 
 **Run G'** (fresh, 7x buffer, augmentation; to step 44, 2026-10-03/04): **the strongest
 network so far** — at equal steps it beats C29 by +13.3, D29 by +11.9, E44 by +8.0, and
@@ -104,12 +111,48 @@ effect at 100 simulations); more simulations (only slightly closer to a deep sea
 a per-side budget parked for the GPU phase); Gumbel AlphaZero's value-based target in
 reserve.
 
-**Running: run W** (`~/thud-runs/stage5b_W.sh`, since 2026-10-04 16:36): G''s settings
-with the buffer growing from run C's 65,536 positions (`--replay_buffer_start_size`), to
-step 16, then W16 against G'16 and C16, W against the anchor, the noise diagnostic on
-W16 — does the dwarfs' prior learn early (G'16 0.003 nats, C16 0.40)? **Next:** W's
-results (tomorrow morning) and the next run; the hybrid head once the dwarfs learn; the
-GPU phase from tomorrow at the earliest (a cheap machine first, a budget of tens of
+**Run W** (2026-10-04 16:36 to 2026-10-05 09:23; G''s settings with the buffer growing
+from run C's 65,536 positions, to step 29): **the growing buffer started the dwarfs'
+policy ~15-20 steps earlier** (from step ~21; at 29 its top move the most visited in
+15% of dwarf positions, 0.165 nats below uniform, G'29 0.013) **but cost far more
+strength than it bought**: W29 loses to G'29 by −20.2 (35 of 40 pairs), to C29 by −6.6,
+D29 −11.7; its trolls drifted (against the anchor +3.8 at step 29, G''s +22.8), its
+dwarfs equal G''s. Ladder W29 −16.9. **So G''s settings stay the baseline**; the
+dwarfs' policy is not what limits strength now (confirmed by the user, 2026-10-05).
+**The CPU study** (2026-10-05 13:02-13:20, idle machine; `PLAN.md`, *Cloud GPU
+options*): the search itself costs 3.8 µs a simulation (dwarfs), 2.7 µs (trolls) on one
+core and scales near linearly; but the trainer's batching evaluator, even with a
+nearly free network, caps at ~25,000 simulations a second (2 inference threads) to
+~38,600 (4; 8 no better) — ~140 µs of CPU a simulation, ~40x the search, with only ~4-5
+cores busy. So a GPU can speed our self-play up by up to ~20x before that CPU-side cap
+binds; ~8-16 cores per GPU suffice; past that, profiling the batching path is the
+lever. **Stopped: G' continued again** (from 2026-10-05 14:44; stopped at step 54 for
+the replay buffer fix and resumed at 19:56 on the fixed trainer; **stopped again after step
+73, 2026-10-06 03:07, at the user's request — the power adapter was very hot**; the
+evaluation — its last step against G'44, E44, A14 and the anchor, the noise diagnostic —
+has not run; to continue tomorrow, from step 73: the checkpoint and the buffer file of
+02:52 match). The fixed trainer's main heap held at 5.63-5.67 GB all night (the old
+trainer's 6.1-6.4 GB, growing). **The dwarfs' policy collapsed onto few moves** from step
+54: at step 72 the prior's effective moves are 5% of the legal ones (~14 of ~285), its top
+move the search's choice 78% of the time, the search visiting a median 7 moves and
+barely moving the prior (0.79 nats, 2.34 at step 44); meanwhile the dwarfs' self-play
+margin fell from ~+0.6 (step 60) to −9.3 (72), games more than doubled in length (238 →
+540 turns), long hurls nearly stopped (0.12 → 0.04 a game) and openings narrowed (97% →
+70% distinct) — much like run C's narrowing, though G' has the 7x buffer and
+augmentation and its trolls are improving too. Sharpening or a narrowing spiral: only
+fixed opponents can tell (`PLAN.md`, runs G and G'). The load test's answer (5 pairs,
+15:48-19:16): the evaluation watcher slows the trainer's self-play by ~25-35%, mostly in
+efficiency (shared caches, memory bandwidth), not CPU share — not harmless on this
+machine; its second half was not run (the user). Tuning waits for the GPU.
+**Next:** decide with the user how to continue G' (resume from step 73, or evaluate first:
+is the dwarfs' narrowing sharpening or a spiral?); G''s evaluation, written and ready to
+start (`~/thud-runs/stage5b_Gaug_eval73.sh`, ~6 hours: its step 73 against G'44, E44, A14
+and the anchor, per side, the noise diagnostic, then the evaluation watcher on steps 48,
+56, 64, 72 — did the dwarfs peak near step 60?); the upstream PR
+for the buffer fix: [PR #1637](https://github.com/google-deepmind/open_spiel/pull/1637),
+opened 2026-10-06, the CLA check passed — waiting for upstream's CI and the maintainers'
+review (`PLAN.md`, *Upstreaming*); the hybrid head
+once the dwarfs learn; the GPU phase from tomorrow at the earliest (a cheap machine first, a budget of tens of
 dollars first; `PLAN.md`, *Cloud GPU options*). Still open: playout caps (recommended: on
 the GPU).
 
@@ -150,9 +193,13 @@ the GPU).
   `az_head_check.cc` (the layout check on our copy, for the policy head and
   augmentation) and `az_reference_pilot.cc` (searches of several references on the same
   positions; `az_reference_pilot.py` compares them) and `az_noise_check.cc` (how much
-  root noise decides a self-play search) by `thud/az/build.sh`;
-  `az_sims_gain.py` analyses an uneven match against its baseline, and `ladder.py` fits
-  the ladder's ratings to every match; `az_thud.flags` holds our trainer defaults. Training
+  root noise decides a self-play search) and `az_search_cost.cc` (the CPU study: what
+  the search and the batching evaluator cost a simulation) by `thud/az/build.sh`;
+  `az_sims_gain.py` analyses an uneven match against its baseline, `ladder.py` fits
+  the ladder's ratings to every match, `watch_run.py` is the evaluation watcher,
+  `analyse_games.py` the game analyser, and `load_toggle.py` with `load_test_analysis.py`
+  the load test (does a job beside the trainer slow it?); `thud/az/replay_buffer_check.cc`
+  checks the trainer's replay buffer against upstream's; `az_thud.flags` holds our trainer defaults. Training
   runs, their scripts and match results live outside the repo in `~/thud-runs/`.
   hexparrot runs from a clone
   outside the repo, by default
@@ -2058,5 +2105,177 @@ instrumentation, and the pattern agreed for later, are in `PLAN.md` Phase 5).
   Windows' C: has 257 GB free. The GPU phase starts tomorrow at the earliest (the
   user). Committed the work since the last commit in four commits.
 
-**Next step:** as recorded in `## Current status` — run W's results (tomorrow morning);
-then the next run; the GPU phase from tomorrow at the earliest.
+- **2026-10-04, ~22:00:** W at step 13, its dwarf prior still uniform (as C's was at
+  steps 8-12: on its own positions C8's policy loss 5.36 against 5.39 untrained, C12's
+  5.29, C16's 5.01). The user: continue W tonight; Claude: in either case — if its
+  prior has started, the next candidate (the hybrid head) needs a decision and code
+  anyway. `stage5b_W_continue.sh` queued: W to step 29, then W29 against G'29, C29,
+  D29. The user works on the laptop tonight, so the CPU study (a speed measurement) was
+  taken out of it (the script restarted while still waiting) and waits for an idle
+  machine; W's time limit raised to 10 hours (the user's work slows it, equal steps
+  make it harmless). The cable came out briefly at ~22:47: no pause, nothing lost.
+
+- **2026-10-05, 01:16-01:55, run W to step 16** (the hourly check; `PLAN.md`, run W): the
+  growing buffer did not start the dwarfs' prior (0.010 nats below uniform; C16 0.40,
+  G16 0.10, G'16 0.003), and W16 loses to G'16 by −10.4 — its trolls learnt far more
+  slowly (against the anchor +0.2 / +5.0 / +12.2 at steps 8 / 12 / 16, G' +12.2 / +23.6
+  / +22.6), its dwarfs as G''s. Augmentation looks like the main brake on the dwarfs'
+  early policy. Ladder: W16 −16.1. W continues to step 29 from 01:17 (`ladder.py` now
+  knows run W).
+
+- **2026-10-05, 01:17-09:55, run W to step 29** (the hourly check; `PLAN.md`, run W): its
+  dwarfs' prior started at step ~21 (top agreement 3% → 15% at 29; 0.165 nats below
+  uniform), but W29 loses to G'29 by −20.2, C29 by −6.6, D29 by −11.7: its trolls
+  drifted (against the anchor +12.2, +8.8, −3.2, +3.8 at steps 16, 20, 24, 29), while in
+  its own self-play the sides became balanced. G' stays the strongest and the baseline;
+  the growing buffer is not adopted (for the user to confirm). Mains throughout, no
+  pause; the user worked on the laptop.
+
+- **2026-10-05, 10:00-13:25:** the user confirmed G''s settings as the baseline (G' and W
+  differ only in `replay_buffer_start_size`). The CPU study: a first run took 8 seconds
+  (200 positions — too short, the time also misstated in the status block, corrected);
+  rerun with 2,000 positions, batches of 32 and 128, 8-256 search threads, then 4 and 8
+  inference threads, more cache shards, and CPU time against wall time — the search is
+  ~3-4 µs a simulation, the batching path ~140 µs and capped at ~25,000-38,600 a second
+  with half the cores idle (`PLAN.md`, *Cloud GPU options*).
+
+- **2026-10-05, 13:30-14:50:** the settings to revisit on a new machine recorded in
+  `PLAN.md` (four kinds, the order, the per-step rule; agreed with the user). G'
+  continued again (the user), first with a 15-hour limit, then — the user asked for a
+  finish by ~10:00 — restarted with a deadline of 07:45. A slip on the way: a failed
+  edit was followed by a restart of the old script (the commands were not chained),
+  which overwrote `config_to_step44.json` and `command_to_step44.txt`; both restored
+  (max_steps 44; the command, times from the progress log) and the script rewritten,
+  started only if every check passed. No training lost (no step had finished). The user
+  asked whether to pause G' and tune first: no — tuning needs training branches with
+  2-3 runs per value (a night each here, minutes on a GPU), and G''s later checkpoints
+  are the better starting point for them.
+
+- **2026-10-05, 14:50-15:55: instrumentation items 5 and 6** (the user: build them now,
+  for the GPU tuning; `PLAN.md`, *Instrumentation*). `ladder.py`'s fit became a
+  function (output identical). **The game analyser** (`analyse_games.py`) built and
+  checked: W's 698 logged games replay to their logged returns and endings, the
+  per-step margins match the trainer's within sampling noise, three corrupted logs are
+  caught; it shows A's collapse, C's narrowing, C''s non-learning dwarfs, and that W's
+  trolls give pieces away early (the dwarfs' first hurl at turn 4 from step 25). Found
+  on the way: upstream logs only 20 of our 32 actors, and the actor logs restart on
+  every resume (append them at the next trainer build). **The evaluation watcher**
+  (`watch_run.py`) built; its first test (W24) was stopped for memory before a pair
+  finished: its matches grew to 1.4 GB each (az_match's default cache) and G''s trainer
+  to 9.9 GB, with 0.8 GB available and swap at 2.9 of 4 GB — Claude had measured both
+  too early (0.6 and 7.4 GB). Fixed: the watcher's matches use a cache of 32,768 (0.76 GB at
+  the plateau, measured; no game changes), a budget of 1.0 GB per match plus 1.5 GB
+  spare. Its matches run in the idle scheduling class, and nice 19 would compete as an
+  equal with the trainer (also nice 19); but the idle class still weighs 3 against
+  nice 19's 15, and in a 20-second check the trainer's CPU fell from ~7.3 to ~6.0 cores
+  with two matches running. The user asked whether the watcher slows the trainer
+  through memory bandwidth: a step-by-step comparison is too noisy (12-13%), so the
+  **load test** compares 20-minute blocks with the load on and paused, by the seconds
+  per position of the games inside each block (2-5% noise on quiet nights; a planted 5%
+  found on old logs, nothing planted reads as nothing). Running from 15:48 to 07:45.
+  The `CLAUDE.md` environment notes corrected (memory at the plateau, the idle class's
+  weight); the hourly check replaced (it now also guards memory and analyses the load
+  test). Not committed.
+
+- **2026-10-05, 18:45-20:05: the buffer's memory, a move audit, the load test's answer.**
+  The memory log showed G''s trainer growing (9.75 → 10.62 GB); the cause, found in the
+  code and shown by a new check (`thud/az/replay_buffer_check.cc`): upstream's buffer
+  copy-assigns into full slots, which keep their largest size (+72% after 3 turnovers),
+  and its `LoadBuffer` leaves 45% spare capacity. Fixed in our copy
+  (`thud/az/replay_buffer.h`: moves in, compacts after loading). The user asked for an
+  audit of all our C++ for copies a move would save: only the batching evaluator had
+  some (inputs copied twice under the queue's lock, results copied twice) — changed, the
+  same games, but no measurable speedup on the CPU study's benchmark and no RAM saved
+  (reverted, the user: similarity to upstream helps). The user asked to suppress diagnostics narrowly, not
+  with `-Wno-everything` (now in `CLAUDE.md`), and to keep the safety flags: the changes
+  ran under AddressSanitizer and UndefinedBehaviorSanitizer, which first needed
+  `-DNDEBUG_SANITIZER` (abseil's hash tables differ in layout otherwise: two false
+  reports). With the user's permission G' was stopped right after its step-54
+  checkpoint (19:16), the trainer rebuilt (also: actor and evaluator logs now append),
+  checked (a smoke run fresh and resumed, sanitized too; the same games in a match), and
+  G' resumed at 19:56. A smoke-run slip: started from a `config.json`, which the trainer
+  treats as a resume (it then needs `learner.jsonl`), so the first attempt failed; rerun
+  with flags. The load test's first half (5 pairs) gave a clear answer: the watcher
+  costs the trainer's self-play ~25-35%, while its CPU fell only ~10% — efficiency, not
+  CPU share, so nice 10 would not fix it. Not committed.
+
+- **2026-10-05, 20:05-22:15: the fixed trainer's memory; an upstream PR planned; the
+  commit address made private.** The fixed trainer's main heap holds at 5.66 GB (the old
+  trainer's 6.1-6.4 GB, growing); its total 9.4-9.7 GB, the rest growing ~0.1 GB an hour
+  outside the buffer. The laptop ran on battery from about 19:56 to 20:55 (no pause; back
+  on mains at 19%). The user proposed sending the buffer fix upstream: agreed, planned in
+  `PLAN.md` (*Upstreaming*, a first, smaller PR) — after G''s evaluation, and after the user
+  signs the Google CLA. The user then asked whether their email would be public: it
+  already was, in the fork's 32 pushed commits (the fork is public; commit metadata is
+  readable by anyone and harvested by scrapers). Claude recreated the 32 commits with the
+  GitHub noreply address (`git commit-tree`: same trees, messages, names and dates; every
+  pair verified); the force-push was blocked by Claude Code's auto mode, so the user ran
+  it (and moved the local branch); `thud` is now `ab6d2b61` locally and on GitHub, every
+  commit with only the noreply address. The global git address is the noreply one too. The
+  old commits stay reachable by hash until GitHub Support garbage-collects them: the list
+  for the request is in `~/thud-runs/github_support_old_commits.txt`. **Every commit hash
+  of ours cited in this log before this entry is a pre-rewrite one**; the cited ones map
+  to: `9b64ed77` → `23087158`, `e57b9ea8` → `7fa72dce`, `8a4e6ed5` → `7c71c531`,
+  `a9c96748` → `b51fc264`, `a40f2a0b` → `e1f9b750`, `4acaee09` → `38a7982c`, `f2833b5d` →
+  `38382a68` (upstream's hashes, such as `48401890` and `540bba6e`, are unchanged).
+
+- **2026-10-06, 00:00-03:10: the night, and a stop.** Hourly checks: on mains, no
+  pause; the fixed trainer's main heap flat at 5.63-5.67 GB, its total 9.6-9.9 GB (the rest
+  outside the buffer creeping ~0.1 GB an hour, levelling off). The user asked about the
+  dwarfs' move distribution: it has collapsed onto few moves since step 54 (the status
+  block's numbers), with the dwarfs' self-play margin falling, games twice as long, long
+  hurls nearly gone and openings narrowing (`analyse_games.py` on 1,082 games of
+  tonight). At 03:07 the user asked to pause the training — the power adapter was very
+  hot: stopped right after the step-73 checkpoint (02:58), during step 74's collection
+  (the buffer file of 02:52 matches checkpoint 73), with its script first so that the
+  evaluation would not start; the hourly check deleted. To resume: a copy of
+  `stage5b_Gaug_continue3.sh` with a new deadline (this segment's record is kept as
+  `command_to_step73.txt`, so the copy may overwrite `command.txt`).
+- **2026-10-06, 03:15-04:00 (the user: "feel free to continue"; light work only, the
+  laptop had run hot).** The upstream PR prepared, not committed: branch
+  `replay-buffer-memory` off upstream `master` in a git worktree
+  (`~/open_spiel-buffer-memory`): `CircularBuffer::Add(T value)` moved into its slot,
+  `LoadBuffer` compacting, a test each — both pass with the change, fail at the new
+  checks without it (controls), clean under the sanitizers; the draft description in
+  `~/open_spiel-buffer-memory_PR.md`. Found on the way: libnop reads vectors of
+  non-integral elements by `push_back`, deliberately without `reserve()` — the cause of
+  the 45% (`nop/base/vector.h`). The evaluation watcher gains `--all` (every due
+  checkpoint, oldest first: it evaluated only the newest, which suits a live run but not
+  a stopped one). Tomorrow's evaluation written, not started:
+  `~/thud-runs/stage5b_Gaug_eval73.sh` (G'73 against G'44, E44, A14 and the anchor, the
+  noise check, then the evaluation watcher on steps 48, 56, 64, 72; ~6 hours).
+
+- **2026-10-06, 12:10-12:30: the PR's heavy checks** (the user: go ahead). The worktree
+  got copies of the six cloned libraries (copies, not links: the ignore rules match
+  directories only) and two CMake builds, upstream's default and a Release one with
+  LibTorch (6 jobs, nice 19, for the hot adapter): the two buffer tests pass through
+  `ctest`, so do upstream's three LibTorch AlphaZero tests and DQN's (`dqn_torch_test`,
+  the buffer's third user), and upstream's `alpha_zero_torch_example` trains tic-tac-toe
+  2 steps and resumes to 3; the PR description lists these checks and the platform. Left for the PR:
+  the user's review of the diff and the description, then commit (noreply address), push
+  and PR on the user's go-ahead.
+
+- **2026-10-06, ~12:45-13:30: the PR opened.** The user reviewed the diff and the
+  description (asked: no new dependency — libnop is Google's, already an optional
+  dependency, and the diff adds only standard headers; no "large buffer", and no laptop or
+  memory size of ours, but the point that it matters most on machines with 32 GB or less;
+  why `Add` takes its element by value — Abseil's Tip #117, with its one trade-off stated)
+  and gave the go-ahead: commit `0c73c409` on `replay-buffer-memory` (noreply address only,
+  no co-author line: the CLA check would check it too), pushed to the fork, and
+  [PR #1637](https://github.com/google-deepmind/open_spiel/pull/1637) opened; the CLA
+  check passed at once.
+
+- **2026-10-06, 14:00-14:30: a consistency check, the binaries rebuilt.** The check
+  found the status block's tool list, `CLAUDE.md`'s trainer description and its note on
+  jobs beside a trainer (now: the load test's answer — evaluate between runs) out of date,
+  the decision log without the upstream PR, and the game analyser's docstring still
+  saying the actor logs restart on resume; all fixed. `az_trainer`, `az_match` and
+  `az_search_cost` rebuilt without the reverted evaluator moves: `replay_buffer_check`
+  passes, the smoke run (fresh to step 2, resumed to 3) exits 0 with appended actor
+  logs, and the rebuilt `az_match` plays games identical to the original binary's.
+
+**Next step:** as recorded in `## Current status` — commit today's work (the user's
+review first); G''s evaluation (`~/thud-runs/stage5b_Gaug_eval73.sh`; its watcher part
+also gives the evaluation watcher the real test the W24 check never finished); then
+decide how to continue G'; then the GPU phase (a cheap machine with ~8-16 cores first; measure the batching cap
+there); profiling the batching path is the lever beyond ~20x.

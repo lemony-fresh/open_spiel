@@ -68,6 +68,7 @@ RUNS = {  # Run directory -> short name, and its own rule for untried moves.
     "stage5_conv_C": ("C'", "sibling_mean_minus_reduction"),
     "stage5b_G_7x": ("G", "sibling_mean_minus_reduction"),
     "stage5b_Gaug_7x": ("G'", "sibling_mean_minus_reduction"),
+    "stage5b_W_7x": ("W", "sibling_mean_minus_reduction"),
 }
 ANCHOR = "E44"  # The default; --anchor chooses another.
 # By default the untrained network and the ambiguous "latest" checkpoints are left out.
@@ -103,28 +104,22 @@ def load(directory):
   return matches
 
 
-def main():
-  global ANCHOR
-  argv = sys.argv[1:]
-  options = {"--misfits": "10", "--link": "tanh", "--anchor": ANCHOR,
-             "--exclude": EXCLUDED}
-  for key in options:
-    if key in argv:
-      i = argv.index(key)
-      options[key] = argv[i + 1]
-      del argv[i:i + 2]
-  misfits, link = int(options["--misfits"]), options["--link"]
-  ANCHOR = options["--anchor"]
-  excluded = set(filter(None, options["--exclude"].split(",")))
-  show_all = "--all" in argv
-  argv = [a for a in argv if a != "--all"]
-  directory = argv[0] if argv else os.path.expanduser("~/thud-runs/stage1_matches")
-  matches = [m for m in load(directory)
-             if m["a"] not in excluded and m["b"] not in excluded]
+class Fit:
+  """The ladder's ratings for a set of matches (see fit())."""
+
+
+def fit(matches, anchor, link="tanh"):
+  """Fits every player's dwarf and troll strengths to the matches' games, `anchor` at 0.
+
+  Returns a Fit with: players; rating(p) -> (R, its standard error, D, its standard
+  error, T, its standard error); side(p, "D" or "T"); expected(z), a battle's expected
+  margin for D_dwarfs - T_trolls; sigma2, the residual variance of a game; games and
+  opponents per player; the number of games.
+  """
   players = sorted({m["a"] for m in matches} | {m["b"] for m in matches})
-  if ANCHOR not in players:
-    sys.exit(f"no matches against the anchor {ANCHOR}")
-  free = [p for p in players if p != ANCHOR]
+  if anchor not in players:
+    raise ValueError(f"no matches against the anchor {anchor}")
+  free = [p for p in players if p != anchor]
   col = {}  # Unknowns: D and T of every player but the anchor.
   for p in free:
     col[("D", p)] = len(col)
@@ -133,9 +128,9 @@ def main():
 
   def add(dwarfs, trolls, margin):  # margin = D_dwarfs - T_trolls
     row = np.zeros(len(col))
-    if dwarfs != ANCHOR:
+    if dwarfs != anchor:
       row[col[("D", dwarfs)]] += 1
-    if trolls != ANCHOR:
+    if trolls != anchor:
       row[col[("T", trolls)]] -= 1
     rows.append(row)
     ys.append(margin)
@@ -146,16 +141,16 @@ def main():
       add(m["b"], m["a"], -p["a_as_trolls"])    # b as the dwarfs: b's margin
   X, y = np.array(rows), np.array(ys)
   coef, _, rank, _ = np.linalg.lstsq(X, y, rcond=None)
-  if rank < X.shape[1]:
-    print(f"warning: {X.shape[1] - rank} ratings not determined (players not connected)")
+  result = Fit()
+  result.undetermined = X.shape[1] - rank
 
   def expected(z):  # A battle's expected margin from D_dwarfs - T_trolls.
     return 32 * np.tanh(z / 32) if link == "tanh" else z
 
   if link == "tanh":
-    fit = optimize.least_squares(lambda c: expected(X @ c) - y, np.clip(coef, -60, 60))
-    coef = fit.x
-    J = fit.jac
+    solved = optimize.least_squares(lambda c: expected(X @ c) - y, np.clip(coef, -60, 60))
+    coef = solved.x
+    J = solved.jac
   else:
     J = X
   residual = y - expected(X @ coef)
@@ -163,10 +158,10 @@ def main():
   cov = sigma2 * np.linalg.pinv(J.T @ J)
 
   def side(p, s):  # D or T of a player; the anchor's are 0.
-    return 0.0 if p == ANCHOR else coef[col[(s, p)]]
+    return 0.0 if p == anchor else coef[col[(s, p)]]
 
   def rating(p):
-    if p == ANCHOR:
+    if p == anchor:
       return 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
     d, t = col[("D", p)], col[("T", p)]
     r = coef[d] + coef[t]
@@ -180,23 +175,50 @@ def main():
     games[m["b"]] += 2 * len(m["pairs"])
     opponents[m["a"]].add(m["b"])
     opponents[m["b"]].add(m["a"])
-  print(f"{len(matches)} matches, {len(y)} games, {len(players)} players; link {link}; "
-        f"anchor {ANCHOR} = 0; a game's residual standard deviation {math.sqrt(sigma2):.1f}")
+  result.players, result.rating, result.side, result.expected = players, rating, side, expected
+  result.sigma2, result.games, result.opponents, result.n_games = sigma2, games, opponents, len(y)
+  return result
+
+
+def main():
+  argv = sys.argv[1:]
+  options = {"--misfits": "10", "--link": "tanh", "--anchor": ANCHOR,
+             "--exclude": EXCLUDED}
+  for key in options:
+    if key in argv:
+      i = argv.index(key)
+      options[key] = argv[i + 1]
+      del argv[i:i + 2]
+  misfits, link, anchor = int(options["--misfits"]), options["--link"], options["--anchor"]
+  excluded = set(filter(None, options["--exclude"].split(",")))
+  show_all = "--all" in argv
+  argv = [a for a in argv if a != "--all"]
+  directory = argv[0] if argv else os.path.expanduser("~/thud-runs/stage1_matches")
+  matches = [m for m in load(directory)
+             if m["a"] not in excluded and m["b"] not in excluded]
+  try:
+    f = fit(matches, anchor, link)
+  except ValueError as e:
+    sys.exit(str(e))
+  if f.undetermined:
+    print(f"warning: {f.undetermined} ratings not determined (players not connected)")
+  print(f"{len(matches)} matches, {f.n_games} games, {len(f.players)} players; link {link}; "
+        f"anchor {anchor} = 0; a game's residual standard deviation {math.sqrt(f.sigma2):.1f}")
   print(f"{'player':30s} {'rating':>14s} {'as dwarfs':>14s} {'as trolls':>14s} {'games':>6s}")
-  for p in sorted(players, key=lambda q: -rating(q)[0]):
+  for p in sorted(f.players, key=lambda q: -f.rating(q)[0]):
     if not show_all and "[" in p:
       continue
-    r, rs, d, ds, t, ts = rating(p)
-    mark = " *" if opponents[p] == {ANCHOR} else ""
+    r, rs, d, ds, t, ts = f.rating(p)
+    mark = " *" if f.opponents[p] == {anchor} else ""
     print(f"{p + mark:30s} {r:+7.1f} ±{1.96 * rs:4.1f} {d:+7.1f} ±{1.96 * ds:4.1f} "
-          f"{t:+7.1f} ±{1.96 * ts:4.1f} {games[p]:6d}")
+          f"{t:+7.1f} ±{1.96 * ts:4.1f} {f.games[p]:6d}")
   print(f"\nFit check, the {misfits} largest misfits (observed mean pair margin against "
         f"the ratings' difference):")
   checks = []
   for m in matches:
     a, b = m["a"], m["b"]
-    predicted = (expected(side(a, "D") - side(b, "T"))
-                 - expected(side(b, "D") - side(a, "T")))
+    predicted = (f.expected(f.side(a, "D") - f.side(b, "T"))
+                 - f.expected(f.side(b, "D") - f.side(a, "T")))
     lo, hi = m["ci95"] if m["ci95"] else (float("nan"), float("nan"))
     checks.append((abs(m["margin"] - predicted), m, predicted, lo <= predicted <= hi))
   inside = sum(c[3] for c in checks)

@@ -106,6 +106,21 @@ options*).
   simulations/s for 64 x 4); smaller matches up to 3 at once with `OMP_NUM_THREADS=1`
   and threads = pairs (1,720) — against ~1,050 for one match at a time with its default
   16 threads, whose last long pairs leave most threads idle (2026-09-29).
+- **Jobs beside a training run: the idle scheduling class, and mind the memory.**
+  `nice -n 19` competes as an equal with our trainers, which run at nice 19 themselves;
+  `chrt --idle 0 CMD` (SCHED_IDLE, allowed unprivileged here) weighs 3 against a nice-19
+  task's 15 (the kernel's `WEIGHT_IDLEPRIO` and `sched_prio_to_weight`), so it still gets
+  ~1/6 of a contended core — beside run G''s trainer two idle-class matches cut the
+  trainer's CPU from ~7.4-8.0 to ~6.6-7.0 cores. **And even idle-class matches cost the
+  trainer ~25-35% of its self-play speed** (the load test, 2026-10-05, 5 pairs of
+  20-minute blocks; `thud/PLAN.md`, *Instrumentation*): mostly efficiency — shared caches
+  and memory bandwidth — not CPU share, so no priority setting fixes it. Run evaluations
+  between training runs, not beside them. Memory, measured
+  2026-10-05 at the plateau, not at the start: a 7x trainer ~9.9 GB of WSL's 15 (7.4 GB
+  in its first hour, its cache still filling); an `az_match` 1.4 GB with its default
+  cache of 262,144 evaluations, 0.76 GB with `cache=32768` (20 threads; the cache
+  changes no game). The out-of-memory killer would pick the largest process, the
+  trainer — check `free -m` (available) first, and again once the job's caches are full.
 - **Sleep freezes WSL**: nothing runs, WSL's clocks stop, and the wall clock jumps on
   resume. The laptop used to sleep after 5 minutes without input even on mains power; on
   2026-09-26 the user set sleep to never while plugged in (on battery it still sleeps
@@ -228,15 +243,18 @@ AlphaZero (`az_layout_check`, `az_throughput`, `az_reuse`, `az_buffer_stats`). P
 **our copy** (`thud/az/`: the trainer `az_trainer` — upstream's example plus
 `--untried_move_value`, `--untried_move_reduction`, `--learner_batches`,
 `--nn_model=resnet_conv_policy`, `--symmetry_augmentation`, `--policy_target_pruning`
-and `--replay_buffer_start_size` (2026-10-04), and since 2026-10-03
+and `--replay_buffer_start_size` (2026-10-04); since 2026-10-05 a replay buffer that moves
+positions into their slots and compacts itself after loading (`thud/az/replay_buffer.h`)
+and actor and evaluator logs that append; and since 2026-10-03
 logging per-side losses, self-play margins and endings and search statistics —
 `identity_check` (built with upstream's `model`, `vpnet` and `vpevaluator` sources as
 extra arguments, as its header says), `untried_move_check`, `conv_policy_check`,
 `augmentation_check`, `instrumentation_check`, `pruning_check`, `growing_buffer_check`, and from
 `thud/experiments/`
 `az_match`, `az_forgetting`, `az_merge_buffers`, `az_target_quality`, `az_head_check`,
-`az_reference_pilot` and `az_noise_check`) are built by
-`thud/az/build.sh MAIN.cc`, which also links Abseil's static libraries (the flag parsing
+`az_reference_pilot`, `az_noise_check` and `az_search_cost`) are built by
+`thud/az/build.sh MAIN.cc` (`replay_buffer_check`, which needs no LibTorch, by the
+command in its header), which also links Abseil's static libraries (the flag parsing
 `libopen_spiel.so` does not re-export) and runs at `nice 19`.
 
 **Now that JAX and PyTorch are in the venv, the next cmake run in `build/` adds their
@@ -275,6 +293,24 @@ Keeping the diff that small is what lets us rebase onto upstream without pain.
 `open_spiel/games/tic_tac_toe/` for the surrounding boilerplate and `open_spiel/games/chess/`
 for the from-square × direction × distance action layout. The implementation must be very
 fast yet readable — see `thud/PLAN.md` Phase 3.
+
+**Suppress diagnostics narrowly** (user, 2026-10-05): never a blanket switch such as
+`-Wno-everything` for code we build. Suppress one named diagnostic, at the one place
+where we are certain it is safe — `#pragma clang diagnostic push` / `ignored "-W..."` /
+`pop` around the line or the `#include` that triggers it — with a comment saying why it
+is safe (example: `thud/az/replay_buffer_check.cc`, libnop's
+`-Wmissing-template-arg-list-after-template-kw`). Upstream's CMake passes
+`-Wno-everything` (`open_spiel/CMakeLists.txt`), and our `thud/az/build.sh` and
+`thud/experiments/build_az_program.sh` copied it: to be narrowed the same way, after
+seeing what fires without it. More generally, **keep the safety flags** (user,
+2026-10-05: "I would like to keep the code safe"): never weaken a warning, check or
+sanitizer flag to make something build; tests and checks build without `-DNDEBUG` (so
+`assert` and `SPIEL_DCHECK` run), and changes to memory handling in our copies (moves,
+pointers, lifetimes) are also run under `-fsanitize=address,undefined`. Such a build
+needs `-DNDEBUG_SANITIZER` (2026-10-05): with AddressSanitizer on, abseil adds fields to
+its hash tables unless that is defined, so sanitized code and the uninstrumented abseil
+in `libopen_spiel.so` disagree on their layout and the sanitizers report false errors
+(a null load in an `LRUCache`, a new-delete size mismatch in the flag registry).
 
 **Decide from evidence, not preference.** When choosing between approaches — a layout, a
 convention, an encoding — check what the upstream project actually documents and what other
