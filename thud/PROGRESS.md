@@ -87,8 +87,9 @@ the trolls) is a candidate, **after the dwarfs learn** (the user).
 
 **Stage 5c** (2026-10-03/04): the trainer logs per-side losses, self-play margins and
 endings, and search statistics per side (built and checked); **the ladder**
-(`thud/experiments/ladder.py`; anchors G'44 (top), A14, E44, D29, C29, C16; the
-promotion rule decided: beat the top anchor in ≥ 40 pairs, interval above 0); the
+(`thud/experiments/ladder.py`; anchors H83 (top since 2026-10-07 evening), G'64, G'44, A14, E44, D29, C29, C16; the
+promotion rule: beat the top anchor in ≥ 40 pairs, interval above 0, and — since
+2026-10-06 — rate above it on the ladder, the interval of the difference above 0); the
 validation set shelved (the reference pilot: strong searches agree on values, ~0.9, but
 on the best move only ~20%). How we evaluate, and why: `PLAN.md`, *How we evaluate
 networks*. **Items 5 and 6 built 2026-10-05** (the user: for the GPU tuning; `PLAN.md`,
@@ -144,11 +145,105 @@ fixed opponents can tell (`PLAN.md`, runs G and G'). The load test's answer (5 p
 15:48-19:16): the evaluation watcher slows the trainer's self-play by ~25-35%, mostly in
 efficiency (shared caches, memory bandwidth), not CPU share — not harmless on this
 machine; its second half was not run (the user). Tuning waits for the GPU.
-**Next:** decide with the user how to continue G' (resume from step 73, or evaluate first:
-is the dwarfs' narrowing sharpening or a spiral?); G''s evaluation, written and ready to
-start (`~/thud-runs/stage5b_Gaug_eval73.sh`, ~6 hours: its step 73 against G'44, E44, A14
-and the anchor, per side, the noise diagnostic, then the evaluation watcher on steps 48,
-56, 64, 72 — did the dwarfs peak near step 60?); the upstream PR
+**G'73's evaluation (2026-10-06, part 1)**: G'73 beats G'44 head to head (+4.7) but its
+dwarfs are significantly worse against every fixed opponent, its trolls better — no
+overall gain from step 44 to 73 (`PLAN.md`, runs G and G'); the curve below shows why.
+**The strength curve (2026-10-06): G'64 is the peak** — +10.4 ± 3.9 on the ladder (its
+dwarfs +5.2, the run's best), against G'44's +3.2 and G'73's +4.4 (G'64 − G'44 +7.2,
++3.7 to +10.8): the dwarfs' narrowing helped until about step 64, then hurt. G'44 stays
+the top anchor for now (the user; the promotion rule tightened, `PLAN.md`, *How we
+evaluate networks*).
+**G'64 confirmed** (2026-10-07): +8.60 against G'44 (40 pairs), ladder G'64 +7.4 ± 2.3,
+G'64 − G'44 +5.8 (+3.7 to +7.9) — it passes both tests of the tightened promotion rule:
+**the top anchor from 2026-10-07** (the user), until H83's promotion that evening. **Run H** (2026-10-07 04:14-11:00, steps 65-83: G' branched at
+step 64 with the dwarfs' policy softmax temperature 1.5): **no collapse** — the dwarfs'
+prior held at ~15-25% of the legal moves (G' fell to 5%), their searches over ~11
+effective moves (G' 4.2), their self-play margin around −1 to −2 (G' −9.3). **Evaluated
+as trained** (2026-10-07 12:14-16:28; `PLAN.md`, run H): **stronger at every step, and
+it is the dwarfs** — ladder H68 +14.9, H72 +15.9, H76 +12.4, H80 +18.7, H83 +18.7
+against G'64's +6.5 (refitted), G'73's +3.7; as dwarfs +9.2 to +14.2 against G'64's
++3.3; **H83 beats G'64 by +11.75 a pair (+9.0 to +14.5, 37 of 40)**, ladder difference
++12.2 (+8.7 to +15.6): **both tests of the promotion rule pass — H83 the top anchor**
+(the user, 2026-10-07 evening); proposed: run H the main line. Against hexparrot's AI,
+though, H83 lost its first 18 pairs as G'64 its first 22 (−54 and −57 a pair). **The search-only filter on G'64** (rerun alone,
+2026-10-07 11:30-12:13): more search barely moves the dwarfs' choice — their most
+visited move agrees with a 16,000-simulation search 28% at 100, 32% at 800 (not
+significant) — and helps the trolls more (7% → 19%); so no branch with 400 dwarf
+simulations for now.
+**Players without a network beat our networks** (2026-10-07; the user asked to look for
+other Thud AIs; `PLAN.md`, *How we evaluate networks*, outside opponents): no strong Thud
+engine is published, so `az_match` now plays hexparrot's AI (through
+`thud/experiments/hexparrot_player.py`), OpenSpiel's alpha-beta (material) and its MCTS
+with random rollouts. **Every network loses every pair to hexparrot** (G'64 −55.4, H83
+−51.6, G'44, E44, D29, C16 −55 to −57, A14 −47.3) and to alpha-beta depths 2 and 3
+(−49, −55; depth 3 at equal time), nearly so to depth 1 (−25 to −28). Its dwarfs keep
+stepping next to a troll, and those opponents' trolls take that dwarf every time; in
+G''s self-play our trolls do so 23% of the time — nothing we trained or evaluated
+against ever punished it, and the ladder could not see it. Not the rule for untried
+moves (A14's dwarfs alike), not too little search (G'64 at 800 simulations alike).
+**Run I** (2026-10-07/08, G'64 with run H's settings plus 30% of the positions against
+alpha-beta depth 2): its trolls learnt to punish (46% in self-play; +2.8 against depth
+1's dwarfs, H83 −3.4; on the ladder +7-10 above run H's), its dwarfs did not (−31.6
+against hexparrot) — their games against depth 2 all ended at −32, so the final result
+told no move from another; I83 against H83 +2.73 (−0.55 to +6.00): not promoted.
+**Run J** (2026-10-08; run I with depth-1 alpha-beta trolls): no gain for the dwarfs —
+against depth 1 they still lose every dwarf in every game (margins all multiples of 4),
+so the result taught only hurling; J83 against I83 −10.20 (−14.48 to −5.92). Run I stays
+the better branch; the dwarfs need a short-horizon signal (`PLAN.md`, training against
+alpha-beta). **The blunder diagnosis** (2026-10-08): the blunders come from the priors,
+above all the trolls' prior on the capture inside the dwarfs' search (median
+0.006-0.008), not from the value head; **the capture check**: the prior follows the
+targets, which ask for captures too weakly — **kickstarting first**, the input features
+from the rules (the user's proposal; 20 planes built on 2026-10-08, replaced on
+2026-10-11 by the 50 planes run M now tests) as their own experiment later. **Kickstarting is built and checked** (`--kickstart_weight`,
+`--kickstart_depth`, `--kickstart_temperature`); its teacher at depth 2 for both sides
+(the user).
+**Run K — kickstarting — is the strongest network by far** (2026-10-09/10; weight 0.3,
+temperature 0.25, depth 2; `PLAN.md`, kickstarting): **K83 against I83 +30.0 a pair
+(+27.6 to +32.5), all 40 pairs won**; ladder K83 +67.8 ± 9.9 against I83 +24.2 and the
+top anchor H83 +21.5; the first win against an outside opponent (alpha-beta depth 1
++8.7, +5.9 to +11.4); hexparrot −36.9 (I83 −52.7), depth 2 −33.7 (−49.6), depth 3
+−45.7 (−52.8) — mostly its trolls. **It passes both promotion tests** (2026-10-10):
+K83 against H83 +30.57 a pair (+27.28 to +33.87), 40 of 40; ladder difference K83 − H83
++42.9 (+37.2 to +48.6) — **K83 promoted to top anchor** (the user, 2026-10-10; H83
+stays an anchor).
+**The diagnostics** (2026-10-10; `PLAN.md`, *Do we need the input features?*): the
+trolls' captures were a matter of targets (K83's prior 0.46 on them, a capture its top
+move every time); **the networks do not act on multi-square hurls** — real 2-3-square
+hurls get a blind prior's probability (1.1x, 0.9x; never the top move) although the
+teacher rates them the best move 99% / 91% of the time, built ones up to 7 squares
+below blind in every direction — while the trunk holds the fact (AUC ~0.98): the
+linear policy head (2 numbers a square) is the likely bottleneck, not the inputs.
+Shoves of 2-4 squares K83 learnt (4-4.8x in real games).
+**The head was the bottleneck** (2026-10-10, `~/thud-runs/convK83_2026-10-10.sh`): K83's
+frozen trunk with a convolutional policy head trained on run K's buffer (`az_restructure`,
+held-out policy loss 3.653 against K83's own 3.665) — real 2-square hurls from 1.1x to
+53x a blind prior's probability, the top move 81% of the time (K83 never); built shoves
+2.4-4.0x at every distance (K83 ~1x); hurls of 4-7 squares still missed (rare in the
+games; the input planes' case); and convK83 beats K83 by +16.8 a pair (+14.1 to +19.5,
+39 of 40). **Running** (from 2026-10-11 00:20, detached): `~/thud-runs/night5_2026-10-11.py`
+— **run L** (convK83 trained on with run K's recipe, steps 84-102; done 00:20-08:00),
+**run K continued** (its control, the same steps; from 08:00), then their evaluation
+(hexparrot, alpha-beta 1-3, the watcher, L102 against K102). **Queued behind it** (from 14:16,
+detached): `~/thud-runs/night6_2026-10-11.py` — today's match program installed (it reads
+the input planes; it prints the network-match baseline exactly), the offline check of
+the planes (convK83 trained on run K's buffer without and with them, the new weights
+traced over the batches, then the long-capture probe on both), **run M** (convK83 with
+the 50 input planes by net surgery, run K's recipe, steps 84-102, today's trainer) and
+its evaluation (M102 against L102 the planes' test).
+**Done** (2026-10-07 16:28 to 2026-10-08 05:34): the night of matches against players
+without a network, run I and its evaluation (`~/thud-runs/night2_2026-10-07.py`).
+Deferred: MCTS-10,000 and -100,000, alpha-beta depth 4 (informative once our networks
+beat the lower rungs).
+**Next:** the results of runs L, K continued and M — the main line from K83 with the
+convolutional head (L) or also the input planes (M), by those results; the trace of
+the new input weights over run M's checkpoints (the user); the destination risk
+re-evaluated after run M (the blunder diagnosis and a probe of risks by distance;
+`PLAN.md`); the dwarfs' training signal (their outcomes saturated: they lose every
+dwarf against alpha-beta's trolls in training); kickstarting tapered in long runs; an
+alpha-beta of our own (captures first, a table of positions, iterative deepening) for
+equal-time matches (the user) and an affordable depth-3 teacher; the trainer's
+evaluator and the ladder with players without a network. The upstream PR
 for the buffer fix: [PR #1637](https://github.com/google-deepmind/open_spiel/pull/1637),
 opened 2026-10-06, the CLA check passed — waiting for upstream's CI and the maintainers'
 review (`PLAN.md`, *Upstreaming*); the hybrid head
@@ -2274,8 +2369,436 @@ instrumentation, and the pattern agreed for later, are in `PLAN.md` Phase 5).
   passes, the smoke run (fresh to step 2, resumed to 3) exits 0 with appended actor
   logs, and the rebuilt `az_match` plays games identical to the original binary's.
 
-**Next step:** as recorded in `## Current status` — commit today's work (the user's
-review first); G''s evaluation (`~/thud-runs/stage5b_Gaug_eval73.sh`; its watcher part
-also gives the evaluation watcher the real test the W24 check never finished); then
-decide how to continue G'; then the GPU phase (a cheap machine with ~8-16 cores first; measure the batching cap
-there); profiling the batching path is the lever beyond ~20x.
+- **2026-10-06, 14:35:** committed (`5bbbc6a6`, the user reviewed the summary and the
+  message) and pushed to the fork's `thud`.
+
+- **2026-10-06, 14:35-16:30: G'73 evaluated** (part 1; mains, no pause; the adapter
+  warm but fine, the user said). G'73 beats G'44 head to head (+4.70, +1.89 to +7.51)
+  but not E44 (+0.12; G'44 +7.97); its dwarfs are significantly worse than G'44's
+  against every fixed opponent (E44 −6.20, A14 −3.38, A0 −10.55 a pair), its trolls
+  better (A14 +3.25, A0 +5.60); root noise no longer decides its dwarfs' searches (seeds
+  agree 78%); ladder G'73 +4.8 ± 2.3, G'44 +4.4 ± 2.2 — no overall gain in 29 steps,
+  non-transitive results. The dwarfs' narrowing was a spiral. For the user: promote G'73
+  (the rule is met formally) or keep G'44 as top anchor; part 2 (the strength curve) or
+  the GPU phase. Details: `PLAN.md`, runs G and G'.
+
+- **2026-10-06, 16:50-17:10: the user decided** — G'44 stays the top anchor, and the
+  promotion rule is tightened: also a ladder rating above the top anchor's, the 95%
+  interval of the difference above 0 (`ladder.py --compare A,B`, new, from the fit's
+  covariance; G'73 − G'44 +0.4, −2.0 to +2.8: fails; E44 − C16 +13.6, +11.3 to +15.9:
+  passes) — and part 2 of the evaluation first: running since 16:54
+  (`stage5b_Gaug_eval73.sh 2`, the evaluation watcher on steps 48, 56, 64, 72). The
+  evaluation script got a part-2-only option (rerunning part 1 would overwrite its
+  match files).
+
+- **2026-10-06, 16:54-19:47: the strength curve** (part 2; mains, no pause): G'48 +5.0,
+  G'56 +5.6, **G'64 +10.4 ± 3.9** (dwarfs +5.2, trolls +5.2), G'72 +6.1, G'73 +4.4, G'44
+  +3.2 (refitted); G'64 − G'44 +7.2 (+3.7 to +10.8), G'64 − G'73 +6.0 (+2.0 to +10.1).
+  The dwarfs' narrowing helped until about step 64 (their prior ~20% of the legal
+  moves), then hurt. The watcher's per-side numbers are noisy (20 pairs, two
+  opponents). Proposed: confirm G'64 (40 pairs against G'44 with a new seed, and 40
+  against E44, which G'73 failed to beat) before branching from it.
+
+- **2026-10-06, 19:50-00:00: how to train the dwarfs better; the night prepared.** With
+  the user: the options (the policy softmax temperature, more root noise, more
+  simulations, forced playouts; Gumbel targets, target smoothing; a later temperature
+  drop), what "the search moved the prior by 0.79 nats" means, and that too few
+  simulations for a confident prior fits the collapse; the literature checked (Leela's
+  `--policy-softmax-temp`; MiniZero on Gumbel and progressive simulation). Agreed order:
+  per-side settings, the filter, run H, then more dwarf simulations if the filter says
+  so; on the GPU playout caps, tree reuse, Gumbel last. The user asked for a deep enough
+  reference: 4,000 and 16,000, as for G'44, with the stability check built in. Built:
+  `--player_policy_temperature` and `--player_simulations` in our copy
+  (`search_settings_check`: all pass), `az_buffer_truncate` (self test; the re-saved
+  4.7 GB buffer byte-identical to the trainer's), run H's folder (`runH_Gaug64_T15`: G'64,
+  the buffer cut back to step 64, a resume tested on a copy), and
+  `~/thud-runs/night_2026-10-06.sh` (the confirmation and the filter at once, then run H
+  until 11:00; started at 02:28 by `night_2026-10-06_delayed.sh`, on mains only — the
+  user wanted the battery full first, so the charger only runs the laptop). **For our review of changed tests** (the user's rule): two checks of
+  `search_settings_check` failed at first. (a) "Temperature 1 changes nothing" — fixed in
+  the code (`ApplyPolicyTemperature` returns at once for 1; renormalising rounded in the
+  last digit). (b) The control "temperature 2 spreads the dwarfs' searches" — 11.7
+  effective moves without, 9.9 with, because the stand-in's prior was only mildly uneven
+  and its values uneven, so the search followed the values; the control was changed to a
+  sharp prior with values that single out no move (our dwarfs' situation): 3.4 → 5.9.
+  The first measurement is still printed.
+
+- **2026-10-07, 02:28-03:05: the night started; memory ran out.** The waiter started the
+  night at 02:28 on mains. At the 02:58 check RAM and swap were full (0.23 GB available,
+  0 of 4 GB swap): the filter (`az_target_quality`, 32 threads, references of 16,000)
+  held 8.0 GB, the two confirmation matches 3.6 and 2.5 GB. Stopped the filter (91 of
+  its positions done, their lines kept in `target_quality_Gaug64.jsonl`); 8.2 GB
+  available again; the matches go on, run H starts after them. To rerun the filter with
+  fewer threads, alone.
+
+- **2026-10-07, 04:14-05:05: G'64 confirmed; run H started.** G'64 against G'44 (40
+  pairs, seed 2) +8.60 (+5.87 to +11.33), against E44 +2.58 (−0.82 to +5.97); ladder G'64
+  +7.4 ± 2.3, G'64 − G'44 +5.8 (+3.7 to +7.9): both tests of the tightened promotion rule
+  pass — for the user to decide. Run H started at 04:14 (until 11:00); its first step,
+  65, from the same network as G''s: the dwarfs' searches over 11.7 effective moves (G'
+  5.7), the prior's top move the search's 39% (G' 71%), the search moving the prior 1.86
+  nats (G' 1.18) — the temperature widens the dwarfs' searches as intended; one step.
+
+- **2026-10-07, 05:00-11:15: run H; WSL's swap.** Hourly checks: mains, no pause, 5.3-7.7
+  GB available. Run H ran steps 65-83 (until 11:00, exit 124, the deadline): the dwarfs'
+  prior held at ~15-25% of the legal moves, their searches over ~11 effective moves, the
+  search moving the prior ~1.5 nats, their self-play margin −3.2 to +1.5 — no collapse,
+  where G' collapsed by step 72 (`PLAN.md`, run H). The user asked whether to raise
+  WSL's swap: written `C:\Users\waech\.wslconfig` with `swap=8GB` (from the next `wsl
+  --shutdown`); more memory (20 GB) kept in mind for later — the user hesitated to leave
+  Windows less, and last night's overflow came from scheduling (a filter beside two
+  matches), not from the cap.
+
+- **2026-10-07, 11:15-11:45: G'64 the top anchor; the evaluation of run H set up.** The
+  user promoted G'64 (G'44 stays an anchor) and asked to evaluate run H and rerun the
+  filter. Built: the temperature in `az_match` (`temperature_a` / `temperature_b`; `1,1`
+  plays the same games as none, `1.5,1` different ones), in the evaluation watcher (from
+  each run's `config.json`) and in the ladder's names. Running: the filter alone with 16
+  threads (since 11:30, `~/thud-runs/filter_Gaug64.sh`; the stopped run's 91 positions
+  kept as `target_quality_Gaug64_stopped_2026-10-07.jsonl`), then
+  `~/thud-runs/eval_runH.sh` (waits for the filter).
+
+- **2026-10-07, 11:50-13:45: other Thud AIs; our networks lose to players without a
+  network; the filter's result.** The user asked to look at other AI opponents,
+  expecting them, not trained by reinforcement learning, to be stronger for now. Found
+  (GitHub searches, the Code Golf API, Ludii's library; read: dstu, THFlowers,
+  Saucistophe, cloned next to hexparrot in `~/.local/share/thud-openspiel/`): no strong
+  engine — hexparrot's hand-written rules, Saucistophe's depth-3 alpha-beta (a troll
+  step there captures exactly one dwarf), Schkliba's alpha-beta on material, dstu's UCT
+  with random playouts, THFlowers' one playout per root move, a contest without entries
+  (`PLAN.md`, *How we evaluate networks*, outside opponents). I said our networks likely
+  beat them all; **the user was right**. Built in `az_match` (`b=hexparrot:LOOKAHEAD`,
+  `b=alphabeta:DEPTH`, `b=mcts:SIMS`, `games=PATH`, each side's seconds per move) and
+  `thud/experiments/hexparrot_player.py`; checked: network matches identical to the old
+  binary (3 pairs and the summary, rebuilt and rechecked after each change; the control
+  seed differs — a first check compared two empty files because LibTorch's warning broke
+  the JSON filter, caught and redone), reruns against hexparrot identical. One pair each:
+  hexparrot −57, −53; alpha-beta depth 2 −46, depth 1 −44; MCTS-300 +20. Replayed: G'64's
+  dwarfs step next to a troll to threaten a hurl and are taken every time (27/27,
+  29/29); G''s own trolls take such a dwarf 23% of the time (1,690 cases in 60
+  self-play games), MCTS-300's 27%. Measured for the night (`opponent_timing`, a
+  scratch program): alpha-beta depth 3 0.08-0.9 s a move, depth 4 4-12 s; MCTS 10,000
+  2-4 s with ~12 MB of tree, 100,000 35-49 s with up to 1.03 GB at the opening (a first
+  memory reading of 10,000 measured the wrong command; redone); G''s games against
+  MCTS-1,000 averaged ~330 moves. The user's questions: "depth 2" is 2 plies (2 ms a
+  move against G'64's ~1.8 s on the loaded machine); evaluate at equal time later —
+  with iterative deepening (the user), which needs an alpha-beta of our own with a
+  deadline (OpenSpiel's has none; a ply costs 10-140x more); and whether to train
+  against alpha-beta while our network is weak (proposed: mixed into self-play as a
+  punishing opponent, not imitation first; to decide with the night's results). Started
+  `~/thud-runs/outside_2026-10-07.py` (13:27; waits for run H's evaluation; dry-run
+  first with a fake `az_match`: order, two at a time, the memory guard holding back the
+  MCTS-100,000 matches while only 7 GB was free). **The filter** finished at 12:13
+  (part F of the scheduled check): more search barely moves the dwarfs' choice, helps
+  the trolls more (`PLAN.md`, training the dwarfs better); no 400-dwarf branch.
+  Uncommitted: the `az_match` changes and `hexparrot_player.py`, with the rest since
+  5bbbc6a6. **Decided with the user** (14:00): our dwarfs lack the essentials — every
+  pairing where one player plays both sides favours the dwarfs (hexparrot's AI 85%,
+  MCTS-5,000 19 of 20), our self-play the trolls — so ~30% of training games against
+  alpha-beta at depth 2 (each side half the time; only our network's positions
+  recorded, alpha-beta only punishes); first a constant share in a branch of run H,
+  in long runs tapered by results per side to a ~10% floor; kickstarting in reserve
+  (`PLAN.md`, training against alpha-beta).
+
+- **2026-10-07, 14:00-15:15: training against alpha-beta built.** `thud/az/alphabeta_player.h`
+  (the opponent, shared with `az_match`: its alpha-beta games byte-identical to before,
+  network matches identical to the old binary, as `build-shared/az_match_next` until the
+  night's runner, which plays its own copy of `az_match_new`, is done); in our copy
+  `--alphabeta_share` / `--alphabeta_depth`, `Trajectory` and `PlayGame` declared in
+  `alpha_zero.h` so checks can play games as the actors do, the learner's `vs_alphabeta`
+  apart from self-play, the log line's "Opponent:" field (and `analyse_games.py` reading
+  it). `alphabeta_training_check`: all pass at the first run. One part was redesigned
+  before it first ran (for our review of changed tests): its first position let the
+  dwarfs capture the troll, so "depth 2 does not step the lone dwarf next to the troll"
+  would have passed for the wrong reason; the position now has no capture for them,
+  and depth 1's blunders on 2 of 40 seeds show it needs the lookahead. A 3-step trainer
+  run (share 0.3, 16 minutes on the busy machine): the books balance per step (games and
+  positions); 29% of games against alpha-beta, 1-10% of the positions (routs, half the
+  moves recorded). Docs: `PLAN.md` (training against alpha-beta), `CLAUDE.md` (the
+  options and programs).
+
+- **2026-10-07, 15:15-16:00: the share counts positions; run I agreed.** The user asked
+  to raise the share, since it is tapered anyway; Claude proposed changing its unit to
+  positions (the share of the training data that carries the punishment, and of the
+  actors' time): each actor now plays alpha-beta whenever its alpha-beta games'
+  recorded positions fall short of the share of all it recorded. The user agreed ("sounds
+  all great"), with run I (G'64 with run H's settings plus these games, against run H's
+  steps 65-83) as the first test. A second 3-step trainer run: 0.29 of the positions
+  (per step 0.31, 0.32, 0.24), ~70% of the games, the books balanced; the check passes
+  again. The user asked what run H was: G' branched at step 64 with the dwarfs' policy
+  softmax temperature 1.5.
+
+- **2026-10-07, 16:28-16:50: run H's evaluation (part R of the scheduled check).** The
+  watcher on H68-H80 (G'64 and G'44, 20 pairs each) and H83 against G'64 (40 pairs):
+  run H rates above G' at every step — ladder H68 +14.9, H72 +15.9, H76 +12.4, H80
+  +18.7, H83 +18.7 against E44, where G' from the same start went G'64 +6.5, G'72 +5.0,
+  G'73 +3.7 (the refit moved G'64 from +7.4) — and the gain is the dwarfs' (+9.2 to
+  +14.2 against G'64's +3.3, G'73's −2.6; the trolls alike). H83 against G'64 +11.75
+  (+9.0 to +14.5), 37 of 40 pairs, as dwarfs +10.55; ladder differences H83 − G'64
+  +12.2 (+8.7 to +15.6), H80 − G'64 +12.1: H83 passes both tests of the promotion rule
+  (its rating rests on G'64 alone). Proposed to the user: promote H83, run H the main
+  line — with the caveat that the ladder only compares our networks, and the night
+  measures H83 against players without a network (its hexparrot match running since
+  16:28). The night's runner started its matches at 16:28 on mains.
+
+- **2026-10-07, 16:50-17:20: H83 promoted; the night reordered for run I.** The user
+  promoted H83 (the watcher's top anchor; G'64 stays an anchor). Against hexparrot all
+  lost every pair: G'64 −55.4 (40 pairs), H83 −51.6 (40), G'44 −56.4 (20), our
+  networks thinking ~90x longer a move (2.4 s against 0.03 s). The user offered the
+  machine until 9 pm and later; it was already full, so Claude proposed reordering: run
+  I tonight rather than the strong opponents, which would only repeat "−55". Agreed,
+  with the user asking what each part would teach: kept the informative matches (A14:
+  upstream's rule for untried moves; alpha-beta 1-3 as run I's control; G'64 at 800
+  simulations, cut to 10 pairs — the margins are ±1-2), deferred MCTS-10,000/-100,000
+  and depth 4, and added run I's evaluation. Prepared run I's folder (G'64's checkpoint
+  and optimizer, G''s `learner.jsonl` to step 64, run H's `config.json` plus
+  `alphabeta_share` 0.3 / `alphabeta_depth` 2 and `max_steps` 83, the step-64 buffer
+  rebuilt by `az_buffer_truncate` — 259,963 kept, 198,789 dropped, as for run H; 6.5 GB
+  peak, 36 s); `ladder.py` names it "I". `night2_2026-10-07.py` dry-run with fakes
+  (order, phases); its adoption of running matches tested twice — the first test was
+  vacuous (the stand-in exited at once), the second showed a zombie counted as running,
+  fixed. **A mistake:** a `pkill -f` pattern meant for the test's stand-in killed the
+  real C16-vs-hexparrot match at 9 of 20 pairs (kept as
+  `C16_vs_hexparrot3_killed_at_9_pairs.jsonl`; replayed tonight, its seeded games
+  should repeat) and the shell; `CLAUDE.md` now says to kill by PID.
+
+- **2026-10-07 17:20 to 2026-10-08 07:10: the night; run I; run J decided.** The night
+  ran unattended on mains (the laptop on battery only after it ended): the informative
+  matches until 19:29, run I 19:29-02:08 (steps 65-83, no pause), its evaluation until
+  05:34 (`PLAN.md`, outside opponents and training against alpha-beta). Every network
+  loses to hexparrot and to alpha-beta depths 2-3 (A14 too, so not the rule for untried
+  moves; G'64 at 800 simulations too, so not too little search; depth 3 at equal time
+  wins by 55). Run I: its trolls learnt to punish, its dwarfs did not; I83 against H83
+  +2.73 (−0.55 to +6.00), not promoted. The diagnosis: our dwarfs lost every dwarf in
+  every training game against depth 2, so the final-result value target gave their
+  positions no signal; against depth 1 their results vary (−32 to −7). The user agreed:
+  run J, alpha-beta's depth per side (1 as the trolls, 2 as the dwarfs), against run I.
+  (In `learner.jsonl`, `vs_alphabeta`'s `max` reads 0 when every return was −1: an
+  upstream bug — `BasicStats::Reset` starts `max_` at `std::numeric_limits<double>::min()`,
+  the smallest positive double, not `lowest()` (`open_spiel/utils/stats.h:39`), so any
+  all-negative series reports a maximum of ~0; `avg`, `min` and `num` are right. A
+  one-line upstream fix, a candidate for a small PR.)
+
+- **2026-10-08, 07:19-19:30: run J and its evaluation.** Trained on mains with no
+  pause (07:19-14:44). The laptop lost power at 15:24 although plugged in and slept
+  15:56-16:55 (Windows' Kernel-Power events 105, 506, 507): the watcher and J83 against
+  I83 were frozen, not killed, and finished an hour late (games do not depend on
+  timing). Results in `PLAN.md` (training against alpha-beta): no gain for the dwarfs;
+  their margins against depth 1 all multiples of 4, so they never keep a dwarf.
+
+- **2026-10-08, 07:10-07:15: run J built and armed.** `alphabeta_depth` per side
+  (`alphabeta_training_check` all pass; a 2-step trainer run: 24 games against depth-1
+  trolls, 23 against depth-2 dwarfs); run J's folder (run I's start, depth "2,1"); its
+  script dry-run with fakes, started 07:12, waiting for mains power.
+
+- **2026-10-08, 19:30-22:30: the blunder diagnosis; input features and kickstarting
+  built; run K prepared.** The diagnosis, approved by the user (`az_blunder_check`;
+  results in `PLAN.md`, training against alpha-beta): the blunders come from the priors,
+  above all the trolls' prior on the capture inside the dwarfs' search, not from the
+  value head. The user then needed the laptop for ~4 hours (from ~21:00: heavy jobs only
+  on their go signal, code welcome), asked whether depth-3 teacher scores were
+  affordable, and proposed input planes from the rules — written up in `PLAN.md` (*Input
+  features from the rules*) with a check to choose between them and kickstarting
+  (agreed: the check, the capture-floor confirmation, then the choice). **The capture
+  check** (`az_capture_targets`, a few core-minutes): the prior follows the targets (G'64
+  → I83: 0.123 → 0.169 of the prior on captures; the search's 0.125 → 0.220) —
+  kickstarting first. **Built, each passing its check at the first run, with
+  controls:** the feature planes (`thud/az/thud_features.h`, `features_check`; not yet
+  wired into the network); kickstarting (`--kickstart_weight`, `--kickstart_depth`,
+  `--kickstart_temperature`; `AlphaBetaPlayer::Scores`, `TeacherPolicy`;
+  `kickstart_check`); the prior floor for the confirmation (`MCTSBot::SetPriorFloors`,
+  `search_settings_check` part 5, `az_match capture_floor_a`). The teacher's cost with
+  OpenSpiel's alpha-beta: depth 2 ~21 ms a position, depth 3 3.8 s (dwarfs) and 0.5 s
+  (trolls). The user asked whether 3 plies are feasible for the trolls: yes, at ~20-35%
+  of the trainer's throughput; **decided: depth 2 for both sides.** `az_teacher_stats`
+  (new) measured what that teacher asks for on run I's positions; proposed T 0.25, w
+  0.3, **adopted by the user** (`PLAN.md`, kickstarting), who asked to wait with the
+  launch. At the user's question, the settings built since 2026-10-05 joined the list
+  to revisit on a new machine (`PLAN.md`, *Cloud GPU options*): alpha-beta's CPU cost,
+  simulations per side and alpha-beta's depths, the policy temperature per side, and a
+  new group for the scaffolds' schedules. `PLAN.md`'s *What we have tried, and what to keep*
+  gained the rows it lacked since 2026-10-04 (pruning, the compacting buffer, run H's
+  temperature, players without a network, 800 simulations, runs I and J, kickstarting,
+  the input features). Prepared: run K's folder; the
+  trainer rebuilt with kickstarting, its actors logging the settings (the old binary
+  kept as `az_trainer_before_kickstart`; `kickstart_check` passes again); `az_match_next`
+  rebuilt from today's sources (its check runs tonight); `~/thud-runs/night3_2026-10-08.py`
+  dry-run with fakes (a failing check skips the confirmation and still starts run K; a
+  passing one installs `az_match_next`). The decision log in `PLAN.md` put back in date
+  order (rows from 2026-10-04 on had been added newest first below the rest; no row
+  changed). `ladder.py` names run K "K". Only one-core jobs at the lowest priority ran
+  (the checks, the builds, the capture check). `features_check`'s build command in its
+  header lacked `-Iopen_spiel/json/include` (fixed; built by it and passing). Built with
+  the warnings on, it shows one warning, `thud.h:242`'s `operator= = default` implicitly
+  deleted — boilerplate mirrored from tic-tac-toe and chess, which have the same line
+  (the base `State`'s const members delete every such assignment); harmless, a data
+  point for narrowing `-Wno-everything`.
+
+- **2026-10-09, 11:39-12:31: the night's queue started; checks passed; the
+  confirmation; run K started** (the go came the next morning):
+  `~/thud-runs/night3_2026-10-08.py`, detached, on mains, sleep off, 11.6 GB free.
+  The checks passed at 11:51: `az_match_next` prints 2026-10-07's network match line
+  for line (with floors of 0 too; seed 2 differs, the control) and plays the
+  alpha-beta pair move for move — installed as `build-shared/az_match` (the old one
+  `az_match_before_floor`); the kickstarting smoke run took its 2 steps with every
+  actor logging the teacher. **The capture-floor confirmation** (11:51-12:27; `PLAN.md`,
+  kickstarting): G'64's trolls transform with the floor (+16 to +32 a game, +27.0
+  against depth-1 dwarfs), its dwarfs' results do not move, but their blunders a move
+  roughly halve (counted from the games by a short script) — the mechanism half
+  confirmed. Run K's buffer rebuilt (259,963 kept), its trainer started at 12:30:17
+  after one 2-minute wait for memory (11.0 GB just after the rebuild, 11.2 at the
+  next check); all 20 logged actors say "Kickstarting: weight 0.3, depth 2,
+  temperature 0.25".
+- **2026-10-09, ~12:40-13:10: a tool to restructure a network, designed.** The user
+  asked whether the input features still have value (the capacity argument) and
+  whether to build a tool that trains a new structure from another network's buffer.
+  Claude: yes to both — but the linear policy head reads only 2 numbers a square
+  (`thud/az/model.cc:406-411`), so the per-direction planes may pay most with a
+  convolutional or hybrid head; the tool designed now (copy weights, function-preserving;
+  or train from a saved buffer), built when run K's results pick the first change
+  (`PLAN.md`, *a tool to restructure a network*; precedent Leela Zero, Leela Chess Zero,
+  KataGo). Corrected in `PLAN.md`: the claim that KataGo and Leela start new input
+  features from zero-initialised weights (unsourced, written by Claude on 2026-10-08;
+  now cited to Net2Net), and that every self-play position is archived (true for runs
+  A2 to D only; since run E a run's final buffer, which for 19-step branches holds all
+  their positions). **Run K's first steps are slower than estimated**: step 65 37 minutes (with
+  loading), step 66 27 minutes — 12.0 and 13.7 positions/s against run I's 17.5 and
+  17.8 (25.6 and 20.6 minutes). **Not the laptop's use** (Claude first guessed it; the
+  user only watched videos): Windows' own processes took ~0.6 of a core, WSL 7, no
+  swapping. The same evaluations a step (3.34 million, cache hit rate 0.47, batches of
+  ~12.9) went at 2,067 a second against 2,728. Not the teacher's own CPU (≤ ~21 ms a
+  position, ≤ 0.3 of a core at this rate) nor the prior-floor code (skipped when no
+  floor is set). **The CPU ran at 57-77% of its nominal speed** (Windows' "% Processor
+  Performance", power mode "Best performance") — likely heat or the chip's power
+  budget under sustained load; no measurement from run I's night to compare. (Later:
+  the hourly means stayed at 70-78% while the steps sped up — see the next entry.)
+  `~/thud-runs/cpu_performance_log.sh` (detached) logs it every 5 minutes to run K's
+  `cpu_performance.log` while the trainer runs — the night's steps will show.
+- **2026-10-09, 13:40-21:10: run K trained; its evaluation paused; the diagnostics
+  armed.** Run K finished at 20:02 (exit 0). Over its 19 steps it averaged ~15.6
+  positions/s against run I's ~17.9 (~13% slower): its first three 12.0-15.5, then
+  14.5-18.8. The CPU ran at 70-78% of nominal in every hour's mean (64-79% in single
+  readings, `cpu_performance.log`), also while the steps were fast — so the clock does
+  not explain the early steps, nor does the teacher's own cost; run I's night has no
+  clock measurement to compare. The cause of the early slowness is unknown. K83 against hexparrot and
+  alpha-beta 1-3 (20:08-20:55): `PLAN.md`, kickstarting. At ~20:55 the user needed the
+  laptop for a few hours and asked to postpone the rest and to add experiments that tell
+  whether we need the input features: the ladder and K83 against I83 had started at
+  20:55:59 — paused by PID (SIGSTOP) at 20:57, not killed; `az_feature_probe` (new, and
+  `Activations` in our copy's model) built and tested on 300 positions;
+  `night4_2026-10-09.py` dry-run with fakes on all three resume paths (all four
+  processes paused and resumed; one not the expected process: left alone, logged; all
+  gone: the evaluation afresh) and armed at 21:09, starting on the user's being done;
+  at 21:14, at the user's request, restarted (it had only been waiting) with their
+  trigger: after midnight, 20 minutes without input.
+- **2026-10-10, night to 09:25: the laptop slept; nothing lost.** The power source
+  changed at 23:56-00:11 and 01:32-01:36 (left unplugged); the user was still on it,
+  so the idle trigger had not fired when Windows entered Modern Standby at 02:31 (on
+  battery it sleeps after 3 minutes), with brief wakes until 09:24 (Kernel-Power 506 /
+  507). WSL froze but did not restart (`uptime -s` now 2026-10-02 09:54, ~6 hours of
+  frozen time since 2026-10-09 11:39): every process survived, the paused evaluation
+  still paused. `night4` saw the idle time at 08:18, waited for mains power as designed
+  until the laptop was plugged in (09:24), and started the diagnostics at 09:25.
+- **2026-10-10, 09:25-10:07: the diagnostics of whether we need the input features**
+  (`PLAN.md`, *Do we need the input features?*): the trolls' captures were a matter of
+  targets — K83's prior on captures 0.460 (I83 0.148), a capture its top move at every
+  troll position with one; K83's dwarfs blunder in 36% of their moves against
+  hexparrot (I83 50%, G'64 82%), the capture now seen inside their searches (visited
+  89%, I83 19%), but their prior still favours unsafe moves (0.337 against 18.9% of the
+  legal moves) and the value still counts a lost dwarf at ~1/3. The probe (4,000
+  positions; activations checked against `Inference`: difference 0 for all four
+  networks): troll captures per direction no more readable from the trained trunks
+  than from an untrained one (0.86-0.87), dwarf danger learnt (0.93 against 0.86); the
+  300-position first look (K83 worse than untrained) not confirmed. Reading: no case
+  for the input planes now; the dwarfs' remaining blunders point to their training
+  signal. The shuffled control proved too noisy to check single probes (0.12-0.82;
+  means 0.47-0.61). Run K's evaluation resumed at 10:06.
+- **2026-10-10, 10:06-12:45: run K's evaluation** (resumed from the pause; `night3`
+  and `night4` both ended normally): K83 against I83 +30.0 a pair, 40 of 40; the
+  ladder K68 +31.9 to K83 +67.8 (`PLAN.md`, kickstarting).
+- **2026-10-10, ~16:00-17:00: the long-capture probe** (the user asked whether the
+  networks see captures at the end of long hurls and shoves, across the board, in
+  every direction; `az_long_capture_probe`, new: built minimal pairs and every real
+  capture of run K's last games, five networks, ~12 minutes, plus the teacher's view
+  of the real ones, ~3 minutes). Built positions checked by eye on printed samples;
+  two output bugs fixed before the run (NaN printed as `nan`, not JSON; the
+  surroundings first placed at random, which would have made other captures nearly
+  always — now placed by rule, 514 of 4,258 candidates rejected). Results and reading
+  in `PLAN.md`: multi-square hurls ignored by every network, in real games and built,
+  though the best move; the linear policy head the likely bottleneck.
+- **2026-10-10, 16:30-16:45: the promotion test started; the restructuring tool
+  built.** The user agreed to both. `~/thud-runs/promoteK_2026-10-10.sh` (K83 against
+  H83, 40 pairs, seed 3) from 16:34. `thud/az/az_restructure.cc` (mode 2 of *a tool to
+  restructure a network*; `CopyParametersFrom` and `Freeze` added to our copy's
+  `VPNetModel`) built and tested on the smoke buffer, both checks exactly 0
+  (`PLAN.md`). `~/thud-runs/convK83_2026-10-10.sh` queued behind the match: a
+  convolutional policy head on K83's frozen trunk, trained on run K's buffer, then the
+  long-capture probe on it.
+- **2026-10-10, 17:27: K83 passes both promotion tests** (K83 against H83 +30.57,
+  +27.28 to +33.87, 40 of 40 pairs; ladder difference +42.9, +37.2 to +48.6); proposed
+  to the user, who promoted K83 to top anchor (`watch_run.py`: K83 first, H83 kept).
+  The convolutional-head training started at 17:27 (74 tensors copied, 44
+  parameters frozen, the copy check 0; held-out policy loss K83's linear head 3.665,
+  the new head untrained 5.913).
+- **2026-10-10, 17:27-19:19: the convolutional head on K83's trunk** — trained to
+  5,500 batches (stopped at 6,500), both checks exactly 0; the long-capture probe on it
+  (`PLAN.md`): the linear head was the bottleneck for 1-2-square hurls and for shoves;
+  3-square hurls improve a little, 4-7 not at all.
+- **2026-10-10 23:24 to 2026-10-11 00:20: convK83 against K83; runs L and K continued
+  set up and started.** convK83 +16.8 a pair (+14.1 to +19.5), 39 of 40. The user chose
+  Claude's order (run L, then the input planes as run M) and a clean evaluation (run
+  K continued as L's control). Built `az_fresh_optimizer` (convK83's weights with a
+  fresh optimizer at run K's rate 0.0001; checks exactly 0) and `LoadWeights` /
+  `LearningRate` in our copy's `VPNetModel`; both folders from K83's state (buffers and
+  learner.jsonl byte-identical to run K's); `ladder.py` names both ("L"; the
+  continuation "K"); `night5_2026-10-11.py` dry-run with fakes, started 00:20.
+- **2026-10-11, 08:00-14:10: run L done; the input planes designed with the user, built
+  and checked.** Run L finished at 08:00 (19 steps, no pause; its trolls +19.6 against
+  alpha-beta's dwarfs at step 102, K continued's +1.9 at step 90); run K continued from
+  08:00. With the user, the planes' design (`PLAN.md`, *the input planes, as decided*):
+  move planes at the moving piece's square (the convolutional head scores moves there),
+  direction x distance, shared by both sides (the piece kind says whose — AlphaZero
+  separates players because both own the same kinds); 2 maps at the affected squares,
+  takeable and danger merged (one fact each, read on pieces and on empty squares); first
+  58 planes, then 50: the user asked why some combinations had no room — the board's
+  longest diagonals hold 10 squares, a capture of k needs 2k, so the 8 diagonal planes
+  of 6 and 7 squares are zero in every position, and a uniform layout brings nothing.
+  The precedent for the count (AlphaZero 17 / 119 / 362, Lc0 112, AlphaGo 48 with
+  "capture size") looked up. Tests written before the code: `features_check` rewritten
+  (12 hand-built positions with hand-worked planes, 96 built captures of every kind,
+  direction and distance the board allows, the move generator, the maps, the 7
+  symmetries, planted errors) and `input_planes_check` (new: the surgery exact, each of
+  the 50 planes on its own channel, one learning step reaching exactly the planes
+  present) — all pass at the first run. The user's re-evaluation of the destination risk
+  is in the plan (after run M: the blunder diagnosis and a probe of risks by distance).
+  `az_feature_probe` ported to the new planes (the same facts; its 300-position test
+  reproduced exactly). Run M's start made by surgery (56 input planes, exactly
+  convK83's outputs) — a first attempt used an `az_restructure` built before the change
+  to 50 planes (64 input planes), caught by reading its `vpnet.pb`, rebuilt and redone.
+  Today's trainer and match program built with the planes (`az_trainer_planes`,
+  `az_match_planes`, new names so run K continued's binary stays as it is); the match
+  program prints the network-match baseline of 2026-10-07 line for line (seed 2 differs,
+  the control) — the model code unchanged for networks without planes. Run M's folder
+  (run L's config, its own path; convK83 with the planes; run K's learner.jsonl and
+  buffer); `ladder.py` names it "M"; the long-capture probe rebuilt (it must read the
+  planes); `night6_2026-10-11.py` dry-run with fakes, started 14:16, waiting for night5.
+- **2026-10-11, ~15:00-16:00: the review and the commit.** The user reviewed the two
+  failed-then-changed tests of `search_settings_check` (2026-10-06): (a) "temperature 1
+  changes nothing" was fixed in the code (it returns at once; renormalising rounded in
+  the last digit), the test unchanged; (b) the control "temperature 2 spreads the
+  dwarfs' searches" was changed from the mildly uneven stand-in (11.7 → 9.9 effective
+  moves: there the values drove the search) to a sharp prior with uninformative values,
+  our dwarfs' situation (3.4 → 5.9) — accepted. The docs checked for consistency (the
+  20-plane passages, "mode 1 not built yet", run H as the proposed main line, the
+  table's verdicts fixed in place) and everything since 2026-10-06 committed in two
+  commits and pushed (the user: "Please push, I trust you"). At 27 minutes a step the run
+  takes ~8.8 hours, ~1 hour under the trainer's 10-hour timeout; if it is cut short,
+  the script evaluates its last step as K83's stand-in and the run can be resumed.
+
+**Next step:** as recorded in `## Current status` — run K continued and the evaluation
+(running); the trainer built with the input planes and checked against the old
+binary's outputs; run M's folder and tonight's runner (after the evaluation: the
+offline check of the planes' learning on run K's buffer, then run M); then kickstarting or the features by
+the results; an alpha-beta of our own for equal-time matches and a depth-3 teacher; run
+H as the main line (proposed); the trainer's evaluator and the ladder with players
+without a network.

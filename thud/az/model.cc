@@ -440,6 +440,26 @@ ModelImpl::ModelImpl(const ModelConfig& config, const std::string& device)
   }
 }
 
+torch::Tensor ResOutputBlockImpl::PolicyPlanes(torch::Tensor x) {
+  return torch::relu(policy_batch_norm_(policy_conv_(x)));
+}
+
+std::vector<torch::Tensor> ModelImpl::Activations(torch::Tensor x,
+                                                  torch::Tensor mask) {
+  if (this->nn_model_ != "resnet") {
+    throw std::runtime_error("Activations: only for nn_model resnet, not " +
+                             this->nn_model_);
+  }
+  x = layers_[0]->as<ResInputBlock>()->forward(x);
+  for (int i = 1; i <= num_torso_blocks_; i++) {
+    x = layers_[i]->as<ResTorsoBlock>()->forward(x);
+  }
+  ResOutputBlockImpl* head =
+      layers_[num_torso_blocks_ + 1]->as<ResOutputBlock>();
+  std::vector<torch::Tensor> output = head->forward(x, mask);
+  return {x, head->PolicyPlanes(x), output[0], torch::softmax(output[1], 1)};
+}
+
 std::vector<torch::Tensor> ModelImpl::forward(torch::Tensor x,
                                               torch::Tensor mask) {
   std::vector<torch::Tensor> output = this->forward_(x, mask);

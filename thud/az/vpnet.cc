@@ -33,6 +33,7 @@
 #include "open_spiel/abseil-cpp/absl/strings/str_cat.h"
 #include "open_spiel/games/thud/thud.h"
 #include "thud/az/model.h"
+#include "thud/az/thud_features.h"
 #include "open_spiel/spiel.h"
 #include "open_spiel/spiel_utils.h"
 
@@ -112,9 +113,11 @@ ModelConfig WithPolicyMap(const Game& game, ModelConfig config) {
 bool CreateGraphDef(const Game& game, double learning_rate, double weight_decay,
                     const std::string& path, const std::string& filename,
                     std::string nn_model, int nn_width, int nn_depth,
-                    bool verbose) {
+                    bool verbose, int extra_input_planes) {
+  std::vector<int> input_shape = game.ObservationTensorShape();
+  input_shape[0] += extra_input_planes;  // Our change: the input planes.
   ModelConfig net_config = {
-      /*observation_tensor_shape=*/game.ObservationTensorShape(),
+      /*observation_tensor_shape=*/input_shape,
       /*number_of_actions=*/game.NumDistinctActions(),
       /*nn_depth=*/nn_depth,
       /*nn_width=*/nn_width,
@@ -130,6 +133,7 @@ VPNetModel::VPNetModel(const Game& game, const std::string& path,
     : device_(device),
       path_(path),
       flat_input_size_(game.ObservationTensorSize()),
+      observation_size_(game.ObservationTensorSize()),
       num_actions_(game.NumDistinctActions()),
       model_config_(WithPolicyMap(game, LoadModelConfig(path, file_name))),
       model_(model_config_, TorchDeviceName(device)),
@@ -150,6 +154,97 @@ VPNetModel::VPNetModel(const Game& game, const std::string& path,
 
   // Put this model on the specified device.
   model_->to(torch_device_);
+
+  // Our change (thud/PLAN.md, the input planes): a model whose input has the input
+  // planes from the rules besides the observation's.
+  int input_size = 1;
+  for (int d : model_config_.observation_tensor_shape) input_size *= d;
+  if (input_size != observation_size_) {
+    SPIEL_CHECK_EQ(game.GetType().short_name, "thud");
+    SPIEL_CHECK_EQ(input_size, observation_size_ + kNumFeaturePlanes * thud::kBoardSize *
+                                                       thud::kBoardSize);
+    input_planes_ = true;
+    flat_input_size_ = input_size;
+  }
+}
+
+void VPNetModel::ModelInput(const std::vector<float>& observation, float* out) const {
+  SPIEL_CHECK_EQ(observation.size(), observation_size_);
+  std::copy(observation.begin(), observation.end(), out);
+  if (input_planes_) {
+    std::vector<float> planes;
+    planes.reserve(flat_input_size_ - observation_size_);
+    AppendFeaturePlanes(observation, &planes);
+    std::copy(planes.begin(), planes.end(), out + observation_size_);
+  }
+}
+
+torch::Tensor VPNetModel::Parameter(const std::string& name) {
+  const torch::Tensor* p = model_->named_parameters().find(name);
+  if (p == nullptr) SpielFatalError("No parameter " + name);
+  return *p;
+}
+
+std::vector<std::string> VPNetModel::CopyParametersFrom(
+    VPNetModel& other, const std::function<bool(const std::string&)>& include,
+    bool widen_inputs) {
+  std::vector<std::string> copied;
+  torch::NoGradGuard no_grad;
+  // More input channels here, otherwise alike.
+  auto wider = [](const torch::Tensor& to, const torch::Tensor& from) {
+    if (to.dim() < 2 || to.dim() != from.dim() || to.size(1) <= from.size(1)) return false;
+    for (int64_t d = 0; d < to.dim(); ++d) {
+      if (d != 1 && to.size(d) != from.size(d)) return false;
+    }
+    return true;
+  };
+  auto copy = [&](const torch::OrderedDict<std::string, torch::Tensor>& to,
+                  const torch::OrderedDict<std::string, torch::Tensor>& from) {
+    for (const auto& item : to) {
+      const torch::Tensor* source = from.find(item.key());
+      if (source == nullptr || !include(item.key())) continue;
+      torch::Tensor target = item.value();
+      if (source->sizes() == target.sizes()) {
+        target.copy_(*source);
+      } else if (widen_inputs && wider(target, *source)) {
+        target.zero_();
+        target.slice(/*dim=*/1, 0, source->size(1)).copy_(*source);
+      } else {
+        continue;
+      }
+      copied.push_back(item.key());
+    }
+  };
+  copy(model_->named_parameters(), other.model_->named_parameters());
+  copy(model_->named_buffers(), other.model_->named_buffers());
+  return copied;
+}
+
+std::vector<std::string> VPNetModel::Freeze(
+    const std::function<bool(const std::string&)>& which) {
+  std::vector<std::string> frozen;
+  for (auto& item : model_->named_parameters()) {
+    if (which(item.key())) {
+      item.value().set_requires_grad(false);
+      frozen.push_back(item.key());
+    }
+  }
+  for (const auto& item : model_->named_modules()) {
+    if (item.value()->children().empty() && which(item.key())) {
+      frozen_modules_.push_back(item.value());
+    }
+  }
+  return frozen;
+}
+
+void VPNetModel::LoadWeights(const std::string& path) {
+  torch::load(model_, absl::StrCat(path, ".pt"), torch_device_);
+}
+
+double VPNetModel::LearningRate() {
+  return static_cast<torch::optim::AdamOptions&>(
+             model_optimizer_.param_groups()[0].options())
+      .lr();
 }
 
 std::string VPNetModel::SaveCheckpoint(int step) {
@@ -172,6 +267,34 @@ void VPNetModel::LoadCheckpoint(const std::string& path) {
               torch_device_);
 }
 
+std::vector<torch::Tensor> VPNetModel::Activations(
+    const std::vector<InferenceInputs>& inputs) {
+  const int batch_size = inputs.size();
+  std::vector<float> raw_observations(batch_size * flat_input_size_);
+  std::vector<uint8_t> raw_legal_mask(batch_size * num_actions_, 0);
+  for (int batch = 0; batch < batch_size; ++batch) {
+    for (Action action : inputs[batch].legal_actions) {
+      raw_legal_mask[batch * num_actions_ + action] = 1;
+    }
+    ModelInput(inputs[batch].observations,
+               raw_observations.data() + batch * flat_input_size_);  // Our change.
+  }
+  torch::Tensor observations =
+      torch::from_blob(raw_observations.data(), {batch_size, flat_input_size_})
+          .clone()
+          .to(torch_device_);
+  torch::Tensor legal_mask =
+      torch::from_blob(raw_legal_mask.data(), {batch_size, num_actions_},
+                       torch::TensorOptions().dtype(torch::kByte))
+          .clone()
+          .to(torch_device_);
+  model_->eval();
+  torch::NoGradGuard no_grad;
+  std::vector<torch::Tensor> activations = model_->Activations(observations, legal_mask);
+  for (torch::Tensor& a : activations) a = a.to(torch::kCPU);
+  return activations;
+}
+
 std::vector<VPNetModel::InferenceOutputs> VPNetModel::Inference(
     const std::vector<InferenceInputs>& inputs) {
   int inference_batch_size = inputs.size();
@@ -185,9 +308,9 @@ std::vector<VPNetModel::InferenceOutputs> VPNetModel::Inference(
     for (Action action : inputs[batch].legal_actions) {
       raw_legal_mask[batch * num_actions_ + action] = 1;
     }
-    std::copy(inputs[batch].observations.begin(),
-              inputs[batch].observations.end(),
-              raw_observations.begin() + (batch * flat_input_size_));
+    // Our change (the input planes): the network's input, not only the observation.
+    ModelInput(inputs[batch].observations,
+               raw_observations.data() + batch * flat_input_size_);
   }
 
   // Torch tensors by default use a dense, row-aligned memory layout.
@@ -264,9 +387,10 @@ VPNetModel::LossInfo VPNetModel::Losses(const std::vector<TrainInputs>& inputs,
   std::vector<float> raw_value_targets(training_batch_size);
 
   for (int batch = 0; batch < training_batch_size; ++batch) {
-    std::copy(inputs[batch].observations.begin(),
-              inputs[batch].observations.end(),
-              raw_train_inputs.begin() + (batch * flat_input_size_));
+    // Our change (the input planes): the network's input, not only the observation —
+    // computed here, after any symmetry the caller applied to the observation.
+    ModelInput(inputs[batch].observations,
+               raw_train_inputs.data() + batch * flat_input_size_);
     for (Action action : inputs[batch].legal_actions) {
       raw_legal_mask[num_actions_ * batch + action] = 1;
     }
@@ -316,6 +440,7 @@ VPNetModel::LossInfo VPNetModel::Losses(const std::vector<TrainInputs>& inputs,
 
   // Run a training step and get the losses.
   model_->train();
+  for (auto& module : frozen_modules_) module->eval();  // Our change: Freeze.
   model_->zero_grad();
 
   std::vector<torch::Tensor> torch_outputs =

@@ -154,6 +154,9 @@ class ResOutputBlockImpl : public torch::nn::Module {
  public:
   ResOutputBlockImpl(const ResOutputBlockConfig& config);
   std::vector<torch::Tensor> forward(torch::Tensor x, torch::Tensor mask);
+  // Our change (thud/PLAN.md, the feature probe): the policy head's rectified
+  // planes (policy_filters of them), the input of its linear layer.
+  torch::Tensor PolicyPlanes(torch::Tensor x);
 
  private:
   torch::nn::Conv2d value_conv_;
@@ -238,6 +241,11 @@ class ModelImpl : public torch::nn::Module {
  public:
   ModelImpl(const ModelConfig& config, const std::string& device);
   std::vector<torch::Tensor> forward(torch::Tensor x, torch::Tensor mask);
+  // Our change (thud/PLAN.md, the feature probe), for "resnet" only: from one
+  // pass, the torso's output, the policy head's planes, and the value and the
+  // policy forward() returns — so a caller can check the activations are the
+  // ones that make the outputs.
+  std::vector<torch::Tensor> Activations(torch::Tensor x, torch::Tensor mask);
   // The policy, value and L2 losses; our change: then each position's policy and
   // value loss, detached (thud/PLAN.md, Instrumentation: statistics per side).
   std::vector<torch::Tensor> losses(torch::Tensor inputs, torch::Tensor masks,

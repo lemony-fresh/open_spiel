@@ -78,7 +78,10 @@ options*).
 
 - **Development happens in WSL2 / Ubuntu on ARM64.** The host is a Snapdragon X, 10 cores,
   ~31.6 GB RAM — but **WSL itself sees 15 GB RAM + 4 GB swap** (its default is half the
-  host). That is ample for the build: full `make -j10` takes ~4m40s with a 1.2 GB peak per
+  host). Since 2026-10-07 `C:\Users\waech\.wslconfig` sets `swap=8GB` (a safety net,
+  not working memory: a job that needs swap crawls; in effect from the next `wsl
+  --shutdown`); `memory=20GB` is an option for later (the user: Windows would keep ~11.6
+  GB at worst). That is ample for the build: full `make -j10` takes ~4m40s with a 1.2 GB peak per
   compiler process; full `ctest -j10` takes ~90 s.
 - **Do not develop on the Windows side.** The Windows Python is an x64 build running under
   emulation (its pip tags are `win_amd64`), and no `win_arm64` OpenSpiel wheels exist.
@@ -121,6 +124,14 @@ options*).
   cache of 262,144 evaluations, 0.76 GB with `cache=32768` (20 threads; the cache
   changes no game). The out-of-memory killer would pick the largest process, the
   trainer — check `free -m` (available) first, and again once the job's caches are full.
+  Searches grow with their simulations too: `az_target_quality` with 32 threads and a
+  16,000-simulation reference held 8.0 GB, and a 40-pair `az_match` (40 threads, the
+  default cache) up to 3.6 GB — together with a second match they filled RAM and swap on
+  2026-10-07 (the filter was stopped). Run such jobs alone, or with fewer threads.
+  OpenSpiel's MCTS with random rollouts (`az_match b=mcts:SIMS`) holds up to 1.03 GB of
+  tree per thread at 100,000 simulations (the opening's dwarf move, at its 1,000 MB cap;
+  230 MB a few moves in) but only ~12 MB at 10,000 (peak RSS, the opening; measured
+  2026-10-07) — deeper searches expand the dwarf nodes, each with ~650 children.
 - **Sleep freezes WSL**: nothing runs, WSL's clocks stop, and the wall clock jumps on
   resume. The laptop used to sleep after 5 minutes without input even on mains power; on
   2026-09-26 the user set sleep to never while plugged in (on battery it still sleeps
@@ -155,7 +166,12 @@ options*).
   matched the shell that had created it 3.5 hours earlier, and stalled the queue until
   that shell was ended. Anchor waits to the script's own command line instead: `pgrep -f
   '^/bin/bash [^ ]*/head_check[.]sh'` (checked: a dummy shell mentioning the name, and
-  Claude Code's own, do not match; the running script does).
+  Claude Code's own, do not match; the running script does). **Never `pkill -f` a
+  pattern — kill by PID.** The same matching kills more than meant: on 2026-10-07
+  `pkill -f 'C16_vs_hexparrot3_games.jsonl'`, aimed at a test's stand-in, also killed
+  the real match with that file in its command line (at 9 of 20 pairs) and the Claude
+  Code shell running the command (exit 144, which also left the command's later steps
+  undone).
 - **The venv has OpenSpiel's pinned JAX set** (`jax==0.9.0.1`, `flax==0.12.3`, ... from
   `open_spiel/scripts/python_extra_deps.sh`), which pins numpy to 2.3.5: flax 0.12.3
   requires numpy below 2.4. The JAX CPU build warns "An NVIDIA GPU may be present"; there
@@ -243,18 +259,32 @@ AlphaZero (`az_layout_check`, `az_throughput`, `az_reuse`, `az_buffer_stats`). P
 **our copy** (`thud/az/`: the trainer `az_trainer` — upstream's example plus
 `--untried_move_value`, `--untried_move_reduction`, `--learner_batches`,
 `--nn_model=resnet_conv_policy`, `--symmetry_augmentation`, `--policy_target_pruning`
-and `--replay_buffer_start_size` (2026-10-04); since 2026-10-05 a replay buffer that moves
+and `--replay_buffer_start_size` (2026-10-04), `--player_policy_temperature` and
+`--player_simulations` (2026-10-06), `--alphabeta_share` and `--alphabeta_depth`
+(2026-10-07; the depth per side since 2026-10-08: a share of the positions from games against OpenSpiel's alpha-beta,
+`thud/az/alphabeta_player.h`, only the network's positions recorded, reported apart
+as `vs_alphabeta`), `--kickstart_weight`, `--kickstart_depth` and
+`--kickstart_temperature` (2026-10-08: each recorded position's policy target mixed with
+a softmax of alpha-beta's move scores, a teacher; actors log the settings); since 2026-10-05 a replay buffer that moves
 positions into their slots and compacts itself after loading (`thud/az/replay_buffer.h`)
 and actor and evaluator logs that append; and since 2026-10-03
 logging per-side losses, self-play margins and endings and search statistics —
 `identity_check` (built with upstream's `model`, `vpnet` and `vpevaluator` sources as
 extra arguments, as its header says), `untried_move_check`, `conv_policy_check`,
-`augmentation_check`, `instrumentation_check`, `pruning_check`, `growing_buffer_check`, and from
+`augmentation_check`, `instrumentation_check`, `pruning_check`, `growing_buffer_check`,
+`search_settings_check`, `alphabeta_training_check`, `kickstart_check`, `input_planes_check`
+(the 50 input planes inside the network; `features_check` checks the planes themselves),
+and from
 `thud/experiments/`
-`az_match`, `az_forgetting`, `az_merge_buffers`, `az_target_quality`, `az_head_check`,
-`az_reference_pilot`, `az_noise_check` and `az_search_cost`) are built by
-`thud/az/build.sh MAIN.cc` (`replay_buffer_check`, which needs no LibTorch, by the
-command in its header), which also links Abseil's static libraries (the flag parsing
+`az_match` (since 2026-10-07 also against players without a network:
+`b=hexparrot:N`, through `hexparrot_player.py`, `b=alphabeta:N`, `b=mcts:N`), `az_forgetting`, `az_merge_buffers`, `az_target_quality`, `az_head_check`,
+`az_reference_pilot`, `az_noise_check`, `az_search_cost`, `az_blunder_check`,
+`az_capture_targets`, `az_teacher_stats`, `az_feature_probe` and `az_long_capture_probe`;
+`az_restructure`, which builds a network of a new structure from a trained one and
+its replay buffer, and `az_fresh_optimizer`, a network's weights with a fresh optimizer)
+are built by
+`thud/az/build.sh MAIN.cc` (`replay_buffer_check`, `az_buffer_truncate` and `features_check`, which need
+no LibTorch, by the command in their headers), which also links Abseil's static libraries (the flag parsing
 `libopen_spiel.so` does not re-export) and runs at `nice 19`.
 
 **Now that JAX and PyTorch are in the venv, the next cmake run in `build/` adds their

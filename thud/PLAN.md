@@ -498,8 +498,14 @@ equal machine time. Never stack changes that have not been shown to work.
   self-play, playout caps, a change of reuse or learning rate) and — only when pronounced
   and persistent against a fixed reference — signals (stalled learning, a newer network
   losing, swinging results, a growing gap between fresh and training loss, game length).
-  Every self-play position is archived (~99.4%: the archiver copies a few hundred
-  positions late after each third step).
+  Every self-play position of runs A2 to D is archived (~99.4%: the archiver copies a
+  few hundred positions late after each third step). Since the 7x buffer (run E on) no
+  archiver has run (run E's archive folder is empty): a run's final buffer holds its
+  last ~21 steps, which for our branch runs of 19 steps is every position they made
+  (run K: ~415,000 new positions, the buffer 458,752), and the actors' logs keep every
+  self-play game's moves (not its policy targets); long runs will need the archiver
+  again (`~/thud-runs/archive_buffer.sh`, a copy every `reuse` steps; corrected
+  2026-10-09).
 - **Match-aware play** — after a strong single-battle agent (*Deferred decisions*).
 - **End-of-battle limits** — re-measure once the engine plays strongly (*Deferred
   decisions*).
@@ -512,7 +518,8 @@ equal machine time. Never stack changes that have not been shown to work.
   the head, the verdict may differ (*Changes to the search and trainer*, run C').
 
 **What we have tried, and what to keep** (overview, 2026-10-02, at the user's request;
-the evidence is in the sections named in the decision log below):
+rows added through 2026-10-08; the evidence is in the sections named in the decision log
+below):
 
 | Feature | What we found | Verdict |
 |---|---|---|
@@ -530,9 +537,19 @@ the evidence is in the sections named in the decision log below):
 | Overfitting check in the trainer | Works (control 7.12 against 3.76); none in run C' | **Keep** (a log only) |
 | Symmetry augmentation (5b) | Harness: linear head 75% → 87%, overfitting gone; self-play: G'16 beats G16 by +10.2, its dwarfs better at every step | **Keep**, in every run |
 | Convolutional policy head (5) | Harness: 99% against 75-78%; self-play: run C' −8.5 against C — its dwarf policy barely learnt, but its trolls are much better (+18.4 against E44's dwarfs) | **Revisit as a troll-only head** (hybrid with the linear head for the dwarfs); **re-evaluate both variants once our networks are much stronger** |
+| Convolutional policy head on a trained trunk (2026-10-10) | The long-capture probe: K83's linear head ignores multi-square hurls; the same frozen trunk with a convolutional head trained on run K's buffer (convK83) makes 2-square hurls its top move 81% of the time and shoves visible at every distance; convK83 beat K83 by +16.8 a pair (39 of 40) | **Testing** in training (run L against run K continued) |
 | Playout caps (3b) | Not built; 7x fewer training positions an hour for moderately better targets | **Revisit** on the GPU |
 | Tree reuse (3c) | Not built; ~15-30% more simulations a search, weakens root noise | **Revisit** after 3b, or if the reusable share passes 30% |
 | Resignation | Fits margins badly | **Drop** |
+| Policy target pruning with forced playouts (KataGo; 2026-10-04) | Built behind a switch; the diagnostic: at 100 simulations there are almost no forced playouts to prune — G'44's dwarf targets hold 65% of their mass on noise-boosted moves raw and 65% pruned | **Drop** here (`--policy_target_pruning` stays, off); revisit with more simulations |
+| A replay buffer that moves positions into their slots and compacts itself after loading (2026-10-05) | Upstream's kept every slot at the largest position it had held and loaded with 45% to spare | **Keep**; the fix sent upstream (PR #1637) |
+| The dwarfs' policy temperature 1.5 (run H, 2026-10-07) | No collapse in 19 steps, where G' collapsed within 8 from the same start; H83 beat G'64 by +11.75 (37 of 40 pairs), its dwarfs ~+10 stronger on the ladder; one run each, no other value tried | **Keep** (run H's settings carried into runs I-M; K83, from that line, the top anchor) |
+| Players without a network as yardsticks (hexparrot, alpha-beta depths 1-3, MCTS; 2026-10-07) | Every network loses — to hexparrot by 47-57 a pair, to depth 2 by ~50; they exposed the dwarfs' blunders, which self-play hid | **Keep**, for evaluation; to join the ladder and the trainer's evaluator |
+| More search against the blunders (G'64 at 800 simulations) | Lost as badly: −53.9 against hexparrot (−55.4 at 100), −49.5 against depth 2 (−49.5) | **Not the fix** |
+| Training against alpha-beta, 30% of the positions at depth 2 (run I) | Its trolls learnt to punish (an adjacent dwarf taken 46% of the time in self-play, run H 23.5%), its dwarfs did not (every game against depth 2 ended at −32: no signal); I83 against H83 +2.73 (−0.55 to +6.00), not promoted | **Keep as run K's base**; not enough alone |
+| Alpha-beta's depth per side, depth-1 trolls (run J) | No gain for the dwarfs (they still lose every dwarf against depth 1); J83 against I83 −10.20 (−14.48 to −5.92) | **Drop** |
+| Kickstarting from alpha-beta's move scores, depth 2 (2026-10-08) | Run K (weight 0.3, temperature 0.25): K83 beat I83 by +30.0 a pair (40 of 40) and H83 by +30.6 (40 of 40); the first win against an outside opponent (alpha-beta depth 1, +8.7); mostly the trolls | **Keep** (K83 the top anchor) |
+| Input planes from the rules (20 planes 2026-10-08, replaced by 50 on 2026-10-11) | 48 move planes (direction x distance, at the moving piece) and 2 maps; every check passes (hand-built positions, the move generator, all 8 symmetries, each plane on its own channel, the surgery exact) | **Testing** (run M against run L) |
 | A 32 x 2 network | Its convolutions see only 11 x 11 squares | **Drop**; keep 64 x 4, grow when learning flattens |
 | `uct_c`, temperature drop | Not tried | **Later**, on the GPU |
 | Gumbel AlphaZero | Not tried; a large change | **Later**, only if few-simulation search stays the bottleneck |
@@ -554,6 +571,10 @@ the search and trainer*, run C'.
 | 2026-09-26 | Batched inference (32 actors, batches of 32, 2 inference threads, `OMP_NUM_THREADS=4`) | measured | *Throughput* |
 | 2026-09-26 | Network 64 x 4 to start; grow later | user | *Settings*, 6 |
 | 2026-09-26 | First runs: 100 against 400 simulations at equal time, decided head-to-head | user | *First training runs* |
+| 2026-09-26 | Convolutional head: later in the roadmap (stage 5), first on the layout-check harness — a Thud game is far easier to get accepted upstream than a new network type, so upstream compatibility matters | user | *Changes to the search and trainer* |
+| 2026-09-26 | Our own copy of the C++ AlphaZero and its MCTS, for the changes of stage 3 | user | *Deferred decisions* |
+| 2026-09-26 | Untried moves: measure first | user | *Margins as the value target* |
+| 2026-09-26 | Replay buffer: default 65,536 positions for now | user | *Notes for later* |
 | 2026-09-27 | Compare networks against a common anchor (run A's untrained start) as well, since they rise and fall | Claude, overnight | *First training runs* |
 | 2026-09-27 | 100 simulations for now; revisit with playout caps, not assumed good enough later | user | *First training runs* |
 | 2026-09-27 | The value of untried moves first in stage 3, as urgent | user | roadmap |
@@ -571,6 +592,7 @@ the search and trainer*, run C'.
 | 2026-09-29 | Verify the untried-move rule and the dwarf collapse by evaluating every network as trained (Step 1: C on the new rule, A and the anchor on upstream's); Step 2, a larger buffer, only if C's dwarfs decline as trained; the uneven match parked | user | *First training runs* |
 | 2026-09-29 | Matches: each network may search with its own rule (`untried_a`/`untried_b`); several matches at once with OMP 1, or 64 threads with batch 32 for a large match (tuning: 1,720-1,923 against ~1,050 simulations/s) | Claude, measured | *First training runs* |
 | 2026-09-29 | Tree reuse (3c) postponed, with why, how to build (with Leela Zero's reset and root noise re-applied) and how to test it recorded | user | *Changes to the search and trainer* |
+| 2026-09-29 | Step back: on this CPU only "does it work" questions, tuning on the GPU (3c and 4 after the switch) | Claude's proposal, **open** | status block |
 | 2026-09-30 | Step 2: the quick forgetting check first, then option C (a larger buffer with C's cadence and C's training per step) if warranted — warranted by the check; run D branched from C step 15 | user (green light), Claude (judged warranted) | *First training runs* |
 | 2026-09-30 | Option C's new setting (`learner_batches`) and the new meaning of the buffer size and reuse to be revisited later | user | *Settings to determine*, 7 |
 | 2026-10-02 | Convolutional policy head built as AlphaZero's and Leela Chess Zero's (3x3 convolution, batch norm, ReLU; 3x3 convolution to 120 planes; a fixed map to the 19,800 actions), behind a switch; first on the layout-check harness, with held-out and training positions for overfitting, after the night's runs | user (go-ahead, queue after the runs), Claude (design, from the sources) | *Changes to the search and trainer* |
@@ -590,25 +612,35 @@ the search and trainer*, run C'.
 | 2026-10-03 | Continue run G' (augmented, 7x) tonight from step 16: does the long memory pay off later? Compare at equal steps with C29 and D29 (and E44 if it gets that far) | user (proposed), Claude (agreed) | *Changes to the search and trainer*, symmetry augmentation (runs G and G') |
 | 2026-10-03 | Stage 5c (instrumentation) before the next new run | user | roadmap, 5c |
 | 2026-10-03 | How we evaluate networks: strength by a ladder of fixed anchors with one rating (linear cost), training health by a fixed validation set; the set versioned, with three signals that a version is outdated (no headroom, decoupling from the ratings, the reference beaten at its own budget); its reference chosen by a pilot | user (with Claude's proposal) | *Instrumentation*, *How we evaluate networks* |
+| 2026-10-03 | The convolutional head's trolls are much better (against E44's dwarfs +9.8 against C16's −8.6), its dwarfs much worse: a hybrid head (convolutional for the trolls, linear for the dwarfs) is a strong candidate | measured; for the user to decide | *Changes to the search and trainer*, run C' |
+| 2026-10-03 | Cloud GPU: start on a weaker, cheaper one with many CPU cores, move to stronger ones later; on every machine switch, reason about or benchmark the machine-dependent settings first | user | roadmap, 6; *Cloud GPU options* |
+| 2026-10-03 | Re-evaluate convolutional policy heads (for both sides, or the trolls only) once our networks are much stronger | user | *Later, when a trigger fires* |
+| 2026-10-03 | No fixed validation set (the pilot: strong searches agree on the best move only ~20% of the time; a value-only set of low value): the ladder for strength, the trainer's statistics for training health, as Leela Zero and Leela Chess Zero do | user | *How we evaluate networks* |
+| 2026-10-04 | Run G' (fresh, 7x, augmentation) is the strongest network: beats C29, D29, E44 at equal steps and A14 (+3.2); top of the ladder (+6.9 against E44) | measured | *Changes to the search and trainer*, runs G and G' |
+| 2026-10-04 | Next change: KataGo's forced playouts and policy target pruning in our copy (behind a switch); first the noise diagnostic on pruned targets (do two noise seeds agree much more?), then a run against G' at equal steps; the hybrid head after it | user (Claude's proposal) | *Changes to the search and trainer*, runs G and G' |
+| 2026-10-04 | Ladder promotion rule: beat the top anchor in ≥ 40 pairs with the 95% interval of the pair margin above 0 (≈ Leela Zero's 55% of 400 games); G'44 promoted to top anchor | user | *How we evaluate networks* |
 | 2026-10-05 | The growing buffer is not adopted: run W started the dwarfs' policy earlier but W29 loses to G'29 by −20.2 (its trolls drifted); G''s settings (7x from step 1, augmentation) stay the baseline; the dwarfs' policy is not what limits strength at this stage | measured; the user (confirmed) | *Changes to the search and trainer*, run W |
 | 2026-10-05 | Tune the algorithm settings (`uct_c` with the untried-move reduction, root noise, the temperature's drop) on the GPU, not on this CPU; continue run G' tonight meanwhile | user | *Cloud GPU options*, How we tune the algorithm settings |
 | 2026-10-05 | Instrumentation items 5 and 6 (the evaluation watcher, the game analyser) built now, for the GPU tuning; item 7 only if training turns unstable | user | *Instrumentation* |
 | 2026-10-05 | The replay buffer moves each position into its slot and compacts itself after loading (our copy, `thud/az/replay_buffer.h`; upstream's kept every slot at the largest position it held and loaded with 45% spare); run G' stopped after step 54 to resume on it | user | *Instrumentation*, the buffer's memory |
 | 2026-10-05 | The batching evaluator's moves reverted: they saved neither compute nor RAM, and similarity to upstream helps | user | *Instrumentation*, the buffer's memory |
-| 2026-10-05 | Send the replay buffer fix upstream as its own small PR (generic, no Thud content; after the Google CLA, with the GitHub noreply address) — opened 2026-10-06 as [#1637](https://github.com/google-deepmind/open_spiel/pull/1637) | user | *Upstreaming*, a first, smaller PR |
 | 2026-10-05 | The load test's second half not run: its first half's answer is clear (the evaluation watcher costs ~25-35% of self-play beside the trainer on this machine, mostly efficiency) | user | *Instrumentation*, item 5 |
-| 2026-10-04 | Ladder promotion rule: beat the top anchor in ≥ 40 pairs with the 95% interval of the pair margin above 0 (≈ Leela Zero's 55% of 400 games); G'44 promoted to top anchor | user | *How we evaluate networks* |
-| 2026-10-04 | Next change: KataGo's forced playouts and policy target pruning in our copy (behind a switch); first the noise diagnostic on pruned targets (do two noise seeds agree much more?), then a run against G' at equal steps; the hybrid head after it | user (Claude's proposal) | *Changes to the search and trainer*, runs G and G' |
-| 2026-10-04 | Run G' (fresh, 7x, augmentation) is the strongest network: beats C29, D29, E44 at equal steps and A14 (+3.2); top of the ladder (+6.9 against E44) | measured | *Changes to the search and trainer*, runs G and G' |
-| 2026-10-03 | No fixed validation set (the pilot: strong searches agree on the best move only ~20% of the time; a value-only set of low value): the ladder for strength, the trainer's statistics for training health, as Leela Zero and Leela Chess Zero do | user | *How we evaluate networks* |
-| 2026-10-03 | Re-evaluate convolutional policy heads (for both sides, or the trolls only) once our networks are much stronger | user | *Later, when a trigger fires* |
-| 2026-10-03 | Cloud GPU: start on a weaker, cheaper one with many CPU cores, move to stronger ones later; on every machine switch, reason about or benchmark the machine-dependent settings first | user | roadmap, 6; *Cloud GPU options* |
-| 2026-10-03 | The convolutional head's trolls are much better (against E44's dwarfs +9.8 against C16's −8.6), its dwarfs much worse: a hybrid head (convolutional for the trolls, linear for the dwarfs) is a strong candidate | measured; for the user to decide | *Changes to the search and trainer*, run C' |
-| 2026-09-29 | Step back: on this CPU only "does it work" questions, tuning on the GPU (3c and 4 after the switch) | Claude's proposal, **open** | status block |
-| 2026-09-26 | Replay buffer: default 65,536 positions for now | user | *Notes for later* |
-| 2026-09-26 | Untried moves: measure first | user | *Margins as the value target* |
-| 2026-09-26 | Our own copy of the C++ AlphaZero and its MCTS, for the changes of stage 3 | user | *Deferred decisions* |
-| 2026-09-26 | Convolutional head: later in the roadmap (stage 5), first on the layout-check harness — a Thud game is far easier to get accepted upstream than a new network type, so upstream compatibility matters | user | *Changes to the search and trainer* |
+| 2026-10-05 | Send the replay buffer fix upstream as its own small PR (generic, no Thud content; after the Google CLA, with the GitHub noreply address) — opened 2026-10-06 as [#1637](https://github.com/google-deepmind/open_spiel/pull/1637) | user | *Upstreaming*, a first, smaller PR |
+| 2026-10-06 | G'44 stays the top anchor; promotion also needs the ladder rating above the top anchor's, the 95% interval of the difference above 0 (G'73 met the head-to-head test only by exploiting G'44's dwarfs: ladder difference +0.4, −2.0 to +2.8). Part 2 of G''s evaluation (the strength curve, steps 48-72) before deciding how to go on | user | *How we evaluate networks*; runs G and G' |
+| 2026-10-07 | G'64 the top anchor (it passes both tests of the tightened promotion rule: +8.60 against G'44 in 40 pairs, ladder difference +5.8, +3.7 to +7.9); G'44 stays an anchor | user | *How we evaluate networks* |
+| 2026-10-07 | Outside opponents: hexparrot's AI through a bridge first; OpenSpiel's MCTS with far more than 1,000 simulations and its alpha-beta at a strong depth, all overnight; equal-time comparisons later, by an iteratively deepening alpha-beta | user | *How we evaluate networks* (outside opponents) |
+| 2026-10-07 | Training against alpha-beta: 30% of the training positions (not games: those games are short and half recorded) from games of our network against OpenSpiel's alpha-beta at depth 2 (each side half the time), only our network's positions recorded; first test a constant share in run I (G'64 with run H's settings plus these games) against run H's steps 65-83; in long runs tapered by results per side to a ~10% floor, stronger opponents as ours improve; not imitation first | user | *How we evaluate networks* (training against alpha-beta) |
+| 2026-10-07 | H83 the top anchor (both tests of the promotion rule: +11.75 against G'64 in 40 pairs, ladder difference +12.2, +8.7 to +15.6); run H the main line proposed; G'64 stays an anchor | user | *How we evaluate networks*; run H |
+| 2026-10-08 | Run J: run I with alpha-beta's depth per side (1 as the trolls, so that our dwarfs' games against it carry a signal; 2 as the dwarfs), against run I from the same start | user | *How we evaluate networks* (training against alpha-beta) |
+| 2026-10-08 | Kickstarting first, the input features from the rules as their own experiment later: the capture check showed the prior following the targets (G'64 → I83: captures 0.123 → 0.169 of the trolls' prior), so the network can represent captures, and the targets ask for them too weakly (the confirmation, the other half of what the user agreed would decide, runs on the night of 2026-10-08) | measured (the check the user agreed would decide) | *How we evaluate networks*: input features from the rules, kickstarting |
+| 2026-10-08 | Kickstarting's teacher at depth 2 for both sides: depth 3 is affordable for the trolls (~20-35% of the trainer's throughput) but what the diagnosis found lies within depth 2 | user | kickstarting |
+| 2026-10-08 | Run K: run I plus kickstarting (weight 0.3, temperature 0.25, depth 2), from run I's start, against run I; launched on the user's go | Claude (proposed), user (adopted) | kickstarting |
+| 2026-10-08 | The settings built since 2026-10-05 join the list to revisit on a new machine: alpha-beta's CPU cost (group 1), simulations per side and alpha-beta's depths (2), the policy temperature per side (3), the scaffolds' schedules (a new group 5) | user (asked), Claude | *Cloud GPU options* |
+| 2026-10-09 | A tool to restructure a network — copy weights (function-preserving) or train from a saved replay buffer — designed now, built when run K's results pick the first change of structure (input features, a convolutional or hybrid head, or none yet) | user (asked), Claude (design) | *How we evaluate networks*, a tool to restructure a network |
+| 2026-10-10 | K83 the top anchor (both tests of the promotion rule: +30.57 against H83 in 40 pairs, +27.28 to +33.87; ladder difference +42.9, +37.2 to +48.6); H83 stays an anchor | user | *How we evaluate networks*; kickstarting |
+| 2026-10-11 | Run L (convK83, the convolutional head, trained on with run K's recipe) against run K continued, same start and steps; then run M (the input planes) against run L: one change a run | user (Claude's order; the user: clean evaluation) | the long-capture probe; a tool to restructure a network |
+| 2026-10-11 | The input planes: 58 at first (56 move planes, direction x distance 1-7 at the moving piece's square, shared by both sides; 2 maps at the affected squares, takeable and danger merged); tests before code; learning traced over many steps; the destination risk re-evaluated after run M | user | *How we evaluate networks*: the input planes, as decided |
+| 2026-10-11 | 50 input planes, not 58: the 8 diagonal move planes of 6 and 7 squares left out — a capture of k squares needs 2k squares in a line, the longest diagonals hold 10, so they are zero in every position (checked: the board has room for every kept kind, direction and distance and none of these); a uniform layout brings nothing (a convolution ignores its channels' order) | user | the input planes, as decided |
 
 **Considered and set aside** (with the reason): the Python AlphaZero (a layout bug, and
 slow; fallback note below); a 32 x 2 network (its convolutions see 11 x 11 squares);
@@ -1238,7 +1270,7 @@ first session, with no patch at all.**
     and the values' numbers are much as in C.
   - **D is the strongest network of the C/D family**: D29 beats C29 by +7.3 and C16 by
     +8.4 (C29 beat C16 by +4.1); its dwarfs score +7.5 against C16's trolls.
-  - **Against fixed outside opponents D is better than C but still declines**: against
+  - **Against fixed opponents (other runs' networks) D is better than C but still declines**: against
     A14 −5.4 (C29: −8.5); its dwarfs against the anchor fall from +11.7 at step 20 to +3.2
     at step 29 (C: +3.2, +0.9, −0.6 at steps 20, 24, 29; D29 minus C29 +3.8, p = 0.07);
     the trolls stay at +25-26 in both runs.
@@ -1431,26 +1463,46 @@ first session, with no patch at all.**
      the inference cache's size and shards; network copies (devices — several on one
      GPU may get past the batching cap); match threads and batch; memory and disk (a
      7x buffer ~4.4 GB of RAM plus its copy written each step, ~26 s here; checkpoints
-     ~110 MB a step at 64 x 4).
+     ~110 MB a step at 64 x 4); and the CPU cores beside the GPU, which alpha-beta
+     needs — as training opponent and as kickstarting's teacher it runs on the actors'
+     CPU threads, ~21 ms a position at depth 2 here, ~4% of a self-play move: where the
+     network gets much faster, that share grows, and alpha-beta may set the pace
+     (added 2026-10-08).
   2. *Compute-budget settings* — what becomes affordable; they change learning, and
      our CPU answers were shaped by scarce compute: simulations a move (100 won here at
      equal time early in training — try 200-800); playout caps (3b); the network's size
      (grow when learning flattens); batches per learning step and the training batch
      size; the learning rate (tied to the batch size, never tuned); the buffer and the
      cadence (defined per position, so they carry over, but a faster machine fills the
-     buffer in fewer hours).
+     buffer in fewer hours); simulations per side (`--player_simulations`, built
+     2026-10-06, not yet used); alpha-beta's depth as opponent and as teacher
+     (`--alphabeta_depth`, `--kickstart_depth`: depth 3 costs ~180x depth 2 for the dwarfs
+     (3.8 s a position) and ~23x for the trolls (0.5 s) with OpenSpiel's alpha-beta —
+     more cores, or an alpha-beta of our own, make it affordable; added 2026-10-08).
   3. *Algorithm settings* — machine-independent but never tuned; on the GPU with
      several runs per setting: `uct_c` (2), the untried-move reduction (0.2), root noise
-     (α 0.1, perhaps per side; ε 0.25), the temperature and its drop (10 moves);
-     augmentation stays on.
+     (α 0.1, perhaps per side; ε 0.25), the temperature and its drop (10 moves); the
+     policy temperature per side (`--player_policy_temperature` 1.5 for the dwarfs
+     since run H, which beat G' continued from the same start — one run each — and
+     never compared with other values; added 2026-10-08); augmentation stays on.
   4. *Evaluation settings* — pairs per match (40), simulations in matches (100), the
      ladder's anchors: independent of the machine, only the cost per pair changes.
+  5. *Scaffold settings* (added 2026-10-08) — teachers meant to fade, not to stay:
+     training against alpha-beta (`--alphabeta_share` 0.3; its taper by results, per
+     side, to a ~10% floor, not yet built) and kickstarting (`--kickstart_weight` 0.3,
+     `--kickstart_temperature` 0.25; its decay to zero, not yet built). Machine-
+     independent; what to tune is less their values than their schedule — how long
+     they stay and how fast they fade — judged per side by the ladder and by matches
+     against players without a network, and only if they are still in the recipe by
+     then (on a faster machine, a run from scratch may need them less, or for fewer
+     steps).
   **Order on a new machine**: (1) set up and check correctness — the build, our test
   programs, `identity_check`, a short tic-tac-toe control; (2) benchmark group 1, ~1
   hour — `az_search_cost`, then actors x inference threads x batch with the real
   network; (3) **a baseline repeat**: G''s settings to step ~16, which should learn
   per step as on this CPU — the positive control for the move; (4) then groups 2 and 3,
-  one change at a time, 2-3 runs per setting. **Rule**: what is defined per step (the
+  one change at a time, 2-3 runs per setting, and group 5's schedules if the scaffolds
+  are still used. **Rule**: what is defined per step (the
   cadence, the buffer in positions, equal-steps comparisons) carries over between
   machines; what is defined per hour (time limits, equal-time comparisons) does not.
 
@@ -1665,7 +1717,8 @@ mixed, a weak opponent). The text logs hold more: each actor logs **every self-p
 with its returns and full move list**, the evaluator every game against MCTS (its side
 recoverable from the returns line). Saved on disk: a checkpoint per step and the final
 replay buffer — for runs with a 7x buffer through step 16 that is every position of
-the run, otherwise only the last ~3 steps (runs C and E had an archive besides). Our
+the run, otherwise only the last ~3 steps (run C had an archive besides; run E's
+archive folder is empty). Our
 tools work from these after the fact: `az_buffer_stats` (search breadth per side),
 `az_forgetting` (a network's fit to older positions), `az_target_quality` (targets
 against deeper searches), `az_match` (strength as trained, per side), `az_head_check`.
@@ -1974,24 +2027,699 @@ keep for the rest of the project):
   D29 −5.4 ± 2.1, C29 −10.3 ± 2.5, G'16 −10.5 ± 5.2, C16 −13.3 ± 2.2, G16 −21.4 ± 3.9,
   C'16 −21.5 ± 3.3 — the order of every head-to-head we have (G'16 above G16 by 10.9,
   observed 10.2; C16 above C'16); per side, C''s trolls +7.4 against E44's (its dwarfs
-  −28.9), A14's +12.4 (its dwarfs −10.6). **Anchors:** G'44 (promoted 2026-10-04), A14,
-  E44, D29, C29, C16 (as trained). **Promotion rule** (decided by the user,
-  2026-10-04): a network joins the anchors when it beats the top anchor head-to-head
-  in at least 40 pairs with the 95% interval of its pair margin above 0 — about 97.5%
-  one-sided confidence, as Leela Zero's gate (55% of 400 games, ~2 standard errors
-  above 50%); the margin carries more information per game than a win, so fewer
-  games suffice. Unlike Leela Zero's gate, ours does not choose which network
-  generates the training games — it only adds a reference point — so a wrong
-  promotion costs little. **G'44 promoted** (2026-10-04: beat A14 by +3.2, +0.7 to
-  +5.8, 60 pairs). Each new network plays the 2-3 anchors nearest its rating, 40
-  pairs each. When a network
-  clearly beats the top anchor, a frozen copy joins the ladder. Anchors so far: the
-  untrained network (A0), C16, D29, E44, A14. Rating against fixed opponents is, as far
+  −28.9), A14's +12.4 (its dwarfs −10.6). **Anchors:** K83 (the top anchor, promoted
+  2026-10-10; as trained, with its run's dwarf temperature 1.5), H83 (promoted
+  2026-10-07 evening; as trained, likewise), G'64 (promoted
+  2026-10-07 morning), G'44 (promoted 2026-10-04), A14, E44, D29, C29, C16 (as trained). **Promotion rule** (decided by the user,
+  2026-10-04; **tightened 2026-10-06**): a network joins the anchors when (1) it beats
+  the top anchor head-to-head in at least 40 pairs with the 95% interval of its pair
+  margin above 0 — about 97.5% one-sided confidence, as Leela Zero's gate (55% of 400
+  games, ~2 standard errors above 50%); the margin carries more information per game
+  than a win, so fewer games suffice — **and (2) its ladder rating is above the top
+  anchor's with the 95% interval of the difference above 0** (`ladder.py --compare
+  NEW,TOP`, from the fit's covariance, which accounts for the two ratings sharing
+  opponents). Test (2) was added after G'73 met (1) by exploiting G'44's dwarfs (+4.7,
+  +1.9 to +7.5) while rating no higher (+0.4, −2.0 to +2.8): head-to-head alone can
+  reward a network that beats the top anchor in particular (a non-transitive result);
+  the ladder weighs every opponent. Unlike Leela Zero's gate, ours does not choose
+  which network generates the training games — it only adds a reference point — so a
+  wrong promotion costs little. **G'44 promoted** (2026-10-04: beat A14 by +3.2, +0.7
+  to +5.8, 60 pairs); **G'73 not promoted** (2026-10-06; the user: keep G'44 for the
+  moment); **G'64 promoted** (2026-10-07, the user: beat G'44 by +8.60, +5.87 to +11.33,
+  40 pairs; ladder difference +5.8, +3.7 to +7.9); **H83 promoted** (2026-10-07
+  evening, the user: beat G'64 by +11.75, +9.0 to +14.5, 37 of 40 pairs; ladder
+  difference +12.2, +8.7 to +15.6 — though it lost every pair to hexparrot's AI the same
+  evening, as G'64 did: the ladder compares our networks only). Each new network plays the 2-3 anchors nearest its rating, 40 pairs each.
+  When a network passes both tests, a frozen copy joins the ladder. Rating against fixed opponents is, as far
   as we know, the usual practice in AlphaZero-style projects (cite a source before
   relying on details). (2) *Training health*, by the **validation set**: minutes, every
   step, per side, comparable across steps and runs — whether a run still learns and
   where (plateaus, overfitting, one side falling behind). It need not measure absolute
   strength, and stays informative while our networks are clearly below its reference.
+- **Outside opponents: players without a network** (2026-10-07; the user asked to look
+  for other Thud AIs, expecting them to be stronger for now — rightly). No strong Thud
+  engine is published. Those with a computer player: hexparrot/thudgame (hand-written
+  rules — greedy captures, blocks against troll lines, an influence map; its
+  "lookahead" plays its own rules forward, for the dwarfs only), Saucistophe/Thud
+  (alpha-beta, depth 3, material plus troll clustering and mobility with a genetic
+  algorithm's weights; there a troll step captures exactly one dwarf, not all or
+  none), Schkliba/thud-game (alpha-beta on material), dstu/thud (UCT with random
+  playouts), THFlowers/Thud-CLI (one random playout per root move); a Code Golf
+  contest (AJFaraday/Thud) got no entries; nothing in Ludii or Zillions of Games.
+  `az_match` plays three kinds as side B: `b=hexparrot:LOOKAHEAD` (its own AI, through
+  `thud/experiments/hexparrot_player.py`; positions cross, not moves, so a move our
+  rules do not allow stops the match), `b=alphabeta:DEPTH` (OpenSpiel's
+  `AlphaBetaSearch`, in plies, scoring by material as the battle is scored, plus a
+  random tie-break below a quarter point), `b=mcts:SIMS` (OpenSpiel's MCTS with random
+  rollouts, as the trainer's evaluator plays it); `games=PATH` logs every move. Checked:
+  matches between networks play the same games as the previous binary (3 pairs; the
+  control, another seed, differs); reruns against hexparrot repeat their games. **First
+  pairs (one each, G'64 at 100 simulations): hexparrot −57 and −53, alpha-beta depth 2
+  −46, depth 1 −44 (1 ms a move against G'64's 1.8 s), MCTS-300 +20.** G'64's dwarfs
+  step next to a troll to threaten a hurl; hexparrot's and alpha-beta's trolls take that
+  dwarf every time (27 of 27, 29 of 29) — all 32 dwarfs gone in 70-80 moves. In G''s
+  own self-play the trolls take such a dwarf at once in 23% of cases (1,690 in 60
+  games), MCTS-300's in 27% (7 of 26): neither self-play nor the evaluator against MCTS
+  ever punished it. Its trolls walk into hurling range (hexparrot's dwarfs hurled 7 of
+  8). **The ladder rated our networks only against each other and could not see
+  this.** Full matches against hexparrot (2026-10-07 evening): G'64 −55.4 a pair (−56.8
+  to −54.0, 40 pairs), H83 −51.6 (−53.5 to −49.8, 40), G'44 −56.4 (20), E44 −55.7 (20)
+  — none won a pair; as dwarfs −31.4 to −31.6 (nearly every dwarf lost in every
+  battle), as trolls −20.2 to −24.8; our networks thought ~2.4 s a move, hexparrot
+  ~0.03 s. **The night's answers** (2026-10-07 16:28 to 2026-10-08 02:47, all against
+  the same seeded openings; a match killed by mistake replayed its 9 finished pairs
+  exactly): (1) **every run has the blind spot** — D29 −55.0, C16 −56.6, and A14 −47.3
+  (its dwarfs −31.2 like all; only its trolls better, −16.1), so upstream's rule for
+  untried moves is not the cause: it is self-play co-adaptation throughout; (2) **more
+  search does not fix it** — G'64 at 800 simulations −53.9 against hexparrot (−55.4 at
+  100), −49.5 against depth 2 (−49.5): the network misjudges these positions; (3) the
+  alpha-beta rungs, G'64 / H83: depth 1 −28.1 / −25.2 (H83 won 1 of 20 pairs; as trolls
+  only −4.5 / −3.4), depth 2 −49.5 / −49.2, depth 3 −56.4 / −55.0 — **depth 3 thinks
+  1.3-1.6 s a move, as long as our networks (1.5-1.65 s): at equal time we lose by 55**.
+  Deferred: MCTS-10,000/-100,000 and depth 4. The night of 2026-10-07 (`~/thud-runs/outside_2026-10-07.py`, 21 matches,
+  seed 1 for all; **reordered at 17:15 with the user** — `night2_2026-10-07.py`: the
+  informative ones below up to depth 3, then run I and its evaluation; MCTS-10,000 and
+  -100,000 and depth 4 deferred until our networks beat the lower rungs): hexparrot against G'64 and H83 (40 pairs) and G'44, E44, D29, C16,
+  A14 (20 — is the weakness common to every run, A14's upstream rule for untried moves
+  included?); alpha-beta depths 1 and 2; G'64 at 800 simulations against hexparrot and
+  depth 2 (does more search fix it?); depth 3, MCTS-10,000, depth 4, MCTS-100,000
+  (measured: depth 3 0.08-0.9 s a move, depth 4 4-12 s; MCTS 10,000 2-4 s and ~12 MB
+  of tree, 100,000 35-49 s and up to 1.03 GB). Each side's seconds per move are recorded, for
+  **equal-time comparisons** later (the user), with an alpha-beta of our own that
+  deepens iteratively under a deadline — OpenSpiel's has none, and a ply costs 10-140x
+  more here — checked against `AlphaBetaSearch`'s values at fixed depths. **Proposed,
+  to decide with the night's results:** the trainer's evaluator against alpha-beta
+  depths 1-2, not only MCTS; hexparrot and alpha-beta as ladder anchors.
+- **Training against alpha-beta** (decided by the user, 2026-10-07). The user asked
+  whether to use alpha-beta in training while our network is weak — giving up learning
+  from rules alone at first — since our dwarfs lack the essentials. The evidence: in
+  every pairing we have where one player plays both sides, the dwarfs come out ahead
+  (hexparrot's AI 85% of 3,000 games, MCTS-5,000 19 of 20 at +17.7, MCTS-1,000 7 of
+  10), while in our networks' self-play the trolls do (G''s dwarfs −1.9 to −9.3, run
+  H's −1 to −2); only random play favours the trolls. **Decided:** (1) a share of the
+  training positions comes from games of **our network against OpenSpiel's alpha-beta
+  at depth 2** (~2 ms a move), alpha-beta playing the trolls in half and the dwarfs in
+  the other half — a share of positions, not of games (below); **only
+  our network's positions enter the replay buffer**, with its own search's targets and
+  the outcome — alpha-beta only punishes, nothing imitates it (imitation first was
+  rejected: a copy of a 2-ply material player learns its blind spots; AlphaGo Zero's
+  from-scratch run overtook the one started from human games within about a day). The
+  rest stays self-play, so the network still finds its own strategy. (2) The first
+  test: **a constant 30% of the positions**, as **run I**: G'64 with run H's settings
+  plus these games, against run H's own steps 65-83 from the same start — one run
+  instead of two (Claude's proposal, 2026-10-07; the user: "sounds all great"), judged
+  per side against hexparrot and alpha-beta depths 1-3 and on the ladder;
+  if it fixes the blunders, a fresh run with it (do the dwarfs learn early?). (3) In
+  long runs, **taper by results, per side, to a floor of ~10%**: once a side clearly
+  beats alpha-beta in the trainer's evaluation, its share falls and the opponent gets
+  stronger (depth 3, hexparrot); the floor keeps new co-adapted habits punished (as
+  AlphaStar's league keeps its exploiters). In reserve, if that is not enough:
+  kickstarting (Schmitt et al., 2018) — pulling the policy toward alpha-beta's move
+  values (built 2026-10-08 as a mix of the policy targets, which changes neither the
+  buffer's format nor the loss; below). The night's results could still change the
+  lever: if G'64 at 800 simulations stopped blundering, search depth would be part of
+  it; if A14 (upstream's rule for untried moves) blundered alike, it would be self-play
+  co-adaptation throughout — both lost as badly (above): co-adaptation. **Built 2026-10-07** (our
+  copy, off by default): `--alphabeta_share` and `--alphabeta_depth`; the opponent is
+  `thud/az/alphabeta_player.h`, which `az_match`'s `b=alphabeta:N` now shares (its
+  games byte-identical to before, network matches identical to the old binary); each
+  actor alternates the side alpha-beta plays, and the actor's log line says so
+  ("Opponent: alphabeta:2 as trolls;", which `analyse_games.py` reads and leaves out of
+  its self-play statistics); the learner adds these games' positions to the buffer but
+  reports them apart (`vs_alphabeta` in `learner.jsonl`: our network's return as each
+  side, the positions), the self-play statistics staying self-play's. Checked by
+  `thud/az/alphabeta_training_check.cc` (all pass at the first run): only the
+  network's positions recorded, one per its move, the returns the final position's;
+  every alpha-beta move the player's choice with the game's seed (control: another seed
+  differs); self-play still records both sides; the log lines; depth 1 takes a free
+  capture, depth 2 never steps a lone dwarf next to a troll over 40 seeds (control:
+  depth 1 does on 2); the configuration round-trips and older configs load. A 3-step
+  trainer run (16 x 1 network, 20 simulations, share 0.3): 29% of 59 games against
+  alpha-beta (8 and 9 per side), and per step self-play plus these games add up
+  exactly to the learner's games and positions. **A share of games is not a share of
+  positions**: alpha-beta routs a weak network fast, and only our half of the moves is
+  recorded, so there the games gave 1-10% of the positions; for stronger networks
+  (G'64's battles against alpha-beta 66-256 moves) perhaps ~15%. **So the share is one
+  of positions** (the user asked to raise it, as it is tapered anyway; Claude: change
+  the unit — it is the share of the training data that carries the punishment, and
+  of the actors' time): each actor plays alpha-beta whenever the positions its games
+  against it recorded fall short of the share of all it recorded. For a network like
+  G'64 (~400 positions a self-play game, ~70 against alpha-beta) 30% of the positions
+  is ~70% of the games and ~30% of the actors' time; it stays where it is set as the
+  network survives longer against alpha-beta, and tapering is lowering it. Checked by a
+  second 3-step trainer run (share 0.3 of positions): 0.31, 0.32 and 0.24 per step,
+  **0.29 over all** (3,697 of 12,803 positions), 64-74% of the games; each actor near
+  the target (17-20 of 24-28 games); the sides 36 and 37; the books balanced at every
+  step; `alphabeta_training_check` passes again.
+  **Run I** (2026-10-07 19:29 to 2026-10-08 02:08, steps 65-83, mains, no pause;
+  `~/thud-runs/runI_Gaug64_T15_AB30`: G'64 with run H's settings plus 30% of the
+  positions against alpha-beta depth 2; its control run H's steps 65-83): **its trolls
+  learnt to punish, its dwarfs learnt nothing against punishing opponents.** 24-37% of
+  each step's positions came from alpha-beta games. In its self-play the trolls take a
+  dwarf left next to them 46% of the time (run H 23.5%, G' 24.1%, its last 40 games
+  each), its dwarfs offer 15.0 such moves a game (H 17.4, G' 26.4); its dwarfs'
+  self-play margin fell from +1.2 to −11..−14 (the trolls punishing). Against players
+  without a network, I83 / H83: hexparrot −52.7 / −51.6 (dwarfs −31.6 / −31.4, trolls
+  −21.1 / −20.2), alpha-beta depth 1 −20.8 / −25.2 (**trolls +2.8 / −3.4**, dwarfs −23.6
+  / −21.9), depth 2 −49.6 / −49.2, depth 3 −52.8 / −55.0 (trolls −21.2 / −23.6). On the
+  ladder (58 matches): I68-I83 +24.4 to +28.1 (I80 the highest yet), H83 +22.6 (refitted);
+  the gain is the trolls' (I +12.6 to +17.1, H +3.3 to +7.0), the dwarfs equal (~+11).
+  I83 against H83 +2.73 a pair (−0.55 to +6.00), 28 of 40 pairs; ladder difference +2.8
+  (−0.6 to +6.1): **the promotion rule is not met**; H83 stays the top anchor. **Why
+  the dwarfs did not learn: their games against alpha-beta carried no signal.** Our
+  dwarfs lost every dwarf in every training game against depth 2 (−32 at every step;
+  in the evaluation 19 of 20 games), and the value target is the final result, so every
+  dwarf position of those games got the same target and nothing told a blunder from a
+  good move; the trolls' games ended between −27 and −7. Against depth 1 our dwarfs end
+  between −32 and −7 (its trolls take every dwarf left next to them but walk into hurls
+  themselves). **Decided** (the user, 2026-10-08): **run J**, run I with alpha-beta's
+  depth per side — 1 when it plays the trolls, 2 when it plays the dwarfs
+  (`--alphabeta_depth=2,1`) — against run I from the same start; the trolls' depth to
+  rise as our dwarfs improve (the tapering by results). Further levers if that is not
+  enough: value targets that see a blunder directly (material a few moves ahead,
+  n-step returns), kickstarting. **Built 2026-10-08:** `alphabeta_depth` is a per-player
+  list ("2,1"; one value for both; a number in older configs loads as that number),
+  `AlphaBetaDepth` in our copy; `alphabeta_training_check` parts 7-8 (all pass); a
+  2-step trainer run played 24 games against depth-1 trolls and 23 against depth-2
+  dwarfs; a malformed list stops the trainer at its start. Run J's folder
+  (`~/thud-runs/runJ_Gaug64_T15_AB30_d21`) is run I's start, its config differing only
+  in the depth; `~/thud-runs/runJ_2026-10-08.py` (dry-run with fakes) waits for mains
+  power, trains to step 83, then evaluates as run I was, plus J83 against I83.
+  **Run J** (2026-10-08 07:19-14:44 on mains, no pause; its evaluation to 19:26, paused
+  59 minutes when the laptop lost power and slept, results unaffected): **no gain for
+  the dwarfs.** Its dwarfs' training games against depth-1 trolls stayed at −26.3 (step
+  65) to −26.5 (75); in self-play they offered 16.7 dwarfs a game (run I 13.4), its
+  trolls took 38.8% at once (I 42.1%). Against players without a network J83 / I83:
+  hexparrot −52.5 / −52.7 (dwarfs −31.8 / −31.6), depth 1 −18.1 / −20.8 (dwarfs −22.8 /
+  −23.6, trolls +4.8 / +2.8), depth 2 −50.4 / −49.6, depth 3 −54.9 / −52.8. **Against
+  depth 1 every margin of our dwarfs is a multiple of 4** (−32 to −16): they lose every
+  dwarf in every game, and the result varies only with the trolls they killed first —
+  so the variation carried a signal about hurling, none about keeping dwarfs alive.
+  J83 against I83 **−10.20 a pair (−14.48 to −5.92)**, 7 of 40 pairs, as dwarfs −12.12
+  (against I83's punishing trolls), as trolls +1.93; ladder J68 +16.9, J72 +14.1, J76
+  +25.9, J80 +20.8, J83 +13.0 (its dwarfs −0.2 ± 4.0, against I83 alone); J83 − I83
+  −10.8 (−14.4 to −7.3). Run I stays the better branch. **The dwarfs need a signal
+  that registers a dwarf lost soon after the move that lost it**, not 40 moves later:
+  short-term value targets (KataGo trains auxiliary heads on discounted future values a
+  few turns ahead) or kickstarting their policy from alpha-beta's scores of each move —
+  to choose after a diagnosis on the blunder positions (is it the dwarfs' prior, the
+  trolls' prior inside the dwarfs' search, or the value of the position after the
+  capture?). **The diagnosis** (2026-10-08, `thud/experiments/az_blunder_check.cc` on
+  the games against hexparrot, 150 blunders each of G'64 and I83, searched again as
+  played): a blunder is a non-capturing dwarf move next to a troll taken at once —
+  **82% of G'64's dwarf moves, 50% of I83's**. (1) The dwarfs' prior favours them: such
+  moves hold 39% (G'64) / 50% (I83) of the prior's mass against 18-19% of the legal
+  moves, the blunder its top move 47% / 53% of the time. (2) **The trolls' prior inside
+  the dwarfs' search hardly sees the capture**: its prior median 0.006 / 0.008 (below
+  0.02 in 72% / 75% of cases), visited at all in 22% / 19% of the searches at 100
+  simulations (28% / 30% at 800), 4% of that node's visits — so the dwarfs' search
+  takes the troll's reply to be harmless: the co-adaptation sits inside the search. At
+  800 simulations the search drops the blunder in 56% / 62% of these positions, still
+  leaving far too many (G'64 at 800 lost as badly). (3) The value head registers
+  material at about a third of its face value for both sides — a dwarf lost −0.023 /
+  −0.011 (its material 0.031), a troll removed +0.054 / +0.039 (0.125): compressed,
+  not blind to dwarfs. So the cause is the priors — above all the trolls' — not the
+  value: kickstarting both sides' policies from alpha-beta's move scores fits,
+  short-term value targets less.
+- **Input features from the rules** (proposed by the user, 2026-10-08; after the
+  capture check below, kickstarting first and the features as their own experiment
+  later; **superseded on 2026-10-11 by *the input planes, as decided* — 50 planes,
+  below**). Extra input planes that state facts the rules decide
+  at once — what can be taken next move, what can be hurled or shoved and how far —
+  so that the network need not learn to compute them. The user: not much expert
+  knowledge, "still fairly obvious game knowledge", the network still learning the
+  game from the ground up. **Precedent:** AlphaGo (Silver et al., *Nature* 2016) fed
+  rule-derived features (liberties, capture size, ladders); AlphaGo Zero dropped them
+  with far more compute; KataGo (Wu, arXiv 1902.10565) put such features back
+  (liberties, ladder status, pass-alive areas) and measured that they speed learning
+  up considerably. **The planes** (all computed from the board and the side to move):
+  - direction-free: (1) dwarfs a troll move could take next turn; (2) trolls a hurl
+    could take next turn; (3) **squares where a dwarf would be taken if it stood there**
+    (the diagnosed blunder, as a map); (4) squares a hurl could land on;
+  - per direction, 8 planes each (the layout of our actions, square × direction ×
+    distance): for each dwarf, how far it can be hurled in that direction (k/7, 0 if
+    not), and for each troll how far it can be shoved — a piece that can go several
+    ways lights several planes; optionally whether that hurl or shove captures.
+  **Where, and the buffer's memory:** not in the game's observation (it stays as
+  upstream-facing code keeps it, with its playthrough), and not stored in the replay
+  buffer: 20+ more planes would make a position ~4x larger, the 7x buffer ~10 GB —
+  beyond this machine. Instead the network's input is built inside our copy
+  (`thud/az`, the model's input for inference and learning alike) from the stored
+  6-plane observation, which holds the whole board. Computed after symmetry
+  augmentation, the per-direction planes come out right for the turned board by
+  themselves. **Starting from a trained network** (a function-preserving start, the
+  principle of Net2Net — Chen, Goodfellow and Shlens, ICLR 2016, arXiv 1511.05641; an
+  earlier version of this line said KataGo and Leela do this when adding features,
+  which no source checked on 2026-10-09 confirmed): I83's or H83's weights with the new
+  input channels' weights set to zero, so that it first plays exactly as before — the
+  first mode of *a tool to restructure a network*, below. **Checks:** each
+  plane against the move generator on random and tangled positions (a plane says
+  "can be taken" iff a legal capture takes it — with a planted error as the control);
+  the zero-weight network's outputs identical to the original's; the planes of a
+  turned board equal to the turned planes. **Test:** a branch with the features
+  against the same branch without, equal steps, judged per side against hexparrot,
+  alpha-beta depths 1-3 and on the ladder. **Relation to the diagnosis:** the blunders
+  come from the priors, above all the trolls' prior on captures inside the dwarfs'
+  search (median 0.006-0.008). Features help there if the network *cannot easily
+  represent* "this troll move captures" — the linear policy head must assemble that
+  from the trunk for each action, which fits run I's trolls finding captures at their
+  own root (46%) while their prior stays tiny; a conv policy head (stage 5's, whose
+  trolls learnt faster) points the same way. Kickstarting helps if the network has
+  simply not been *told*. One check separates the two: in run I's self-play, troll
+  positions with a capture available — the search's visits on captures (the policy
+  target) against the network's prior on them; a large gap that training does not
+  close says representation (features first), little visit mass says the targets
+  never asked for it (kickstarting first). **The check** (2026-10-08,
+  `thud/experiments/az_capture_targets.cc`: 200 troll positions with a capture
+  available from run I's last self-play games, searched as self-play does, root noise
+  on): G'64's prior gives captures 0.123 of its mass — their uniform share (12.4% of
+  the legal moves) — and its search 0.125 (the capture the most visited move in 18%);
+  I83's prior 0.169, its search 0.220 (43%). **The prior follows the targets** (run
+  I's alpha-beta games raised both), so the network can represent "this troll move
+  captures"; **the targets ask for it too weakly**: kickstarting first, the features
+  as their own experiment later. **The features are built and checked** (2026-10-08;
+  these 20 planes were replaced on 2026-10-11 by the 50 below, and `features_check`
+  rewritten for them): `thud/az/thud_features.h` computes the 20 planes from the
+  6-plane observation;
+  `thud/az/features_check.cc` (all pass at the first run, 5 s): on 2,385 positions
+  (979 from run I's self-play) the exact planes match the move generator with no
+  difference (7,472 takeable dwarfs, 2,351 takeable trolls), the danger maps disagree
+  with a placed piece on 3 of 333,730 squares (dwarfs; the placed dwarf blocking a
+  shove's path) and 0 of 222,551 (trolls), the planes of turned boards are the turned
+  planes, and both planted errors are caught. Not yet wired into the network.
+- **Kickstarting** (Schmitt et al., "Kickstarting deep reinforcement learning", 2018;
+  chosen by the capture check above; built 2026-10-08). `--kickstart_weight` w,
+  `--kickstart_depth`, `--kickstart_temperature` T (points): every recorded position's
+  policy target becomes (1 − w) × the search's visits + w × the teacher's policy, the
+  softmax over each legal move's material score (`AlphaBetaPlayer::Scores`: the
+  material after the move and the opponent's best reply to depth − 1, no tie-break)
+  over T points; the move played is still the search's, and w = 0 is upstream's
+  target. (Mixing the targets is the same as adding w × the cross-entropy to the
+  teacher, kickstarting's distillation term.) Checked by `thud/az/kickstart_check.cc`
+  (all pass at the first run): a capture scores one point above every other troll move
+  at depth 1; a lone dwarf's three steps next to a troll one point below the rest at
+  depth 2, and alike at depth 1 (the control); the teacher's policy; weight 0 records
+  exactly the old targets, weight 0.3 plays the same moves and records exactly the
+  mix (control: they differ); the settings round-trip. **The teacher's cost:** depth 2
+  ~21 ms a position for either side (~4% of a self-play move); **depth 3 3.8 s for a
+  dwarf position, 0.5 s for a troll's** — with OpenSpiel's unordered alpha-beta not
+  affordable for both sides (the user asked), for the trolls alone at ~20-35% of the
+  trainer's throughput (below); an alpha-beta of our own with captures searched first
+  and a table of positions would make it so, the same search the equal-time matches
+  need. Also built for the confirmation: `MCTSBot::SetPriorFloors` / `ApplyPriorFloor`
+  (`search_settings_check` part 5, all pass: hand-worked numbers, floors 0 change no
+  search, the trolls' roots get the floored prior, the floor reaches inside dwarf
+  searches) and `az_match capture_floor_a=LIST`.
+  **Depth 2 for both sides** (the user, 2026-10-08). Depth 3 would be affordable for
+  the trolls alone (0.5 s a troll position, half the recorded positions, against ~0.46
+  core-seconds a position in run I's trainer, 17-18 positions/s on ~8 cores: ~20-35%
+  slower), but what the diagnosis found — the trolls' capture, which depth 1 sees, and
+  the dwarfs' safety, which depth 2 sees from their side — lies within depth 2; and odd
+  depths have their own blind spot (a capture on the last ply goes unanswered: a troll
+  move setting up a capture that a hurl then punishes scores +1, not −3; even depths
+  miss the reply to a hurl) — a capture search at the leaves, in an alpha-beta of our
+  own, removes both. **What the teacher asks for** (`thud/experiments/az_teacher_stats.cc`,
+  depth 2, 200 positions a side from run I's last self-play games, ~1 core-minute; at
+  T = 0.25 / 0.5 / 1 / 2): the dwarfs have 255 legal moves on average, 39% of them tied
+  for the best score, which get 91 / 73 / 53 / 45% of the teacher's mass; the blunder
+  check's unsafe moves (15% of the legal moves, 11% of them tied for the best) get
+  5.9 / 7.8 / 11.3 / 13.2%. The trolls have 32.5, 36% tied for the best (92 / 70 / 54 /
+  45%); at the 138 positions with a capture available, captures are 11% of the legal
+  moves (74% of them tied for the best, the rest captures that a hurl punishes) and get
+  89 / 61 / 39 / 25% — against G'64's prior on them 0.123 and its search's 0.125 (the
+  capture check). **Decided for run K** (proposed by Claude, adopted by the user,
+  2026-10-08): **T = 0.25** — the
+  teacher decisive about material (at 0.5 it still puts over a quarter of its mass on
+  worse moves); **w = 0.3** — the captures' share of the trolls' targets rises from
+  ~0.125 (G'64's search) to ~0.35, enough for a capture to be the troll prior's top
+  move, while 70% of each target stays the search's: the teacher is uniform over the
+  ~100 dwarf moves tied for the best, so a larger weight flattens the dwarfs' policy
+  among quiet moves, where it knows nothing. **Prepared** (2026-10-08 evening): run K's
+  folder (`~/thud-runs/runK_Gaug64_T15_AB30_ks`: run I's start, its config differing
+  only in the three settings; the step-64 buffer rebuilt when the run starts); the
+  trainer rebuilt with kickstarting, each actor logging "Kickstarting: weight W, depth
+  D, temperature T" (the previous binary kept as `build-shared/az_trainer_before_kickstart`);
+  `~/thud-runs/night3_2026-10-08.py` (dry-run with fakes, a failing and a passing
+  check): checks of `az_match_next` and a kickstarting smoke run, then the
+  capture-floor confirmation, run K and its evaluation as run J's.
+  **The capture-floor confirmation** (2026-10-09 11:51-12:27, `~/thud-runs/night3_2026-10-08/`;
+  the prediction: if the trolls' prior inside the dwarfs' search causes the blunders,
+  they mostly vanish): G'64 with `capture_floor_a=0,0.5` — the trolls' captures get at
+  least half the prior at every troll node of its searches — against hexparrot:3 and
+  alpha-beta depths 1 and 2, 20 pairs each, the same seeds as its matches of
+  2026-10-07, compared pair by pair. **Its trolls transform:** as trolls −24.8 → −4.4
+  against hexparrot (+20.5 ± 4.0), −4.6 → **+27.0** against depth 1 (+31.6 ± 6.0),
+  −17.8 → −1.4 against depth 2 (+16.4 ± 5.4). **Its dwarfs' results do not move**
+  (−31.8 → −31.6, −23.6 → −23.2, −31.8 → −31.8): they still lose nearly every dwarf.
+  But they lose them more slowly: counted from the games (a non-capturing dwarf move
+  ending next to a troll, that dwarf taken by the very next move; the games with G'64
+  as the dwarfs), the blunders fall from 76% to 52% of their moves against hexparrot,
+  50% → 25% against depth 1, 76% → 41% against depth 2, the games lasting 70 → 104,
+  84 → 139 and 74 → 133 plies — with about as many blunders a game (27, 21 → 18, 28 →
+  27), since a game ends when the dwarfs run out. **So the mechanism is half
+  confirmed**: the trolls' prior inside the dwarfs' search accounts for about half of
+  the blunders a move; the rest come from the dwarfs' own prior (39% of its mass on
+  unsafe moves) and from values that register a lost dwarf at a third of its worth.
+  And **the trolls' prior on captures is our trolls' main weakness**, more than their
+  search. For kickstarting this is the case for both teachers: the trolls' teacher
+  raises that prior (in their play and inside the dwarfs' searches), the dwarfs' own
+  teacher is needed for the other half. The choice stands (kickstarting first): the
+  input features would raise the same prior.
+  **Run K** (2026-10-09 12:30-20:02, steps 65-83; its evaluation 20:08-20:55 and,
+  paused at the user's request overnight, 10:06-12:45 on 2026-10-10): **kickstarting
+  works — K83 against I83 +30.0 a pair (+27.6 to +32.5), all 40 pairs won**, as dwarfs
+  +2.6, as trolls +27.4. Against players without a network K83 / I83: hexparrot −36.9
+  / −52.7, alpha-beta depth 1 **+8.7** / −20.8 (the first win of any network against an
+  outside opponent; +5.9 to +11.4), depth 2 −33.7 / −49.6, mostly the trolls (against
+  depth 1 as trolls +25.2 / +2.8, as dwarfs −16.6 / −23.6). Ladder (against E44): K68
+  +31.9, K72 +40.8, K76 +57.9, K80 +65.9, **K83 +67.8 ± 9.9** (dwarfs +15.4, trolls
+  +52.4), against I83 +24.2 and the top anchor H83 +21.5. **The promotion tests**
+  (2026-10-10 16:34-17:27, `~/thud-runs/promoteK_2026-10-10.sh`): **K83 against H83
+  +30.57 a pair (+27.28 to +33.87), all 40 pairs won** (as dwarfs +4.6, as trolls
+  +26.0); ladder difference **K83 − H83 +42.9 (+37.2 to +48.6)** (refitted: K83 +64.3 ±
+  6.3, H83 +21.4 ± 2.7) — both tests passed: **K83 promoted to top anchor** (the user,
+  2026-10-10; H83 stays an anchor; `watch_run.py` lists K83 first). Run K averaged ~13%
+  slower than run I (15.6 against 17.9 positions/s), its first steps slowest, cause
+  unknown (`PROGRESS.md`, 2026-10-09).
+- **Do we need the input features? The diagnostics** (the user, 2026-10-09, asked for
+  experiments that tell; run on the night of 2026-10-09 by `~/thud-runs/night4_2026-10-09.py`
+  into `~/thud-runs/probe_2026-10-09/`). (1) *Does the prior now follow targets that
+  ask strongly for captures?* Run K's targets put ~0.3 x the teacher's ~0.9 plus 0.7 x
+  the search's visits on captures: `az_capture_targets` with K83, I83 and G'64 on run
+  K's troll positions, and `az_teacher_stats` on run K's positions. If K83's prior
+  matches its targets, the network can represent captures and the planes would mainly
+  save capacity; if it lags far behind after 19 steps of such targets, representation
+  (or the 2-number policy head) is the bottleneck. (2) *The blunder diagnosis of K83*
+  (`az_blunder_check` on its games against hexparrot), against G'64's and I83's: the
+  dwarfs' prior on unsafe moves, the trolls' prior on the capture inside the dwarfs'
+  search. (3) **The feature probe** (`thud/experiments/az_feature_probe.cc`, new):
+  linear probes (Alain and Bengio, arXiv 1610.01644; McGrath et al., "Acquisition of
+  chess knowledge in AlphaZero", PNAS 2022, who probed AlphaZero's layers against an
+  untrained network's) read each feature plane's fact at a square — from the trunk's
+  output there (what the network computes) and from the policy head's 2 planes in the
+  5 x 5 squares around it (what reaches the linear policy layer nearby; a lower bound,
+  as that layer reads every square) — trained on two thirds of the games' positions,
+  scored by AUC on the rest, for K83, I83, G'64 and an untrained network of the same
+  shape. Our copy's model gained `ModelImpl::Activations` / `VPNetModel::Activations`
+  (one pass returning the trunk's output, the policy head's planes and the outputs;
+  the probe checks the outputs equal `Inference`'s — exactly, difference 0 — so the
+  activations are the ones that make them). Controls: a dwarf on the square (an
+  untrained trunk 1.000; K83's 0.959 at 100 optimiser steps, 0.984 at 400 — so 1,000
+  steps tonight) and the danger plane with shuffled training labels (5 shuffles, mean
+  0.52, range 0.48-0.59: one shuffle alone strays, a random direction in a space where
+  the fact is encoded). **A first look** (the program's test, 300 positions only, ±0.05
+  for the troll facts' ~30 positives): random features already make several facts
+  readable (an untrained trunk: dwarf danger 0.88, troll captures per direction
+  0.71-0.92), and K83's trunk seemed to read the troll captures worse than an untrained
+  one (0.70-0.86) — **not confirmed** on 4,000 positions (below: equal).
+  **Results** (2026-10-10 09:25-10:07, after the laptop slept on battery 02:31-09:24;
+  `~/thud-runs/probe_2026-10-09/`):
+  - *The trolls' captures — a matter of targets, now largely fixed.* At run K's troll
+    positions with a capture (200 of 1,287; captures 10.4% of the legal moves): K83's
+    prior puts **0.460** on captures (I83 0.148, G'64 0.091), its search 0.531; the
+    prior's top move is a capture in **100%** of them (I83 38%, G'64 22%). Its targets
+    asked for ~0.64 (0.7 x the search's ~0.53 plus 0.3 x the teacher's 0.886 —
+    `az_teacher_stats` on run K's positions), so the prior follows them, a little
+    behind after 19 steps. The network can represent "capture here" well enough.
+  - *The dwarfs — half fixed, and the rest looks like the signal.* Against hexparrot
+    K83's dwarfs blunder in **36%** of their moves (577 of 1,609; I83 50%, G'64 82%).
+    The trolls' prior on the capture inside the dwarfs' search: median **0.069** (I83
+    0.008), the capture visited in 89% of the searches (I83 19%). But the dwarfs' own
+    prior still puts 0.337 on unsafe moves (I83 0.498, G'64 0.389) against their 18.9%
+    of the legal moves, the blunder its top move 51% of the time; and the value head
+    still registers a lost dwarf at ~1/3 of its material (v_captured − v_before
+    −0.011, its material 0.031; a troll removed +0.034 of 0.125) — plausibly because in
+    self-play the dwarfs lose every dwarf anyway (saturated outcomes), so a dwarf lost
+    now barely changes the final result the value is trained on.
+  - *The probe* (4,000 positions, 1,000 optimiser steps; AUC on held-out games, troll
+    facts with 295-536 positives a direction). **Torso** — K83 / I83 / G'64 / untrained:
+    dwarf takeable 0.88 / 0.90 / 0.91 / 0.77, dwarf danger 0.93 / 0.93 / 0.93 / 0.86
+    (learnt: better than random features); troll takeable 0.93 / 0.94 / 0.91 / 0.93,
+    troll danger 0.98 / 0.98 / 0.95 / 0.98, hurls (mean of 8 directions) 0.98 / 0.98 /
+    0.99 / 0.98, **troll captures (mean of 8) 0.865 / 0.858 / 0.862 / 0.867** — no
+    better than random features, at the troll's square. **Policy planes** (5 x 5
+    around): troll captures 0.76 / 0.76 / 0.70 / 0.75, dwarf danger 0.89 / 0.88 / 0.89 /
+    0.75 — the 2-number head keeps less than the trunk, as expected. Controls: a dwarf
+    on the square 0.99 / 0.99 / 0.99 / 1.00 (torso); the shuffled-label control's means
+    0.61 / 0.59 / 0.47 / 0.53 over 5 shuffles, single shuffles ranging 0.12-0.82 — far
+    noisier than at 300 positions, since in a trained trunk the danger fact lies along
+    a dominant direction that a noise-fitted probe catches by chance; consistent with
+    no leak, but too noisy to check a single probe.
+  **Reading:** the trunk does not encode "this troll captures in direction d" at the
+  troll's square better than random features — yet K83's prior finds a capture as its
+  top move every time, so the network encodes capture chances some other way (likely at
+  the landing squares, which the linear policy layer can read for any troll move). The
+  dwarfs' danger map is learnt (0.93 against 0.86 untrained). **So these diagnostics
+  make no case for the input planes now**: the trolls' failure was the targets
+  (kickstarting fixed most of it), and the dwarfs' remaining blunders point to their
+  training signal — the saturated outcome behind the compressed value, and a teacher
+  weight of 0.3 against search targets that still favour unsafe moves — not to a fact
+  the network cannot compute. Caveats: a linear probe measures what is linearly
+  readable at one square, not what the network could learn; AUC 0.86-0.93 is not
+  certainty, and exact planes would make the facts certain (the capacity argument
+  stands, unmeasured); only an A/B run decides. (Refined the same day by the
+  long-capture probe, next: a real gap, in the policy head more than the inputs.)
+  **The long-capture probe** (the user, 2026-10-10: do the networks see a capture at
+  the end of a long hurl or shove, across the board, in every direction?
+  `thud/experiments/az_long_capture_probe.cc`, `~/thud-runs/probe_2026-10-10/`).
+  *Built* positions in minimal pairs: a line of k dwarfs (k trolls) whose k-square hurl
+  (shove) is the side to move's one capture, k = 1-7 (7, the longest the board allows),
+  8 directions, up to 12 places x 4 random surroundings (3,744 positions; checked by eye
+  on printed samples), and its twin with the line one piece short; *real* positions:
+  every capture in run K's last 10 self-play games of each logged actor (36,124). The
+  move's probability against a blind prior's (1 / legal moves), its rank, and in the
+  built pairs how much more the network likes it when it captures; K83, I83, H83, G'64
+  and an untrained network (the control: exactly 1.00x, no gain). **Results** (K83):
+  real troll steps 4.4x (rank median 3; I83 1.4x, H83 and G'64 below 1); real 1-square
+  hurls 42x (rank 3; the others 23-30x) — **but real 2- and 3-square hurls 1.1x and
+  0.9x, never the top move (I83, H83, G'64 0.5-1.0x), although kickstarting's teacher
+  rates them the best move 99% and 91% of the time** (308 and 122 of them; 4 at 4
+  squares); built hurls of 2-7 squares 0.40-0.58x (below blind) in every direction,
+  the twins showing no gain beyond the control's, the value moving +0.01-0.02 (a troll
+  is 0.125). Shoves: real 2-4 squares 4.0-4.8x (rank 2-3, top 22-37%; I83, H83, G'64
+  0.1-1.4x) — kickstarting taught them — though the teacher rates only 60% / 44% / 38%
+  of them the best move; built shoves 1.8x at 2 squares, ~1x at 3-7 (the built
+  positions, emptier and more evenly spread than real ones, damp what the network does
+  in real ones: real shoves of 3-4 4.6x, built ~1x). **Reading:** the networks do not
+  act on multi-square hurls at all — in real games, where they are the best move and
+  run K's targets asked for them, and built, at every distance and direction — while
+  the trunk holds the fact ("a capturing hurl in direction d", AUC ~0.98 at the dwarf's
+  square, the feature probe). So the gap lies between the trunk and the move logits:
+  the linear policy head, which reads 2 numbers a square, cannot say "this dwarf, this
+  direction, this distance" for many dwarfs at once; the trolls, 8 pieces, get their
+  shoves through it. This fits the head check (the linear head learnt the dwarfs'
+  hurls to 75-78% of their policy mass, the convolutional head 99%) and AlphaZero's
+  chess and shogi heads (a convolutional policy of 73 planes a square for moves by
+  direction and distance). **Next, to confirm cheaply** (done the same day: convK83,
+  next): K83's trunk with a
+  convolutional policy head trained on run K's buffer (*a tool to restructure a
+  network*, mode 2), then this probe on it — if it then prefers the multi-square hurls,
+  the head is the bottleneck, and the trained head is the start of a run with it; the
+  input planes (per direction) could follow, as they suit a per-direction head.
+  (Also seen: built 1-square hurls range 0.6x-6.2x by direction, east and west far
+  above north and south — unexplained; in real games they are 42x.)
+  **The confirmation: the same trunk with a convolutional head** (convK83: K83's trunk
+  and value head frozen, a convolutional policy head trained on run K's buffer by
+  `az_restructure`; the same probe, 2026-10-10). Against K83: real 1-square hurls
+  **89x** (top move 55%; K83 42x, 23%), **real 2-square hurls 53x, the top move 81%
+  of the time (K83 1.1x, never)**, real 3-square hurls 2.5x (rank 9; K83 0.9x, rank
+  43); built hurls 63x at 1 square, **54x at 2** (top 76%; K83 0.6x), 1.6x at 3, and
+  still 0.4-0.6x at 4-7 squares (K83 0.4-0.5x); built shoves **2.4-4.0x at every
+  distance 2-7** (top 27-81%; K83 ~1x); real shoves 4.1-5.4x (K83 4.1-4.8x); steps 4.7x
+  (4.4x); the hurl gain in the built pairs now positive at 2-3 squares (+0.15; K83
+  −0.06). Every direction gains (built hurls of 2-7: 8.3-18.6x by direction, the
+  diagonals highest). **Reading:** with the trunk unchanged, the head alone turns
+  2-square hurls from ignored into the top move and makes shoves visible at every
+  distance — **the linear policy head was the bottleneck** for these. Hurls of 3
+  squares improve only a little and of 4-7 not at all: the facts must span 2k squares
+  of a 4-block trunk, and run K's games hold almost none to learn from (122 real
+  3-square hurls in 200 games, 4 of 4 squares). That is where the input planes (a
+  capturing hurl per direction, with its distance, at the dwarf's square — exactly what
+  a per-square, per-direction head reads) would help: long-range facts the trunk
+  rarely needs and cannot easily compute. **And it plays better**: convK83 against
+  K83 **+16.8 a pair (+14.1 to +19.5), 39 of 40 pairs** (2026-10-10 23:24-00:11;
+  convK83 as dwarfs −9.6, as trolls +26.4) — with the trunk and value head unchanged.
+  **Decided** (the user, 2026-10-11: this order, and a clean evaluation): **run L** —
+  convK83 trained on as a whole with run K's recipe, steps 84-102 — against **run K
+  continued** from K83 over the same steps (the head's test), both started by
+  `~/thud-runs/night5_2026-10-11.py` (dry-run with fakes) from 00:20, then evaluated as
+  run K was plus L102 against K102; then **run M**, run L's start plus the input planes
+  (net surgery, the tool's mode 1, built meanwhile), against run L (the planes' test).
+  Run L's folder (`~/thud-runs/runL_K83_conv`): run K's config with
+  `nn_model=resnet_conv_policy` and max_steps 102; vpnet.pb the convolutional structure
+  at run K's learning rate 0.0001; convK83's weights with a fresh optimizer
+  (`thud/az/az_fresh_optimizer.cc`, new: az_restructure's optimizer had trained at
+  0.001, and LibTorch may restore that with the optimizer's state; checked: the saved
+  checkpoint gives convK83's outputs exactly on 200 positions, at rate 0.0001); run K's
+  learner.jsonl to step 83 and a copy of its final buffer. Run K continued
+  (`~/thud-runs/runK_Gaug64_T15_AB30_ks_cont`): run K's checkpoint 83 with its
+  optimizer, the same learner.jsonl and buffer, max_steps 102. Both use run K's trainer
+  binary.
+- **The input planes, as decided** (the user, 2026-10-11, after the long-capture
+  probe; replacing the 20 planes built on 2026-10-08, never wired in): **50 planes**
+  (`thud/az/thud_features.h`, whose comments give each plane's meaning in full),
+  computed inside our copy's model from the stored 6-plane observation (the buffer
+  unchanged; computed after symmetry augmentation, so they turn with the board), for
+  both sides at once whoever is to move, all values 0 or positive.
+  - **48 move planes** — direction d (8) x distance k — **at the moving piece's
+    square**, where the convolutional head scores the move (s, d, k): on a dwarf, 1 if
+    its hurl of k squares in direction d captures a troll (at most one k a direction);
+    on a troll, the dwarfs its move of k squares takes, over 8 (k = 1 a capturing step,
+    2 and more a shove; several k a direction possible). **Distances 1-7 straight, 1-5
+    diagonal:** a capture of k squares needs 2k squares in a straight line (k pieces, k
+    − 1 empty squares, the target or landing square); the longest straight lines (rows
+    and columns 5, 6, 8, 9) hold 15 squares, the longest diagonals 10 (such as (5,0) to
+    (14,9) — the cut-off corners shorten every diagonal, the Thudstone cuts the central
+    ones), so k ≤ 7 straight and k ≤ 5 diagonal, in every position (other pieces only
+    take squares away). **The 8 diagonal planes of 6 and 7 squares, always zero, are
+    left out** (the user, 2026-10-11: no benefit in a uniform layout — a convolution
+    does not care about its channels' order, and the index needs only an offset per
+    direction; AlphaZero's output keeps impossible moves because a move impossible from
+    one square is possible from another, ours are impossible from every square).
+    **Shared by both sides**: a square holds one piece, and the board planes say which
+    (AlphaZero separates its players' pieces because both own the same kinds — Silver
+    et al., *Science* 2018: the player's and the opponent's planes, "oriented to the
+    perspective of the current player"; in Thud the kind says whose); the network tells
+    a hurl from a troll's move by the piece on that square, one channel over. The
+    trolls' capturing step has its own action id (the head's 8 extra planes), its input
+    still in plane (d, 1).
+  - **2 maps, at the affected squares**: "a troll could land next to here" (a step or
+    a shove geometrically open — the path empty, the troll line long enough — whether
+    or not it captures now): on a dwarf, takeable now; on an empty square, danger for a
+    dwarf moving there. "A hurl could land here": on a troll, takeable now; on an empty
+    square, danger for a troll moving there. (The 20 planes' separate takeable and
+    danger planes were one fact each on different squares — takeable is the map and
+    the piece plane — so they are merged; the user.)
+  - **Precedent for the count**: AlphaZero's inputs had 17 planes for Go, 119 for chess
+    and 362 for shogi; Leela Chess Zero's 112; AlphaGo's policy network 48, among them
+    "capture size", how many stones a move at a point would capture, one-hot over 8
+    planes — the move-aligned idea — and all 48 predicted expert moves better (57.0%)
+    than the raw position and history alone (55.7%; Silver et al., *Nature* 2016).
+    Extra planes enlarge only the first layer (64 x 56 x 9 against ~300,000 trunk
+    weights), and the planes are almost all zeros.
+  - **Tests, before the code** (the user: many): hand-built positions with hand-worked
+    expected planes — the longest hurl and shove in each direction, lines one short,
+    blocked paths, the Thudstone and the cut-off corners in the way, a troll capturing
+    at several distances, several captures at once; every plane against the move
+    generator on random and real positions (exact for the move planes; the maps against
+    placing a piece); **rotating the board then computing the planes equals computing
+    then rotating** (the direction planes permuted), on all 7 non-identity symmetries,
+    hand-built positions included, with a wrong direction map as the control; the
+    model's input (the 6 planes then the 50, at inference and in training, after the
+    augmentation; one input channel weighted, the network moved only where that plane
+    is nonzero, a zero plane the control); the surgery (the new channels zero: outputs
+    exactly convK83's).
+    **Built and passed at the first run** (2026-10-11): `thud/az/features_check.cc`
+    (rewritten; 12 hand-built positions — the longest hurl and shove, 7 east, the
+    longest diagonal hurl, 5, a line one short, a dwarf and the Thudstone in the path,
+    two trolls in a path, a lone dwarf next to a troll, a troll line shoving at three
+    distances, two captures at once, the two maps by hand — each plane exact, a wrong
+    one failing; 96 positions with one capture of every kind, direction and distance
+    the board has room for, from `thud/az/capture_patterns.h`; on 2,360 positions the
+    move planes exactly the move generator's 18,658 captures, none longer than allowed;
+    the maps exact on all 44,022 pieces, against a placed piece wrong on 3 of 333,841
+    empty squares (a dwarf blocking a shove's path) and 0 of 227,089; rotating then
+    computing equals computing then rotating on all 7 symmetries, 0 squares differ; the
+    board has room for exactly the kept distances and none of the dropped; the planted
+    errors caught) and `thud/az/input_planes_check.cc` (new; for the convolutional and
+    the linear head: after the surgery the outputs exactly the original's on 2,708
+    positions; weight on one plane's channel moves the outputs exactly where that plane
+    is nonzero, for all 50 planes, the next plane's positions as the control failing;
+    one learning step moves the weights of all 39 planes present in its batch and of
+    none of the 11 absent). `VPNetModel` (our copy) builds the input with
+    `ModelInput`, widens the first layer in `CopyParametersFrom`, and `Parameter` reads a
+    weight by name; `CreateGraphDef` takes extra input planes; `az_restructure` does the
+    surgery (`input_planes=1 copy=all max_batches=0`, its check: outputs exactly the
+    source's). Run M's start made so (`~/thud-runs/runM_K83_conv_planes`, 56 input
+    planes, outputs exactly convK83's on 200 positions).
+  - **Learning, over many steps** (the user): one backward pass gives every plane
+    present a nonzero gradient; over the offline training and over run M's 19
+    checkpoints, the new weights grow and differ across filters and planes, the held-out
+    loss is no worse than without the planes, the old weights stay in range, and zeroing
+    the planes changes the outputs more and more — a small tool reading the checkpoints,
+    no change to the trainer.
+  - **Re-evaluate the destination risk** (the user, 2026-10-11): a move's risk lies at
+    its destination — for a dwarf, which moves like a queen, up to 14 squares from the
+    origin where the move is scored (13 already in the opening, (0,5)-(13,5)) — and only
+    the danger map holds it, there. **When:** after run M, with the blunder diagnosis
+    (`az_blunder_check`) on M's games against hexparrot, and a probe of risks by distance
+    built like the long-capture probe (minimal pairs: a dwarf move of k squares onto a
+    danger square or a safe one; does the prior avoid the first at every k?). **Gap if**
+    the dwarfs' prior still favours unsafe moves (K83: 0.337 of its mass on 18.9% of the
+    legal moves) or blunders stay above ~20% of the dwarfs' moves, and the long moves'
+    risks are missed more than the short ones'. **Then:** risk planes at the origin
+    ("this move lands in danger", per direction and distance — 8 x 14 for dwarfs), or a
+    head scoring each move from both its ends (Leela Chess Zero's attention policy reads
+    the origin and the destination squares).
+- **A tool to restructure a network** (the user, 2026-10-09: "I feel like we are going
+  to need that repeatedly"; designed now, built when run K's results pick the first
+  change of structure). **Uses:** the input features (more input channels); the
+  convolutional or hybrid policy head (a new head — the linear head reads only 2
+  numbers a square before its 450 x 19,800 layer, `thud/az/model.cc:406-411`, so
+  per-direction facts reach the move logits poorly: likely why it learnt the dwarfs'
+  hurls to 75-78% where the convolutional head reached 99%, and why the per-direction
+  feature planes may pay most with a convolutional or hybrid head); a larger network
+  (wider or deeper, likely on the GPU). **Precedent:** Leela Zero trained bootstrap
+  networks on existing self-play games (a 128 x 10 net on 600,000 games, a 64 x 6 and a
+  128 x 10 on 1.5 million; github.com/leela-zero/leela-zero issue #1197); Leela Chess
+  Zero's 15 x 192 and 20 x 256 networks were bootstrapped from existing data
+  (lczero.org, *Project history*); KataGo trained each larger size on the same data
+  (*Notes for later*). **One program, two modes** (sharing the loading and saving):
+  1. *Copy weights* — function-preserving (Net2Net, above): build the new network from
+     its configuration, copy every tensor whose name and shape still fit; for the input
+     layer copy the old channels and set the new channels' weights to zero, so it
+     computes exactly the old network's outputs; the zero weights still learn, since
+     a weight's update is its input times the error and the new planes hold real data.
+     Enough for the input features. A wider trunk: Net2Net's widening (a new filter
+     copies an existing one, and both get half the original's outgoing weights, plus a
+     little noise so that they can drift apart) — or new filters with random incoming
+     and zero outgoing weights; never zero both ways, which leaves a unit no learning
+     signal. A deeper one: a new residual block whose last batch norm starts at scale and
+     shift zero adds nothing to the block's input, which is already past a ReLU, so the
+     network is unchanged. A new head: mode 2. **Check:** outputs identical to the old
+     network's on held-out positions; the control: one planted nonzero weight on a new
+     channel changes them.
+  2. *Train from a replay buffer* — for what cannot be copied: load a saved buffer
+     (`replay_buffer.data`), hold out a share of it (in blocks, as positions of one game
+     are alike), train the new network with the trainer's loss, learning rate and
+     symmetry augmentation (optionally only its new parts first, the copied ones frozen,
+     then all), report the held-out loss per side every few hundred batches, stop when
+     it stops falling (the overfitting check's logic). **Checks:** the trained network
+     fits held-out positions better than the untrained one (the positive control) and
+     better than one trained on shuffled targets (the negative one).
+  **Output:** a run folder — `config.json` with the new structure, `vpnet.pb`, the
+  checkpoint as the branch's step, the buffer — that the trainer resumes like any
+  branch (checked by one learning step). The buffer stores only the 6-plane
+  observation and the feature planes are computed from it (`thud/az/thud_features.h`),
+  so every saved buffer serves every structure. **Caveats:** mode 2 learns the old
+  searches' targets — a warm start at about the old network's level, then self-play
+  has to carry it further; and an offline comparison of two structures on the same
+  buffer is a filter, not a verdict (the stage-5 head check favoured the convolutional
+  head, run C' then lost to run C). Its time on this CPU is measured when built.
+  **Mode 2 built 2026-10-10** (the user: build it, after the long-capture probe):
+  `thud/az/az_restructure.cc`, with `VPNetModel::CopyParametersFrom` (by name and
+  shape) and `VPNetModel::Freeze` (no gradient; frozen leaf modules kept in evaluation
+  mode while learning, so a frozen batch norm neither uses batch statistics nor
+  updates its running ones) in our copy. It copies every tensor without "policy" in
+  its name (the trunk and the value head, named alike in both output blocks), freezes
+  them with freeze=copied, trains the new head on a saved buffer with Thud's 8
+  symmetries, every 20th block of 1,024 positions held out, keeps the best by held-out
+  policy loss. Checks built in, fatal on failure: the new network's values equal the
+  source's before training (the copy) and after it when frozen (the freeze). Tested on
+  the 4,096-position smoke buffer (16 x 1 network): 32 tensors copied, 20 parameters
+  frozen, both checks exactly 0, the held-out policy loss falling 4.25 → 4.17 in 200
+  batches (the source's linear head 4.24) while the held-out value loss stayed 0.7805.
+  Mode 1 (net surgery for new input channels) built 2026-10-11 (`input_planes=1
+  copy=all`; *the input planes, as decided*). The first use queued
+  on 2026-10-10 (`~/thud-runs/convK83_2026-10-10.sh`, after K83's promotion match): a
+  convolutional policy head on K83's frozen trunk, trained on run K's final buffer,
+  then the long-capture probe on it and on K83. **Done** (2026-10-10 17:27-19:19,
+  `~/thud-runs/convK83_2026-10-10/`, outputs in `~/thud-runs/probe_2026-10-10/`): 74
+  tensors copied, 44 parameters frozen, both checks exactly 0; best at 5,500 batches
+  (~1 s a batch; stopped at 6,500 by patience): held-out policy loss **3.653** (dwarfs
+  4.518, trolls 2.973) against K83's linear head 3.665 (4.573, 2.952) — K83's on
+  positions it trained on, so the comparison favours it — the value loss 0.0570
+  unchanged (frozen). Results under the long-capture probe, below.
 - **The reference and its bias.** Any target made by a search carries the bias of what
   guides the search; the search corrects the network only partly (the user: it
   "partially eliminates" the network's effect, not wholly) — moves with a low prior get
@@ -2098,7 +2826,8 @@ keep for the rest of the project):
   (`alpha_zero.cc:321-322`, `:533-536`, `:592`; the buffer's format is the header-only
   `utils/serializable_circular_buffer.h`). So: stop the run; a program of ours on the
   shared-library route trains the larger network on the saved buffer and writes the new
-  `vpnet.pb` and checkpoint; resume. Needs one end-to-end test first.
+  `vpnet.pb` and checkpoint; resume. Needs one end-to-end test first. (Designed
+  2026-10-09 as *a tool to restructure a network*, under *How we evaluate networks*.)
 - **Replay buffer: reconsider later** (user, 2026-09-28: leave it for now). Run A2 (2x)
   alone learned more slowly and had not collapsed by 351,000 positions; every position
   is archived from A2 on. The triggers for a retest come in two kinds (user, 2026-09-28:
@@ -3014,9 +3743,150 @@ goes into our own copy, decided 2026-09-26 — stages 3 and 5 of the roadmap, on
       trained value losses 0.03-0.04). This looks much like run C's narrowing (its long
       hurls 0.02-0.04, openings 65-68% distinct) — a policy teaching itself to narrow,
       the search no longer correcting it — but G' has the 7x buffer and augmentation, and
-      a sharper policy may simply be right: only fixed opponents can tell, per side
-      (the evaluation, and the evaluation watcher after the fact on checkpoints 48-72:
-      `~/thud-runs/stage5b_Gaug_eval73.sh`, written, not started).
+      a sharper policy may simply be right: only fixed opponents can tell, per side.
+    - **G'73's evaluation (2026-10-06 14:35-16:26, part 1 of
+      `~/thud-runs/stage5b_Gaug_eval73.sh`; mains, no pause): from step 44 to 73 the
+      dwarfs lost and the trolls gained — no overall progress — but the strength curve
+      below shows a peak at step 64 in between.**
+
+      | G'73 as trained against | Pairs | Per pair (95%) | W / D / L | As dwarfs / as trolls | G'44 against the same: per pair; as dwarfs / as trolls |
+      |---|---|---|---|---|---|
+      | G'44 | 40 | **+4.70** (+1.89 to +7.51) | 27 / 1 / 12 | −3.33 / +8.03 | — |
+      | E44 | 40 | +0.12 (−3.71 to +3.96) | 19 / 1 / 20 | −8.60 / +8.72 | +7.97; −2.40 / +10.38 |
+      | A14 | 40 | +3.10 (+0.62 to +5.58) | 27 / 0 / 13 | −6.90 / +10.00 | +3.23; −3.52 / +6.75 |
+      | the anchor A0 | 20 | +26.55 (+23.97 to +29.13) | 20 / 0 / 0 | +1.55 / +25.00 | +31.50; +12.10 / +19.40 |
+
+      Per side against the same fixed opponents (Welch): **the dwarfs worse every time**
+      — against E44 −6.20 (p = 0.006), A14 −3.38 (p = 0.015), A0 −10.55 (p < 0.001); the
+      trolls better against A14 +3.25 (p = 0.006) and A0 +5.60 (p < 0.001), even against
+      E44 (−1.65, p = 0.17). The noise diagnostic: root noise no longer decides the
+      dwarfs' searches — two seeds' most visited agree 78% (G'44 6%, E44 49%), the prior
+      1.47 nats below uniform (G'44 0.08, E44 0.94); the trolls' 16% and 0.30. **Ladder:
+      G'73 +4.8 ± 2.3** (as dwarfs −2.6, as trolls +7.4) against G'44's +4.4 ± 2.2 (+1.4,
+      +3.0) and G'29's +5.1 ± 3.0 — the same within the errors. The fit flags G'73's
+      matches as non-transitive: against G'44 observed +4.7, predicted +0.4; against E44
+      +0.1, predicted +4.6 — its trolls beat G'44's dwarfs in particular. The promotion
+      rule as it stood was met (G'73 beat the top anchor G'44 in 40 pairs, interval
+      above 0) while the ladder showed no overall gain and weaker dwarfs: **G'44 stays the
+      top anchor, and the rule now also needs a higher ladder rating** (the user,
+      2026-10-06; *How we evaluate networks*) — G'73 − G'44 +0.4, −2.0 to +2.8.
+      So the dwarfs' policy, once it began to learn (step ~40), narrowed past what helps:
+      the search stopped correcting it (KL 2.34 → 0.79 nats), much like run C's drift
+      but with the 7x buffer and augmentation.
+    - **The strength curve** (part 2, 2026-10-06 16:54-19:38, the evaluation watcher's
+      first real use: each checkpoint against G'44 and A14, 20 pairs each; the ladder
+      refitted with every match, G'44 now +3.2 ± 2.1):
+
+      | Checkpoint | Rating (95%) | As dwarfs | As trolls | The dwarfs' prior, share of legal |
+      |---|---|---|---|---|
+      | G'44 | +3.2 ± 2.1 | −0.4 | +3.6 | 92% |
+      | G'48 | +5.0 ± 4.0 | −2.6 | +7.6 | 83% |
+      | G'56 | +5.6 ± 3.9 | +1.5 | +4.0 | 62% |
+      | **G'64** | **+10.4 ± 3.9** | **+5.2** | +5.2 | 20% |
+      | G'72 | +6.1 ± 3.8 | +3.5 | +2.6 | 5% |
+      | G'73 | +4.4 ± 2.3 | −2.5 | +6.9 | ~5% |
+
+      **G'64 is the peak**: G'64 − G'44 +7.2 (+3.7 to +10.8), G'64 − G'73 +6.0 (+2.0 to
+      +10.1); its neighbours borderline (G'64 − G'56 +4.9, −0.0 to +9.8; G'72 − G'64
+      −4.4, −9.2 to +0.5). So the dwarfs' narrowing first helped — at step 64 their prior
+      covered ~20% of the legal moves and agreed with the search 67% of the time, the
+      best dwarfs of the run — and then hurt, by step 72-73 (5%, 78%). G'64 meets the
+      tightened rule's ladder test; its head-to-head with G'44 (+9.6) has only 20 pairs
+      (the rule needs 40). Caveat: the per-side numbers of the watcher's checkpoints
+      rest on two opponents and 20 pairs each — G'72's dwarfs +3.5 against G'73's −2.5
+      one step later shows how noisy they are; the overall ratings are firmer.
+    - **G'64 confirmed** (2026-10-07 02:28-04:14; 40 pairs each, as trained): against
+      G'44 with a new seed **+8.60 (+5.87 to +11.33), 32 / 1 / 7** — as dwarfs +3.25, as
+      trolls +5.35; against E44 +2.58 (−0.82 to +5.97), 24 / 2 / 14 — as dwarfs −4.58, as
+      trolls +7.15. Against E44, per side (Welch): its dwarfs better than G'73's (+4.02,
+      p = 0.025) and not significantly different from G'44's (−2.18, p = 0.31), its
+      trolls worse than G'44's (−3.22, p = 0.021). Ladder (refitted, 3,000 games):
+      **G'64 +7.4 ± 2.3** (dwarfs +1.5, trolls +5.8), G'72 +4.8, G'73 +3.6, G'44 +1.6;
+      **G'64 − G'44 +5.8 (+3.7 to +7.9)**. So **G'64 passes both tests of the tightened
+      promotion rule — promoted to top anchor** (the user, 2026-10-07). E44 stays non-transitive with the G'
+      family: G'44 beats it by more than the ratings predict (+8.0 against +1.6), G'64
+      by less (+2.6 against +7.3).
+    - **Run H** (2026-10-07 04:14-11:00, steps 65-83, mains, no pause; G' branched at
+      step 64 with the dwarfs' policy softmax temperature 1.5): **the dwarfs' collapse
+      did not happen** in 19 steps, where G' collapsed within 8 from the same start —
+      the dwarfs' prior stays at 13-34% of the legal moves (mostly 15-25%; G' 18% → 5%
+      by step 73), its top move the search's choice 39-57% (G' 71% → 78%), the search
+      moving it 1.46-1.86 nats (G' 1.18 → 0.79), their searches over 10.4-12.1 effective
+      moves (G' 5.7 → 4.2), their self-play margin −3.2 to +1.5 (G' −1.9 → −9.3), the
+      trolls wiped out in 15-31 games a step (G' 14 → 3-5). Self-play ~12% slower (~17.5
+      positions a second against ~20; wider searches find fewer positions in the
+      cache, likely). Its checkpoints are evaluated as trained: `az_match` takes
+      `temperature_a` / `temperature_b` (built 2026-10-07; check: `1,1` plays the same
+      games as none, `1.5,1` different ones — the control), the evaluation watcher reads
+      each run's temperature from its `config.json`, and the ladder counts a network
+      searching with another temperature than its run's as another player ("H72
+      [temperature none]"). **Result** (`~/thud-runs/eval_runH.sh`, 2026-10-07
+      12:14-16:28: the watcher on H68-H80 against G'64 and G'44, 20 pairs each; H83
+      against G'64, 40 pairs): **run H is stronger at every step, and it is the dwarfs.**
+      Ladder (refitted, 49 matches; against E44): H68 +14.9 ± 3.8, H72 +15.9, H76 +12.4,
+      H80 +18.7 ± 3.9, H83 +18.7 ± 4.1 — where G' from the same start fell (G'64 +6.5 ±
+      2.1, G'72 +5.0, G'73 +3.7). As dwarfs H68-H83 +9.2 to +14.2 (H83 +14.2 ± 2.9)
+      against G'64's +3.3, G'72's +3.2, G'73's −2.6; as trolls +3.2 to +6.9, G''s +1.7 to
+      +6.3 — no clear difference. H76's dip is within the noise (± 3.8). **H83 against G'64: +11.75
+      a pair (+9.0 to +14.5), 37 of 40 pairs**, as dwarfs +10.55, as trolls +1.2; ladder
+      difference **H83 − G'64 +12.2 (+8.7 to +15.6)**, H80 − G'64 +12.1 (+8.6 to +15.7).
+      **H83 meets both tests of the promotion rule — promoted by the user** (2026-10-07
+      evening; its rating rests on G'64 alone, H80's on G'64 and G'44). Proposed: **run H the main line**
+      (no collapse, its dwarfs ~+10 stronger on our ladder) — with the caveat of the same
+      day's outside opponents (*How we evaluate networks*): the ladder measures our
+      networks against each other, and how H83 fares against players without a network
+      is being measured the same night (`~/thud-runs/outside_2026-10-07.py`, hexparrot
+      first).
+    - **Training the dwarfs better** (discussed with the user, 2026-10-06; sources: Leela
+      Chess Zero's `--policy-softmax-temp`, default 1.36, "higher values make priors
+      closer to each other, widening the search"; Danihelka et al., ICLR 2022; MiniZero,
+      arXiv 2310.11305: with 200 simulations plain AlphaZero matched or beat the Gumbel
+      variants on 9x9 Go and Othello, Gumbel wins with few, and "progressive
+      simulation" — more simulations as training goes on — helped): the collapse fits
+      too few simulations for a confident prior. Order agreed: (1) per-side search
+      settings in our copy — **built 2026-10-06**: `--player_policy_temperature`
+      (Leela's policy softmax temperature per player, at every node of that player,
+      before root noise; `MCTSBot::SetPolicyTemperatures`) and `--player_simulations`
+      (self-play simulations per player), both recorded in `config.json`, off by
+      default; checked by `thud/az/search_settings_check.cc` (temperature 1 changes no
+      visit; 2 flattens the dwarfs' root priors and not the trolls'; the trainer's
+      searches get their settings; old configs load). (2) The search-only filter on
+      G'64's positions (100 / 200 / 400 / 800 against 4,000 and 16,000, with the binary
+      of G'44's filter, so the two compare directly) — how much more search changes G'64's
+      own targets; not the temperature (its reference would share the prior's bias).
+      Stopped on 2026-10-07 at 91 positions: with 32 threads and the 16,000 reference
+      it held 8.0 GB and, beside the confirmation matches, filled RAM and swap; rerun
+      alone with 16 threads (2026-10-07 11:30-12:13, 143 dwarf and 144 troll positions,
+      `target_quality_Gaug64.jsonl`). **Result: more search barely moves the dwarfs'
+      choice; it helps the trolls more.** Against 16,000 simulations the dwarfs' most
+      visited move agrees 28.0% at 100, 28.7% at 200, 30.1% at 400, 32.2% at 800 (over
+      100: +0.7, +2.1, +4.2 points, none significant — 800's interval −0.9 to +9.3); the
+      distance falls 0.641, 0.616, 0.577, 0.527 (every step significant, 800 −0.114,
+      −0.136 to −0.092; no flattening by 800); the mass on the reference's best falls
+      0.174 → 0.146 (more simulations spread the visits of a sharp prior the reference
+      mostly shares). The trolls: 6.9%, 14.6%, 15.3%, 19.4% (+7.6, +8.3, +12.5 points,
+      200 and up significant), distance 0.413 → 0.324. Against G'44's filter: the
+      dwarfs' agreement at 100 rose from 5.4% to 28.0% — the sharper prior, not the
+      search, made that difference — while what 4x more search adds stays small (G'44
+      +4.5, G'64 +2.1 points at 400). The reference has not settled: 4,000 against
+      16,000 agree 48% for the dwarfs (G'44 52%), 62% for the trolls (68%); against
+      4,000, 800 gains the dwarfs +9.8 points (+3.2 to +16.3), but that reference shares
+      more of 100's errors. A limit made concrete the same day: the reference is the
+      same network searching longer and shares its blind spots — against players
+      without a network G'64 loses material it never sees (*How we evaluate networks*,
+      outside opponents) — so the filter measures closeness to the network's own deep
+      search, not to good play.
+      (3) **Run H**: G' branched at step 64 with the dwarfs' temperature 1.5, its
+      control G''s own steps 65-73; the buffer as it was at step 64 rebuilt from step
+      73's by `thud/experiments/az_buffer_truncate.cc` (259,963 of 458,752 positions
+      kept, the 198,789 added after step 64 dropped; its control: a loaded and re-saved
+      buffer byte-identical to the trainer's file). (4) If the filter shows more
+      simulations clearly help: a branch with 400 dwarf simulations — **not shown**
+      (2026-10-07: 400 and 800 bring the dwarfs' choice no significantly closer to a
+      deep search; the trolls' gain more), so no such branch for now. On the GPU:
+      playout caps with deep dwarf searches, raised over training; tree reuse once
+      searches are deep; Gumbel AlphaZero only if the dwarfs' budget has to stay
+      small.
 - **The value of untried moves**: the parent's value minus a reduction (KataGo, Leela
   Chess Zero) or a loss (AlphaZero) instead of OpenSpiel's 0. The first runs showed the
   dwarfs' searches far too broad (*Margins as the value target*), so it is stage 3a,

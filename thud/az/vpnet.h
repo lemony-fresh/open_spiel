@@ -25,6 +25,8 @@
 #include <torch/torch.h>
 
 #include <nop/structure.h>
+#include <functional>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -40,10 +42,13 @@ namespace torch_az {
 // this function is still called, but rather than create a TensorFlow graph
 // definition, it simply creates a struct that the Libtorch model can use to
 // initialize from. This struct is then saved and then loaded again when needed.
+// Our change (thud/PLAN.md, the input planes): extra_input_planes more input planes than
+// the game's observation has — for Thud, thud_az::kNumFeaturePlanes, the planes from the
+// rules, which VPNetModel then computes from each observation (thud/az/thud_features.h).
 bool CreateGraphDef(const Game& game, double learning_rate, double weight_decay,
                     const std::string& path, const std::string& filename,
                     std::string nn_model, int nn_width, int nn_depth,
-                    bool verbose = false);
+                    bool verbose = false, int extra_input_planes = 0);
 
 // Our change: `config` with the convolutional policy head's layout of the
 // actions (ModelConfig::policy_map) filled in for `game`, if it has that head.
@@ -159,6 +164,38 @@ class VPNetModel {
   // (Inference's mode), and no learning step.
   LossInfo Loss(const std::vector<TrainInputs>& inputs);
 
+  // Our change (thud/PLAN.md, the feature probe): ModelImpl::Activations on the
+  // CPU for these positions — the torso's output, the policy head's planes, the
+  // values and the policies — with gradients off, in evaluation mode.
+  std::vector<torch::Tensor> Activations(const std::vector<InferenceInputs>& inputs);
+
+  // Our change (thud/PLAN.md, a tool to restructure a network): copies into this
+  // network every parameter and buffer of `other` whose name passes `include` and
+  // whose shape matches here; returns the names copied.
+  // With widen_inputs, a tensor that has more input channels here (its dimension 1)
+  // than in `other` and is otherwise alike — the first convolution, when input planes
+  // are added — gets `other`'s channels first and zeros in the rest, so that this
+  // network computes what `other` does (net surgery; Net2Net's function-preserving
+  // start).
+  std::vector<std::string> CopyParametersFrom(
+      VPNetModel& other, const std::function<bool(const std::string&)>& include,
+      bool widen_inputs = false);
+  // Our change (the same): a parameter by name, sharing its storage (writing to it,
+  // under torch::NoGradGuard, changes the network) — for checks and diagnostics.
+  torch::Tensor Parameter(const std::string& name);
+  // Our change (the same): whether the network takes the input planes from the rules.
+  bool TakesInputPlanes() const { return input_planes_; }
+  // Our change (the same): parameters whose names pass `which` get no gradient, and
+  // the leaf modules whose names pass it stay in evaluation mode while learning (a
+  // frozen batch norm neither uses batch statistics nor updates its running ones).
+  // Returns the parameters frozen.
+  std::vector<std::string> Freeze(const std::function<bool(const std::string&)>& which);
+
+  // Our change (thud/PLAN.md, run L): the network's weights alone from a checkpoint
+  // (PATH.pt), the optimizer left as it is; and the optimizer's learning rate.
+  void LoadWeights(const std::string& path);
+  double LearningRate();
+
   std::string SaveCheckpoint(int step);
   void LoadCheckpoint(int step);
   void LoadCheckpoint(const std::string& path);
@@ -167,6 +204,8 @@ class VPNetModel {
 
  private:
   LossInfo Losses(const std::vector<TrainInputs>& inputs, bool learn);
+  // Our change: writes the network's input for `observation` to out[0, flat_input_size_).
+  void ModelInput(const std::vector<float>& observation, float* out) const;
   // Our change: adds each position's losses to `info` by side to move, if the
   // game says which side moves in its observation (Thud: kTrollsToMovePlane).
   void AddLossesBySide(const std::vector<TrainInputs>& inputs,
@@ -180,7 +219,13 @@ class VPNetModel {
   // for writing python compatible checkpoints.
   std::string model_meta_graph_contents_;
 
+  // Our change: the network's input for one position, as many floats as the model's
+  // input shape — the observation, then, if the model takes them, the input planes
+  // from the rules computed from it (thud/az/thud_features.h); the observation's own
+  // size; and whether the planes are added.
   int flat_input_size_;
+  int observation_size_;
+  bool input_planes_ = false;
   int num_actions_;
 
   // NOTE:
@@ -196,6 +241,8 @@ class VPNetModel {
   // Our change: where the observation says which side moves (Thud: the first
   // entry of kTrollsToMovePlane, 1 when the trolls move), or -1.
   int side_to_move_index_;
+  // Our change (Freeze): leaf modules kept in evaluation mode while learning.
+  std::vector<std::shared_ptr<torch::nn::Module>> frozen_modules_;
 };
 
 // Our change, for training on randomly turned and mirrored positions: `inputs` as
