@@ -40,6 +40,7 @@
 #include "open_spiel/abseil-cpp/absl/strings/str_cat.h"
 #include "open_spiel/abseil-cpp/absl/strings/str_format.h"
 #include "open_spiel/abseil-cpp/absl/strings/str_join.h"
+#include "open_spiel/abseil-cpp/absl/strings/numbers.h"
 #include "open_spiel/abseil-cpp/absl/strings/str_split.h"
 #include "open_spiel/abseil-cpp/absl/strings/string_view.h"
 #include "open_spiel/abseil-cpp/absl/synchronization/mutex.h"
@@ -104,25 +105,7 @@ StartInfo StartInfoFromLearnerJson(const std::string& path) {
   return start_info;
 }
 
-struct Trajectory {
-  struct State {
-    std::vector<float> observation;
-    open_spiel::Player current_player;
-    std::vector<open_spiel::Action> legal_actions;
-    open_spiel::Action action;
-    open_spiel::ActionsAndProbs policy;
-    double value;
-    // Our change (thud/PLAN.md, Instrumentation): how the search moved the
-    // network's own prior at the root, if the actor measured it (see PlayGame).
-    double prior_entropy = std::numeric_limits<double>::quiet_NaN();
-    double prior_kl = std::numeric_limits<double>::quiet_NaN();
-    int prior_top_agrees = -1;  // 1 or 0; -1 if not measured.
-  };
-
-  std::vector<State> states;
-  std::vector<double> returns;
-  std::string ending;  // Our change: how the game ended (GameEnding).
-};
+// Trajectory: in alpha_zero.h (our change).
 
 // Our change (thud/PLAN.md, Instrumentation): how a finished game ended. For
 // Thud the five ways of THUD_RULES.md section 6, checked in ThudState's order.
@@ -151,12 +134,17 @@ std::string GameEnding(const open_spiel::State& state, bool cut_off) {
 Trajectory PlayGame(Logger* logger, int game_num, const open_spiel::Game& game,
                     std::vector<std::unique_ptr<MCTSBot>>* bots,
                     std::mt19937* rng, double temperature, int temperature_drop,
-                    double cutoff_value, bool verbose = false,
-                    VPNetEvaluator* prior_source = nullptr,
-                    double pruning_k = 0, double uct_c = 0) {
+                    double cutoff_value, bool verbose,
+                    VPNetEvaluator* prior_source,
+                    double pruning_k, double uct_c,
+                    const AlphaBetaPlayer* opponent,
+                    open_spiel::Player opponent_player,
+                    const AlphaBetaPlayer* teacher, double teacher_weight,
+                    double teacher_temperature) {
   std::unique_ptr<open_spiel::State> state = game.NewInitialState();
   std::vector<std::string> history;
   Trajectory trajectory;
+  if (opponent != nullptr) trajectory.opponent = opponent_player;
 
   while (true) {
     if (state->IsChanceNode()) {
@@ -165,6 +153,21 @@ Trajectory PlayGame(Logger* logger, int game_num, const open_spiel::Game& game,
           open_spiel::SampleAction(outcomes, *rng).first;
       history.push_back(state->ActionToString(state->CurrentPlayer(), action));
       state->ApplyAction(action);
+    } else if (opponent != nullptr && state->CurrentPlayer() == opponent_player) {
+      // Our change (training against alpha-beta): its move, not recorded as a
+      // position; the cut-off below needs a search's value, so it waits for ours.
+      const open_spiel::Action action = opponent->Choose(*state);
+      std::string action_str = state->ActionToString(opponent_player, action);
+      history.push_back(action_str);
+      state->ApplyAction(action);
+      if (verbose) {
+        logger->Print("Player: %d, action: %s", opponent_player, action_str);
+      }
+      if (state->IsTerminal()) {
+        trajectory.returns = state->Returns();
+        trajectory.ending = GameEnding(*state, /*cut_off=*/false);
+        break;
+      }
     } else {
       open_spiel::Player player = state->CurrentPlayer();
       std::unique_ptr<SearchNode> root = (*bots)[player]->MCTSearch(*state);
@@ -193,9 +196,21 @@ Trajectory PlayGame(Logger* logger, int game_num, const open_spiel::Game& game,
       }
 
       double root_value = root->total_reward / root->explore_count;
+      if (pruning_k <= 0) target = std::move(policy);
+      // Our change (kickstarting): the teacher's share of the target; the move above
+      // was chosen from the search's visits alone.
+      if (teacher != nullptr && teacher_weight > 0) {
+        std::unordered_map<open_spiel::Action, double> taught;
+        for (const auto& [a, p] : TeacherPolicy(*state, *teacher, teacher_temperature)) {
+          taught[a] = p;
+        }
+        for (auto& [a, p] : target) {
+          p = (1 - teacher_weight) * p + teacher_weight * taught[a];
+        }
+      }
       trajectory.states.push_back(Trajectory::State{
           state->ObservationTensor(), player, state->LegalActions(), action,
-          pruning_k > 0 ? std::move(target) : std::move(policy), root_value});
+          std::move(target), root_value});
       // Our change (thud/PLAN.md, Instrumentation): the network's own prior
       // (before root noise: the evaluator's, cached since the search's first
       // evaluation), its entropy, the KL divergence of the root's visit counts
@@ -242,8 +257,16 @@ Trajectory PlayGame(Logger* logger, int game_num, const open_spiel::Game& game,
     }
   }
 
-  logger->Print("Game %d: Returns: %s; Ending: %s; Actions: %s", game_num,
+  // Our change (training against alpha-beta): which side it played, if any.
+  logger->Print("Game %d: Returns: %s; Ending: %s;%s Actions: %s", game_num,
                 absl::StrJoin(trajectory.returns, " "), trajectory.ending,
+                opponent == nullptr
+                    ? ""
+                    : absl::StrCat(" Opponent: alphabeta:", opponent->depth(), " as ",
+                                   game.GetType().short_name != "thud" ? absl::StrCat("player", opponent_player)
+                                   : opponent_player == 0             ? "dwarfs"
+                                                                      : "trolls",
+                                   ";"),
                 absl::StrJoin(history, " "));
   return trajectory;
 }
@@ -252,12 +275,52 @@ Trajectory PlayGame(Logger* logger, int game_num, const open_spiel::Game& game,
 // section 3.2).
 constexpr double kForcedPlayoutsK = 2;
 
+std::vector<double> PerPlayerValues(const std::string& list) {
+  std::vector<double> values;
+  for (absl::string_view entry : absl::StrSplit(list, ',', absl::SkipEmpty())) {
+    double value;
+    SPIEL_CHECK_TRUE(absl::SimpleAtod(entry, &value));
+    values.push_back(value);
+  }
+  return values;
+}
+
+open_spiel::ActionsAndProbs TeacherPolicy(const open_spiel::State& state,
+                                          const AlphaBetaPlayer& teacher,
+                                          double temperature) {
+  const std::vector<open_spiel::Action> legal = state.LegalActions();
+  const std::vector<double> scores = teacher.Scores(state);
+  const double best = *std::max_element(scores.begin(), scores.end());
+  open_spiel::ActionsAndProbs policy;
+  double sum = 0;
+  for (int i = 0; i < legal.size(); ++i) {
+    policy.emplace_back(legal[i], std::exp((scores[i] - best) / temperature));
+    sum += policy.back().second;
+  }
+  for (auto& [a, p] : policy) p /= sum;
+  return policy;
+}
+
+int AlphaBetaDepth(const AlphaZeroConfig& config, open_spiel::Player player) {
+  const std::vector<double> depths = PerPlayerValues(config.alphabeta_depth);
+  SPIEL_CHECK_TRUE(depths.size() == 1 || depths.size() == 2);
+  const double depth = depths[depths.size() == 1 ? 0 : player];
+  SPIEL_CHECK_TRUE(depth >= 1 && depth == std::floor(depth));
+  return static_cast<int>(depth);
+}
+
 std::unique_ptr<MCTSBot> InitAZBot(const AlphaZeroConfig& config,
                                    const open_spiel::Game& game,
                                    std::shared_ptr<Evaluator> evaluator,
-                                   bool evaluation) {
-  return std::make_unique<MCTSBot>(
-      game, std::move(evaluator), config.uct_c, config.max_simulations,
+                                   bool evaluation, int player) {
+  // Our change (thud/PLAN.md, training the dwarfs): per-player simulations in
+  // self-play, and the policy softmax temperatures in every search.
+  const std::vector<double> simulations = PerPlayerValues(config.player_simulations);
+  const int max_simulations = player >= 0 && player < simulations.size()
+                                  ? static_cast<int>(simulations[player])
+                                  : config.max_simulations;
+  auto bot = std::make_unique<MCTSBot>(
+      game, std::move(evaluator), config.uct_c, max_simulations,
       /*max_memory_mb=*/10,
       /*solve=*/false,
       /*seed=*/0,
@@ -269,6 +332,8 @@ std::unique_ptr<MCTSBot> InitAZBot(const AlphaZeroConfig& config,
       config.untried_move_reduction,
       // Our change: KataGo's forced playouts in self-play, with the pruning.
       !evaluation && config.policy_target_pruning ? kForcedPlayoutsK : 0);
+  bot->SetPolicyTemperatures(PerPlayerValues(config.player_policy_temperature));
+  return bot;
 }
 
 // An actor thread runner that generates games and returns trajectories.
@@ -288,19 +353,55 @@ void actor(const open_spiel::Game& game, const AlphaZeroConfig& config, int num,
   std::vector<std::unique_ptr<MCTSBot>> bots;
   bots.reserve(2);
   for (int player = 0; player < 2; player++) {
-    bots.push_back(InitAZBot(config, game, vp_eval, false));
+    bots.push_back(InitAZBot(config, game, vp_eval, false, player));  // Our change.
+  }
+  // Our change (thud/PLAN.md, training against alpha-beta): games against OpenSpiel's
+  // alpha-beta search for a share of the positions this actor records (a game against
+  // it records only our side's moves and is often short, so a share of games would be
+  // a far smaller one of the positions): the next game is one whenever its positions
+  // so far fall short of the share; it plays the trolls in every other one, the dwarfs
+  // in the rest, each side at its own depth (AlphaBetaDepth). Draws no random number
+  // unless such a game is played.
+  std::array<std::unique_ptr<AlphaBetaPlayer>, 2> alphabeta;  // By the player it plays.
+  if (config.alphabeta_share > 0) {
+    for (int p = 0; p < 2; ++p) {
+      alphabeta[p] = std::make_unique<AlphaBetaPlayer>(game, AlphaBetaDepth(config, p));
+    }
+  }
+  int alphabeta_games = 0;
+  int64_t positions = 0, alphabeta_positions = 0;
+  // Our change (kickstarting): the teacher, if on.
+  std::unique_ptr<AlphaBetaPlayer> teacher;
+  if (config.kickstart_weight > 0) {
+    teacher = std::make_unique<AlphaBetaPlayer>(game, config.kickstart_depth);
+    logger->Print("Kickstarting: weight %g, depth %d, temperature %g",
+                  config.kickstart_weight, config.kickstart_depth,
+                  config.kickstart_temperature);
   }
   for (int game_num = 1; !stop->StopRequested(); ++game_num) {
     double cutoff =
         (dist(rng) < config.cutoff_probability ? config.cutoff_value
                                                : game.MaxUtility() + 1);
-    if (!trajectory_queue->Push(
-            PlayGame(logger.get(), game_num, game, &bots, &rng,
-                     config.temperature, config.temperature_drop, cutoff,
-                     /*verbose=*/false, /*prior_source=*/vp_eval.get(),
-                     config.policy_target_pruning ? kForcedPlayoutsK : 0,
-                     config.uct_c),
-            absl::Seconds(10))) {
+    open_spiel::Player opponent = open_spiel::kInvalidPlayer;
+    if (alphabeta[0] != nullptr &&
+        alphabeta_positions < config.alphabeta_share * positions) {
+      opponent = alphabeta_games++ % 2 == 0 ? 1 : 0;
+      alphabeta[opponent]->NewGame(rng());
+    }
+    Trajectory trajectory =
+        PlayGame(logger.get(), game_num, game, &bots, &rng,
+                 config.temperature, config.temperature_drop, cutoff,
+                 /*verbose=*/false, /*prior_source=*/vp_eval.get(),
+                 config.policy_target_pruning ? kForcedPlayoutsK : 0, config.uct_c,
+                 opponent == open_spiel::kInvalidPlayer ? nullptr
+                                                        : alphabeta[opponent].get(),
+                 opponent, teacher.get(), config.kickstart_weight,
+                 config.kickstart_temperature);
+    positions += trajectory.states.size();
+    if (opponent != open_spiel::kInvalidPlayer) {
+      alphabeta_positions += trajectory.states.size();
+    }
+    if (!trajectory_queue->Push(trajectory, absl::Seconds(10))) {
       logger->Print("Failed to push a trajectory after 10 seconds.");
     }
   }
@@ -534,6 +635,33 @@ class StepStats {
   std::array<Side, 2> by_side_;
 };
 
+// Our change (thud/PLAN.md, training against alpha-beta): the network's games against
+// alpha-beta, apart from self-play: per side the network played, its returns (the
+// signal to taper the share by), and the positions they added.
+class AlphaBetaStats {
+ public:
+  void Reset() {
+    for (open_spiel::BasicStats& r : returns_) r.Reset();
+    positions_ = 0;
+  }
+  void Add(const Trajectory& trajectory) {
+    const int ours = 1 - trajectory.opponent;
+    returns_[ours].Add(trajectory.returns[ours]);
+    positions_ += trajectory.states.size();
+  }
+  json::Object ToJson(const StepStats& names) const {
+    json::Object result({{"positions", positions_}});
+    for (int p = 0; p < 2; ++p) {
+      result.emplace(absl::StrCat("network_as_", names.SideName(p)), returns_[p].ToJson());
+    }
+    return result;
+  }
+
+ private:
+  std::array<open_spiel::BasicStats, 2> returns_;
+  int positions_ = 0;
+};
+
 // Our change: a LossInfo's losses per side, as JSON (empty if not measured).
 json::Object LossesBySide(const VPNetModel::LossInfo& losses,
                           const StepStats& names) {
@@ -580,6 +708,7 @@ void learner(const open_spiel::Game& game, const AlphaZeroConfig& config,
 
   open_spiel::HistogramNamed outcomes({"Player1", "Player2", "Draw"});
   StepStats step_stats(game);  // Added: thud/PLAN.md, Instrumentation.
+  AlphaBetaStats vs_alphabeta;  // Added: training against alpha-beta.
   // Added, to see overfitting (thud/PLAN.md Phase 6): before each learning step,
   // the loss on a sample of the positions new since the last step against a
   // sample the network has trained on, taken after the last step. Same network,
@@ -605,6 +734,7 @@ void learner(const open_spiel::Game& game, const AlphaZeroConfig& config,
       value_prediction.Reset();
     }
     step_stats.Reset();
+    vs_alphabeta.Reset();
 
     // Collect trajectories
     int queue_size = trajectory_queue->Size();
@@ -615,12 +745,18 @@ void learner(const open_spiel::Game& game, const AlphaZeroConfig& config,
       if (trajectory) {
         num_trajectories += 1;
         total_trajectories += 1;
-        game_lengths.Add(trajectory->states.size());
-        game_lengths_hist.Add(trajectory->states.size());
-
         double p1_outcome = trajectory->returns[0];
-        outcomes.Add(p1_outcome > 0 ? 0 : (p1_outcome < 0 ? 1 : 2));
-        step_stats.Add(*trajectory);
+        // Our change (training against alpha-beta): the statistics below are self-
+        // play's; a game against alpha-beta (half its moves unrecorded) counts apart.
+        const bool self_play = trajectory->opponent == open_spiel::kInvalidPlayer;
+        if (self_play) {
+          game_lengths.Add(trajectory->states.size());
+          game_lengths_hist.Add(trajectory->states.size());
+          outcomes.Add(p1_outcome > 0 ? 0 : (p1_outcome < 0 ? 1 : 2));
+          step_stats.Add(*trajectory);
+        } else {
+          vs_alphabeta.Add(*trajectory);
+        }
 
         for (const Trajectory::State& state : trajectory->states) {
           // A copy of the trajectory's vectors, so of their exact sizes.
@@ -639,7 +775,7 @@ void learner(const open_spiel::Game& game, const AlphaZeroConfig& config,
           num_states += 1;
         }
 
-        for (int stage = 0; stage < stage_count; ++stage) {
+        for (int stage = 0; self_play && stage < stage_count; ++stage) {
           // Scale for the length of the game
           int index = (trajectory->states.size() - 1) *
                       static_cast<double>(stage) / (stage_count - 1);
@@ -811,6 +947,9 @@ void learner(const open_spiel::Game& game, const AlphaZeroConfig& config,
     }
     record.emplace("selfplay", step_stats.SelfPlayJson());
     record.emplace("by_side", step_stats.BySideJson());
+    if (config.alphabeta_share > 0) {  // Added: training against alpha-beta.
+      record.emplace("vs_alphabeta", vs_alphabeta.ToJson(step_stats));
+    }
     eval->ResetBatchSizeStats();
     logger.Print("Losses: policy: %.4f, value: %.4f, l2: %.4f, sum: %.4f",
                  losses.Policy(), losses.Value(), losses.L2(), losses.Total());

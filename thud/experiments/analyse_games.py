@@ -49,8 +49,10 @@ import numpy as np
 import pyspiel
 
 # Our trainer logs how a game ended since 2026-10-03; upstream's line has no "Ending:".
+# Since 2026-10-07 a game against alpha-beta also says so ("Opponent: alphabeta:2 as
+# trolls;", thud/PLAN.md, training against alpha-beta).
 GAME_LINE = re.compile(r"^\[([^\]]+)\] Game (\d+): Returns: (\S+) (\S+);(?: Ending: ([^;]+);)? "
-                       r"Actions: ?(.*)$")
+                       r"(?:Opponent: ([^;]+); )?Actions: ?(.*)$")
 STEP_LINE = re.compile(r"^\[([^\]]+)\] Step: (\d+)$")
 MOVE = re.compile(r"^\((\d+),(\d+)\)-\((\d+),(\d+)\)(x?)$")
 MAX_MARGIN, DWARFS, TROLLS, TROLL_VALUE = 32, 32, 8, 4
@@ -127,7 +129,8 @@ def load_games(run_dir):
       step = next((k for k, t in ends if when <= t), ends[-1][0] + 1 if ends else 1)
       games.append({"actor": actor, "game": int(m.group(2)), "step": step,
                     "returns": (float(m.group(3)), float(m.group(4))),
-                    "ending": m.group(5), "moves": m.group(6).split()})
+                    "ending": m.group(5), "opponent": m.group(6),
+                    "moves": m.group(7).split()})
   last_step = ends[-1][0] if ends else 0
   return games, last_step
 
@@ -173,6 +176,11 @@ def main():
   except OSError:
     game = pyspiel.load_game("thud")
   games, last_step = load_games(args.run_dir)
+  # Self-play only: a game against alpha-beta is another kind of game.
+  against = sum(1 for g in games if g["opponent"])
+  if against:
+    print(f"left out: {against} games against alpha-beta (the trainer reports them apart)")
+  games = [g for g in games if not g["opponent"]]
   checked = endings_checked = 0
   for g in games:
     g["stats"], g["first"], final, state = replay(game, g["moves"])

@@ -24,6 +24,7 @@
 
 #include <stdint.h>
 
+#include <functional>
 #include <memory>
 #include <random>
 #include <string>
@@ -235,6 +236,27 @@ class MCTSBot : public Bot {
   // Run MCTS on a given state, and return the resulting search tree.
   std::unique_ptr<SearchNode> MCTSearch(const State& state);
 
+  // Our change (thud/PLAN.md, training the dwarfs): Leela Chess Zero's policy
+  // softmax temperature, per player — at every node where player p is to move, the
+  // prior is raised to 1 / temperatures[p] and renormalised before the search uses
+  // it (before root noise): above 1 it flattens the prior, keeping its order, so the
+  // search spreads over more moves. Empty, or 1 for a player, leaves the prior as it
+  // is (upstream's behaviour).
+  void SetPolicyTemperatures(std::vector<double> temperatures) {
+    policy_temperatures_ = std::move(temperatures);
+  }
+
+  // Our change (thud/PLAN.md, the blunder diagnosis — a diagnostic, not for training):
+  // at every node where player p is to move, the actions `marked` picks out get at
+  // least floors[p] of the prior's mass between them (ApplyPriorFloor), after the
+  // policy temperature and before root noise. Empty, or 0 for a player, leaves the
+  // prior as it is.
+  void SetPriorFloors(std::vector<double> floors,
+                      std::function<bool(const State&, Action)> marked) {
+    prior_floors_ = std::move(floors);
+    prior_floor_marked_ = std::move(marked);
+  }
+
  private:
   // Applies the UCT policy to play the game until reaching a leaf node.
   //
@@ -267,6 +289,9 @@ class MCTSBot : public Bot {
   UntriedMoveValue untried_move_value_;
   double untried_move_reduction_;
   double forced_playouts_k_;
+  std::vector<double> policy_temperatures_;  // Our change: SetPolicyTemperatures.
+  std::vector<double> prior_floors_;         // Our change: SetPriorFloors.
+  std::function<bool(const State&, Action)> prior_floor_marked_;
   double dirichlet_alpha_;
   double dirichlet_epsilon_;
   bool dont_return_chance_node_;
@@ -274,6 +299,17 @@ class MCTSBot : public Bot {
   const ChildSelectionPolicy child_selection_policy_;
   std::shared_ptr<Evaluator> evaluator_;
 };
+
+// Our change (see MCTSBot::SetPolicyTemperatures): raises each probability of
+// `prior` to 1 / temperature and renormalises; zeros stay zero.
+void ApplyPolicyTemperature(double temperature, ActionsAndProbs* prior);
+
+// Our change (see MCTSBot::SetPriorFloors): if the actions with marked[i] hold less
+// than `floor` of `prior`'s mass, scales them up to `floor` between them (equal shares
+// if they held none) and the others down to 1 - floor, keeping each group's
+// proportions; otherwise, or with no marked action, leaves `prior` as it is.
+void ApplyPriorFloor(double floor, const std::vector<bool>& marked,
+                     ActionsAndProbs* prior);
 
 // Returns a vector of noise sampled from a dirichlet distribution. See:
 // https://en.wikipedia.org/wiki/Dirichlet_process

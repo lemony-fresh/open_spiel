@@ -60,6 +60,9 @@ BIN = os.path.expanduser("~/thud-openspiel/build-shared/az_match")
 CACHE, MATCH_GB, RESERVE_GB = 32768, 1.0, 1.5
 # The ladder's anchors (thud/PLAN.md, How we evaluate networks), each as trained.
 ANCHORS = {
+    "K83": f"{RUNS}/runK_Gaug64_T15_AB30_ks:83",  # The top anchor since 2026-10-10.
+    "H83": f"{RUNS}/runH_Gaug64_T15:83",  # The top anchor 2026-10-07 to 2026-10-10.
+    "G'64": f"{RUNS}/stage5b_Gaug_7x:64",  # The top anchor 2026-10-07, morning to evening.
     "G'44": f"{RUNS}/stage5b_Gaug_7x:44",
     "A14": f"{RUNS}/stage1_sims100:14",
     "E44": f"{RUNS}/stage3b_E_7x:44",
@@ -79,8 +82,18 @@ def rule_of(spec):
   return config.get("untried_move_value", "upstream")
 
 
+def temperature_of(spec):
+  """The policy softmax temperatures per player the run of `spec` trained with."""
+  run_dir = spec.rsplit(":", 1)[0]
+  try:
+    config = json.load(open(os.path.join(run_dir, "config.json")))
+  except OSError:
+    return ""
+  return config.get("player_policy_temperature", "")
+
+
 def player_name(spec):
-  return ladder.player(spec, rule_of(spec), 100)
+  return ladder.player(spec, rule_of(spec), 100, temperature_of(spec))
 
 
 def ratings(match_dir):
@@ -156,7 +169,8 @@ def evaluate(run_dir, step, args, last_rating):
                         f"watch_{run_name}_step{step}_vs_{a.replace(chr(39), 'aug')}.jsonl")
            for a in anchors]
   run_matches([[BIN, f"a={spec}", f"b={ANCHORS[a]}", f"untried_a={rule_of(spec)}",
-                f"untried_b={rule_of(ANCHORS[a])}", f"pairs={args.pairs}",
+                f"untried_b={rule_of(ANCHORS[a])}", f"temperature_a={temperature_of(spec)}",
+                f"temperature_b={temperature_of(ANCHORS[a])}", f"pairs={args.pairs}",
                 f"threads={args.pairs}", f"cache={CACHE}"] for a in anchors], paths, args)
   played = []
   for anchor, path in zip(anchors, paths):

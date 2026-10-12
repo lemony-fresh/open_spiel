@@ -264,6 +264,39 @@ Action SearchNode::SampleFromPrior(const State& state,
   return chosen_action;
 }
 
+void ApplyPolicyTemperature(double temperature, ActionsAndProbs* prior) {
+  if (temperature == 1) return;  // Exactly as it was (renormalising would round).
+  double sum = 0;
+  for (auto& [action, p] : *prior) {
+    p = p > 0 ? std::pow(p, 1 / temperature) : 0;
+    sum += p;
+  }
+  if (sum > 0) {
+    for (auto& [action, p] : *prior) p /= sum;
+  }
+}
+
+void ApplyPriorFloor(double floor, const std::vector<bool>& marked,
+                     ActionsAndProbs* prior) {
+  SPIEL_CHECK_EQ(marked.size(), prior->size());
+  double mass = 0;
+  int count = 0;
+  for (int i = 0; i < prior->size(); ++i) {
+    if (!marked[i]) continue;
+    mass += (*prior)[i].second;
+    ++count;
+  }
+  if (count == 0 || mass >= floor) return;
+  for (int i = 0; i < prior->size(); ++i) {
+    double& p = (*prior)[i].second;
+    if (marked[i]) {
+      p = mass > 0 ? p * floor / mass : floor / count;
+    } else {
+      p *= mass < 1 ? (1 - floor) / (1 - mass) : 0;
+    }
+  }
+}
+
 std::vector<double> dirichlet_noise(int count, double alpha,
                                     std::mt19937* rng) {
   std::vector<double> noise;
@@ -366,6 +399,21 @@ std::unique_ptr<State> MCTSBot::ApplyTreePolicy(
     if (current_node->children.empty()) {
       // For a new node, initialize its state, then choose a child as normal.
       ActionsAndProbs legal_actions = evaluator_->Prior(*working_state);
+      // Our change: the policy softmax temperature (SetPolicyTemperatures).
+      const Player to_move = working_state->CurrentPlayer();
+      if (to_move >= 0 && to_move < policy_temperatures_.size() &&
+          policy_temperatures_[to_move] != 1) {
+        ApplyPolicyTemperature(policy_temperatures_[to_move], &legal_actions);
+      }
+      // Our change: a floor under marked actions' prior (SetPriorFloors).
+      if (to_move >= 0 && to_move < prior_floors_.size() && prior_floors_[to_move] > 0) {
+        std::vector<bool> marked;
+        marked.reserve(legal_actions.size());
+        for (const auto& [action, p] : legal_actions) {
+          marked.push_back(prior_floor_marked_(*working_state, action));
+        }
+        ApplyPriorFloor(prior_floors_[to_move], marked, &legal_actions);
+      }
       if (current_node == root && dirichlet_alpha_ > 0) {
         std::vector<double> noise =
             dirichlet_noise(legal_actions.size(), dirichlet_alpha_, &rng_);

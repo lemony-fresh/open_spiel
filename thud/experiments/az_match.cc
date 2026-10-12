@@ -23,7 +23,9 @@
 // same rule for untried moves (`untried`, default upstream's — with it our copy searches
 // exactly as upstream's does, thud/az/identity_check.cc; `untried_a` and `untried_b` give
 // each network its own, e.g. the rule it was trained with), no root noise, and always play
-// their most visited move.
+// their most visited move. `temperature_a` and `temperature_b` give each network the policy
+// softmax temperatures per player it was trained with (comma-separated, as the trainer's
+// --player_policy_temperature, e.g. 1.5,1; empty: none, upstream's search).
 // Each network has its own batched evaluator. Prints one JSON line per pair, then a summary:
 // network A's summed margin per pair (in points), its mean with a 95% interval (Student's
 // t), pairs won, drawn and lost, and each network's mean margin per side. With `progress`,
@@ -34,18 +36,51 @@
 // evaluator for both sides, as in self-play, so that each side's search can hit the
 // positions the other side's evaluated.
 //
+// Side B can instead be a player without a network (2026-10-07):
+//   b=mcts:SIMS           OpenSpiel's MCTSBot with random rollouts, as the trainer's
+//                         evaluator plays it; `mcts_memory` caps each tree, in MB
+//   b=alphabeta:DEPTH     OpenSpiel's alpha-beta search to DEPTH plies, scoring by
+//                         material (AlphaBetaOpponent below)
+//   b=hexparrot:LOOKAHEAD hexparrot/thudgame's AI (its default lookahead is 3), in a
+//                         Python process per thread (thud/experiments/hexparrot_player.py;
+//                         `hexparrot_player` gives another path to it)
+// Each starts every battle from a seed fixed by `seed`, the pair and the side, so reruns
+// play the same games whichever thread plays them. The pair lines then also give the
+// pair's seconds and each side's seconds per move it chose (wall clock: on a loaded
+// machine both sides' grow; network A's include waiting for its batches), the summary
+// those over all battles and how often hexparrot's AI chose no move and a uniformly
+// random one was played for it (`b_fallbacks`). Matches between networks are unchanged.
+// `games=PATH` writes every battle's moves to PATH, one JSON line each, in any match.
+// `capture_floor_a=LIST` (a diagnostic, 2026-10-08; thud/PLAN.md, the blunder
+// diagnosis): per player, the least prior mass network A's search gives the captures
+// (moves written with an "x") at that player's nodes ("0,0.5": at the trolls' nodes
+// half the prior) — MCTSBot::SetPriorFloors.
+//
 //   thud/az/build.sh thud/experiments/az_match.cc
 //   OMP_NUM_THREADS=4 build-shared/az_match a=RUN_DIR:STEP b=RUN_DIR:STEP sims=100 \
 //     pairs=50 [sims_a=SIMS sims_b=SIMS opening=4 threads=16 batch=16 seed=1 \
-//     untried=upstream untried_a=UNTRIED untried_b=UNTRIED progress=0 cache=262144 share=0]
+//     untried=upstream untried_a=UNTRIED untried_b=UNTRIED temperature_a=LIST \
+//     temperature_b=LIST progress=0 cache=262144 share=0 mcts_memory=1000 \
+//     hexparrot_player=PATH games=PATH capture_floor_a=LIST]
 //
 // STEP is a checkpoint step of that run (-1: its most recent checkpoint).
+
+#include <fcntl.h>
+#include <spawn.h>
+#include <sys/wait.h>
+#include <unistd.h>
 
 #include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <cmath>
+#include <csignal>
 #include <cstdint>
+#include <cstdio>
+#include <cstdlib>
+#include <filesystem>
+#include <fstream>
+#include <functional>
 #include <iostream>
 #include <map>
 #include <memory>
@@ -55,10 +90,17 @@
 #include <thread>
 #include <vector>
 
+#include "open_spiel/abseil-cpp/absl/strings/match.h"
 #include "open_spiel/abseil-cpp/absl/strings/str_cat.h"
 #include "open_spiel/abseil-cpp/absl/strings/str_format.h"
+#include "open_spiel/abseil-cpp/absl/strings/str_join.h"
+#include "open_spiel/abseil-cpp/absl/strings/str_replace.h"
+#include "open_spiel/algorithms/mcts.h"
+#include "open_spiel/games/thud/thud.h"
 #include "open_spiel/spiel.h"
 #include "open_spiel/spiel_utils.h"
+#include "thud/az/alpha_zero.h"
+#include "thud/az/alphabeta_player.h"
 #include "thud/az/device_manager.h"
 #include "thud/az/mcts.h"
 #include "thud/az/vpevaluator.h"
@@ -128,23 +170,193 @@ std::shared_ptr<VPNetEvaluator> LoadEvaluator(const open_spiel::Game& game,
 struct Battle {
   double a_return;  // Network A's return, -1 to 1.
   int moves;
+  std::vector<std::string> actions;  // The battle's moves, opening included, as text.
+  double seconds[2] = {0, 0};  // A's and B's time choosing moves (wall clock).
+  int choices[2] = {0, 0};     // The moves each chose, the opening's not counted.
 };
+
+// A player's move in a state.
+using Chooser = std::function<Action(const open_spiel::State&)>;
+
+// A network's move: its most visited.
+Chooser NetworkChooser(MCTSBot* bot) {
+  return [bot](const open_spiel::State& state) {
+    std::unique_ptr<SearchNode> root = bot->MCTSearch(state);
+    simulations_done += root->explore_count;
+    return root->BestChild().action;
+  };
+}
 
 // One battle from `opening`, network A playing `a_player`.
 Battle Play(const open_spiel::Game& game, const std::vector<Action>& opening,
-            MCTSBot* a, MCTSBot* b, int a_player) {
+            const Chooser& a, const Chooser& b, int a_player) {
   std::unique_ptr<open_spiel::State> state = game.NewInitialState();
-  for (Action action : opening) state->ApplyAction(action);
+  std::vector<std::string> actions;
+  for (Action action : opening) {
+    actions.push_back(state->ActionToString(action));
+    state->ApplyAction(action);
+  }
   int moves = opening.size();
+  double seconds[2] = {0, 0};
+  int choices[2] = {0, 0};
   while (!state->IsTerminal()) {
-    MCTSBot* bot = state->CurrentPlayer() == a_player ? a : b;
-    std::unique_ptr<SearchNode> root = bot->MCTSearch(*state);
-    simulations_done += root->explore_count;
-    state->ApplyAction(root->BestChild().action);
+    const int chooser = state->CurrentPlayer() == a_player ? 0 : 1;
+    const auto start = std::chrono::steady_clock::now();
+    const Action action = (chooser == 0 ? a : b)(*state);
+    seconds[chooser] +=
+        std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+    ++choices[chooser];
+    actions.push_back(state->ActionToString(action));
+    state->ApplyAction(action);
     ++moves;
   }
-  return {state->Returns()[a_player], moves};
+  return {state->Returns()[a_player], moves, std::move(actions), {seconds[0], seconds[1]},
+          {choices[0], choices[1]}};
 }
+
+// Side B's player when it is not a network (b=KIND:N).
+class Opponent {
+ public:
+  virtual ~Opponent() = default;
+  // Called before each battle, with a seed fixed by the pair and the side.
+  virtual void NewBattle(int seed) = 0;
+  virtual Action Choose(const open_spiel::State& state) = 0;
+  // Moves played for it because it chose none.
+  virtual int Fallbacks() const { return 0; }
+};
+
+int BattleSeed(int seed, int pair, int a_player) {
+  return seed * 100003 + 2 * pair + a_player;
+}
+
+// OpenSpiel's MCTSBot with random rollouts (mcts:SIMS), set up as the trainer's evaluator
+// sets up its opponent (thud/az/alpha_zero.cc, EvaluatorThread): UCT with uct_c 2, one
+// rollout per evaluation, the solver on; `max_memory_mb` caps the tree, beyond which it
+// prunes it (MCTSBot::MCTSearch).
+class MctsOpponent : public Opponent {
+ public:
+  MctsOpponent(const open_spiel::Game& game, int simulations, int max_memory_mb)
+      : game_(game), simulations_(simulations), max_memory_mb_(max_memory_mb) {}
+  void NewBattle(int seed) override {
+    bot_ = std::make_unique<open_spiel::algorithms::MCTSBot>(
+        game_, std::make_shared<open_spiel::algorithms::RandomRolloutEvaluator>(1, seed),
+        /*uct_c=*/2, simulations_, max_memory_mb_, /*solve=*/true, seed,
+        /*verbose=*/false, open_spiel::algorithms::ChildSelectionPolicy::UCT,
+        /*dirichlet_alpha=*/0, /*dirichlet_epsilon=*/0,
+        /*dont_return_chance_node=*/true);
+  }
+  Action Choose(const open_spiel::State& state) override { return bot_->Step(state); }
+
+ private:
+  const open_spiel::Game& game_;
+  const int simulations_;
+  const int max_memory_mb_;
+  std::unique_ptr<open_spiel::algorithms::MCTSBot> bot_;
+};
+
+// OpenSpiel's alpha-beta search (alphabeta:DEPTH, in plies), scoring by material with a
+// random tie-break: thud/az/alphabeta_player.h, which the trainer's games against
+// alpha-beta use too.
+class AlphaBetaOpponent : public Opponent {
+ public:
+  AlphaBetaOpponent(const open_spiel::Game& game, int depth) : player_(game, depth) {}
+  void NewBattle(int seed) override { player_.NewGame(seed); }
+  Action Choose(const open_spiel::State& state) override { return player_.Choose(state); }
+
+ private:
+  open_spiel::thud_az::AlphaBetaPlayer player_;
+};
+
+// hexparrot/thudgame's AI (hexparrot:LOOKAHEAD), run by thud/experiments/hexparrot_player.py
+// in a Python process of its own, which this talks to over pipes (the protocol is in that
+// file). Positions cross, not moves: this sends the board and plays the one legal action
+// that leads to the board hexparrot's move left, or stops the match if none does.
+class HexparrotOpponent : public Opponent {
+ public:
+  HexparrotOpponent(int lookahead, const std::string& script) {
+    int to_child[2], from_child[2];
+    // O_CLOEXEC: no other thread's Python may inherit these, or it would hold them open
+    // after this one closes them.
+    SPIEL_CHECK_EQ(pipe2(to_child, O_CLOEXEC), 0);
+    SPIEL_CHECK_EQ(pipe2(from_child, O_CLOEXEC), 0);
+    posix_spawn_file_actions_t actions;
+    posix_spawn_file_actions_init(&actions);
+    posix_spawn_file_actions_adddup2(&actions, to_child[0], 0);
+    posix_spawn_file_actions_adddup2(&actions, from_child[1], 1);
+    std::vector<std::string> words = {"python3", "-u", script, "--lookahead",
+                                      std::to_string(lookahead)};
+    std::vector<char*> argv;
+    for (std::string& word : words) argv.push_back(word.data());
+    argv.push_back(nullptr);
+    const int error =
+        posix_spawnp(&pid_, "python3", &actions, nullptr, argv.data(), environ);
+    posix_spawn_file_actions_destroy(&actions);
+    if (error != 0) {
+      open_spiel::SpielFatalError(absl::StrCat("Cannot start python3 ", script));
+    }
+    close(to_child[0]);
+    close(from_child[1]);
+    to_ = fdopen(to_child[1], "w");
+    from_ = fdopen(from_child[0], "r");
+  }
+  ~HexparrotOpponent() override {
+    fclose(to_);  // End of input ends the player.
+    fclose(from_);
+    waitpid(pid_, nullptr, 0);
+  }
+  void NewBattle(int seed) override {
+    rng_.seed(seed);
+    if (Ask(absl::StrCat("seed ", seed)) != "ok") {
+      open_spiel::SpielFatalError("hexparrot_player.py did not take its seed");
+    }
+  }
+  Action Choose(const open_spiel::State& state) override {
+    const std::string reply = Ask(absl::StrCat(
+        "move ", state.CurrentPlayer() == open_spiel::thud::kDwarfPlayer ? "dwarf" : "troll",
+        " ", Rows(state)));
+    const std::vector<Action> legal = state.LegalActions();
+    if (reply == "none") {
+      ++fallbacks_;
+      return legal[std::uniform_int_distribution<int>(0, legal.size() - 1)(rng_)];
+    }
+    for (Action action : legal) {
+      if (Rows(*state.Child(action)) == reply) return action;
+    }
+    open_spiel::SpielFatalError(absl::StrCat(
+        "hexparrot's move leads to no position our rules allow, from\n", state.ToString(),
+        "\nto\n", absl::StrReplaceAll(reply, {{"/", "\n"}})));
+  }
+  int Fallbacks() const override { return fallbacks_; }
+
+ private:
+  // The board: the 15 rows of thud.h's text format, joined by '/'.
+  static std::string Rows(const open_spiel::State& state) {
+    std::string text = state.ToString();
+    text.resize(text.rfind('\n'));  // Drops the status line.
+    std::replace(text.begin(), text.end(), '\n', '/');
+    return text;
+  }
+  std::string Ask(const std::string& request) {
+    std::fprintf(to_, "%s\n", request.c_str());
+    std::fflush(to_);
+    char* line = nullptr;
+    size_t capacity = 0;
+    const ssize_t length = getline(&line, &capacity, from_);
+    std::string reply = length > 0 ? std::string(line, length) : "";
+    std::free(line);
+    if (!reply.empty() && reply.back() == '\n') reply.pop_back();
+    if (reply.empty()) {
+      open_spiel::SpielFatalError("hexparrot_player.py stopped (its error is above)");
+    }
+    return reply;
+  }
+
+  pid_t pid_;
+  std::FILE* to_;
+  std::FILE* from_;
+  std::mt19937 rng_;
+  int fallbacks_ = 0;
+};
 
 }  // namespace
 
@@ -164,6 +376,12 @@ int main(int argc, char** argv) {
   const std::string untried = args.Get("untried", "upstream");
   const std::string untried_a = args.Get("untried_a", untried);
   const std::string untried_b = args.Get("untried_b", untried);
+  const std::string temperature_a = args.Get("temperature_a", "");
+  const std::string temperature_b = args.Get("temperature_b", "");
+  const std::vector<double> temperatures_a =
+      open_spiel::thud_az::torch_az::PerPlayerValues(temperature_a);
+  const std::vector<double> temperatures_b =
+      open_spiel::thud_az::torch_az::PerPlayerValues(temperature_b);
   const open_spiel::thud_az::UntriedMoveValue rule_a =
       open_spiel::thud_az::UntriedMoveValueFromString(untried_a);
   const open_spiel::thud_az::UntriedMoveValue rule_b =
@@ -171,11 +389,29 @@ int main(int argc, char** argv) {
   const int progress = args.GetInt("progress", 0);
   const int cache_size = args.GetInt("cache", 1 << 18);
   const bool share = args.GetInt("share", 0) != 0;
+  const int mcts_memory = args.GetInt("mcts_memory", 1000);
+  const std::string games_path = args.Get("games", "");
+  const std::string capture_floor_a = args.Get("capture_floor_a", "");
+  const std::vector<double> capture_floors_a =
+      open_spiel::thud_az::torch_az::PerPlayerValues(capture_floor_a);
+  const std::string hexparrot_player = args.Get(
+      "hexparrot_player",
+      (std::filesystem::read_symlink("/proc/self/exe").parent_path().parent_path() /
+       "thud/experiments/hexparrot_player.py")
+          .string());
   args.CheckAllUsed();
   if (spec_a.empty() || spec_b.empty()) {
     std::cerr << "Usage: " << argv[0] << " a=DIR:STEP b=DIR:STEP [key=value ...]"
               << std::endl;
     return 1;
+  }
+  // Side B without a network: "mcts:SIMS", "alphabeta:DEPTH" or "hexparrot:LOOKAHEAD".
+  const std::string kind_b = spec_b.substr(0, spec_b.find(':'));
+  const bool outside = kind_b == "mcts" || kind_b == "alphabeta" || kind_b == "hexparrot";
+  const int strength_b = outside ? std::stoi(spec_b.substr(kind_b.size() + 1)) : 0;
+  if (outside && kind_b == "hexparrot") {
+    // A Python player that stopped shows as an error reading its reply, not a SIGPIPE.
+    std::signal(SIGPIPE, SIG_IGN);
   }
 
   if (share && spec_a != spec_b) {
@@ -185,13 +421,14 @@ int main(int argc, char** argv) {
   DeviceManager devices_a, devices_b;
   auto eval_a =
       LoadEvaluator(*game, spec_a, &devices_a, batch, inference_threads, cache_size);
-  auto eval_b = share ? eval_a
-                      : LoadEvaluator(*game, spec_b, &devices_b, batch,
-                                      inference_threads, cache_size);
-  // The requests of both evaluators (one if shared).
+  auto eval_b = share     ? eval_a
+                : outside ? nullptr
+                          : LoadEvaluator(*game, spec_b, &devices_b, batch,
+                                          inference_threads, cache_size);
+  // The requests of both evaluators (one if shared or B has none).
   auto requests = [&]() {
     VPNetEvaluator::RequestCounts sum = eval_a->GetRequestCounts();
-    if (!share) {
+    if (!share && eval_b) {
       const VPNetEvaluator::RequestCounts b = eval_b->GetRequestCounts();
       sum.value_hits += b.value_hits;
       sum.value_misses += b.value_misses;
@@ -251,34 +488,95 @@ int main(int argc, char** argv) {
 
   std::vector<double> pair_margin(pairs), a_dwarfs(pairs), a_trolls(pairs);
   std::atomic<int> next{0};
+  std::atomic<int> fallbacks{0};
+  double thinking_seconds[2] = {0, 0};  // A's and B's, over all battles (under `out`).
+  int64_t thinking_moves[2] = {0, 0};
   std::mutex out;
+  std::unique_ptr<std::ofstream> games;
+  if (!games_path.empty()) games = std::make_unique<std::ofstream>(games_path);
   std::vector<std::thread> workers;
   for (int t = 0; t < threads; ++t) {
     workers.emplace_back([&, t]() {
       auto make_bot = [&](std::shared_ptr<VPNetEvaluator> eval, int simulations,
-                          open_spiel::thud_az::UntriedMoveValue untried_rule) {
-        return std::make_unique<MCTSBot>(
+                          open_spiel::thud_az::UntriedMoveValue untried_rule,
+                          const std::vector<double>& temperatures,
+                          const std::vector<double>& capture_floors) {
+        auto bot = std::make_unique<MCTSBot>(
             *game, eval, /*uct_c=*/2, simulations, /*max_memory_mb=*/1000, /*solve=*/false,
             /*seed=*/t, /*verbose=*/false,
             open_spiel::thud_az::ChildSelectionPolicy::PUCT, 0, 0,
             /*dont_return_chance_node=*/false, /*max_wall_clock_time=*/-1, untried_rule);
+        bot->SetPolicyTemperatures(temperatures);
+        if (!capture_floors.empty()) {
+          bot->SetPriorFloors(capture_floors, [](const open_spiel::State& s, Action a) {
+            return absl::EndsWith(s.ActionToString(a), "x");
+          });
+        }
+        return bot;
       };
-      std::unique_ptr<MCTSBot> a = make_bot(eval_a, sims_a, rule_a),
-                               b = make_bot(eval_b, sims_b, rule_b);
+      std::unique_ptr<MCTSBot> a =
+          make_bot(eval_a, sims_a, rule_a, temperatures_a, capture_floors_a);
+      std::unique_ptr<MCTSBot> b;
+      std::unique_ptr<Opponent> opponent;
+      if (!outside) {
+        b = make_bot(eval_b, sims_b, rule_b, temperatures_b, {});
+      } else if (kind_b == "mcts") {
+        opponent = std::make_unique<MctsOpponent>(*game, strength_b, mcts_memory);
+      } else if (kind_b == "alphabeta") {
+        opponent = std::make_unique<AlphaBetaOpponent>(*game, strength_b);
+      } else {
+        opponent = std::make_unique<HexparrotOpponent>(strength_b, hexparrot_player);
+      }
+      const Chooser choose_a = NetworkChooser(a.get());
+      const Chooser choose_b =
+          outside ? Chooser([&opponent](const open_spiel::State& state) {
+            return opponent->Choose(state);
+          })
+                  : NetworkChooser(b.get());
       for (int i = next++; i < pairs; i = next++) {
-        const Battle as_dwarfs = Play(*game, openings[i], a.get(), b.get(), 0);
-        const Battle as_trolls = Play(*game, openings[i], a.get(), b.get(), 1);
+        const auto start = std::chrono::steady_clock::now();
+        if (outside) opponent->NewBattle(BattleSeed(seed, i, 0));
+        const Battle as_dwarfs = Play(*game, openings[i], choose_a, choose_b, 0);
+        if (outside) opponent->NewBattle(BattleSeed(seed, i, 1));
+        const Battle as_trolls = Play(*game, openings[i], choose_a, choose_b, 1);
+        const double seconds =
+            std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
         a_dwarfs[i] = as_dwarfs.a_return * kMaxMargin + 0.0;  // + 0.0: no "-0".
         a_trolls[i] = as_trolls.a_return * kMaxMargin + 0.0;
         pair_margin[i] = a_dwarfs[i] + a_trolls[i];
         std::lock_guard<std::mutex> lock(out);
+        if (games) {
+          for (const Battle* battle : {&as_dwarfs, &as_trolls}) {
+            *games << absl::StrFormat(
+                          "{\"pair\": %d, \"a_player\": %d, \"a_margin\": %.0f, "
+                          "\"actions\": [\"%s\"]}",
+                          i, battle == &as_trolls, battle->a_return * kMaxMargin + 0.0,
+                          absl::StrJoin(battle->actions, "\", \""))
+                   << std::endl;
+          }
+        }
         std::cout << absl::StrFormat(
                          "{\"pair\": %d, \"a_as_dwarfs\": %.0f, \"a_as_trolls\": %.0f, "
-                         "\"a_pair_margin\": %.0f, \"moves\": [%d, %d]}",
+                         "\"a_pair_margin\": %.0f, \"moves\": [%d, %d]",
                          i, a_dwarfs[i], a_trolls[i], pair_margin[i], as_dwarfs.moves,
                          as_trolls.moves)
-                  << std::endl;
+                  << (outside ? absl::StrFormat(
+                                    ", \"seconds\": %.1f, \"seconds_per_move\": [%.3f, %.3f]",
+                                    seconds,
+                                    (as_dwarfs.seconds[0] + as_trolls.seconds[0]) /
+                                        (as_dwarfs.choices[0] + as_trolls.choices[0]),
+                                    (as_dwarfs.seconds[1] + as_trolls.seconds[1]) /
+                                        (as_dwarfs.choices[1] + as_trolls.choices[1]))
+                              : "")
+                  << "}" << std::endl;
+        for (const Battle* battle : {&as_dwarfs, &as_trolls}) {
+          for (int side : {0, 1}) {
+            thinking_seconds[side] += battle->seconds[side];
+            thinking_moves[side] += battle->choices[side];
+          }
+        }
       }
+      if (outside) fallbacks += opponent->Fallbacks();
     });
   }
   for (std::thread& w : workers) w.join();
@@ -306,6 +604,7 @@ int main(int argc, char** argv) {
   std::cout << absl::StrFormat(
                    "{\"summary\": true, \"a\": \"%s\", \"b\": \"%s\", "
                    "\"untried_a\": \"%s\", \"untried_b\": \"%s\", "
+                   "\"temperature_a\": \"%s\", \"temperature_b\": \"%s\", "
                    "\"sims_a\": %d, \"sims_b\": %d, "
                    "\"pairs\": %d, \"a_mean_pair_margin\": %.2f, \"ci95\": [%.2f, %.2f], "
                    "\"a_pairs_won\": %d, \"drawn\": %d, \"lost\": %d, "
@@ -313,13 +612,24 @@ int main(int argc, char** argv) {
                    "\"b_mean_as_dwarfs\": %.2f, \"b_mean_as_trolls\": %.2f, "
                    "\"cache\": %d, \"shared\": %s, \"value_requests\": %d, "
                    "\"value_cached\": %.1f, \"prior_requests\": %d, "
-                   "\"prior_cached\": %.1f}",
-                   spec_a, spec_b, untried_a, untried_b, sims_a, sims_b, pairs, m,
+                   "\"prior_cached\": %.1f",
+                   spec_a, spec_b, untried_a, untried_b, temperature_a, temperature_b,
+                   sims_a, sims_b, pairs, m,
                    m - half_width, m + half_width, won, drawn, lost, mean(a_dwarfs),
                    mean(a_trolls), -mean(a_trolls), -mean(a_dwarfs), cache_size,
                    share ? "true" : "false", r.value_hits + r.value_misses,
                    percent(r.value_hits, r.value_misses), r.prior_hits + r.prior_misses,
                    percent(r.prior_hits, r.prior_misses))
-            << std::endl;
+            << (capture_floor_a.empty()
+                    ? ""
+                    : absl::StrFormat(", \"capture_floor_a\": \"%s\"", capture_floor_a))
+            << (outside ? absl::StrFormat(", \"seed\": %d, \"mcts_memory\": %d, "
+                                          "\"b_fallbacks\": %d, "
+                                          "\"seconds_per_move\": [%.3f, %.3f]",
+                                          seed, mcts_memory, fallbacks.load(),
+                                          thinking_seconds[0] / thinking_moves[0],
+                                          thinking_seconds[1] / thinking_moves[1])
+                        : "")
+            << "}" << std::endl;
   return 0;
 }

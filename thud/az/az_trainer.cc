@@ -63,6 +63,29 @@ ABSL_FLAG(std::string, untried_move_value, "sibling_mean_minus_reduction",
           "game), sibling_mean_minus_reduction (KataGo's rule) or loss (AlphaZero's).");
 ABSL_FLAG(double, untried_move_reduction, 0.2,
           "The reduction of sibling_mean_minus_reduction.");
+ABSL_FLAG(std::string, player_simulations, "",
+          "Per player, comma-separated (\"400,100\"): each self-play search's "
+          "simulations for the player to move at its root; empty or a missing "
+          "entry: max_simulations.");
+ABSL_FLAG(std::string, player_policy_temperature, "",
+          "Per player, comma-separated (\"1.5,1\"): Leela Chess Zero's policy "
+          "softmax temperature at that player's nodes (above 1 flattens the prior "
+          "the search uses); empty: 1, as upstream.");
+ABSL_FLAG(double, alphabeta_share, 0,
+          "The share of each actor's recorded positions from games against "
+          "OpenSpiel's alpha-beta search (material), which plays the trolls in every "
+          "other one; only the network's positions are recorded. 0: self-play only, "
+          "as upstream.");
+ABSL_FLAG(std::string, alphabeta_depth, "2",
+          "The alpha-beta search's depth in plies, per player it plays, comma-"
+          "separated (\"2,1\": 2 as the dwarfs, 1 as the trolls); one value for both.");
+ABSL_FLAG(double, kickstart_weight, 0,
+          "Kickstarting: each recorded position's policy target is (1 - w) x the "
+          "search's visits + w x a teacher's (alpha-beta's move scores, softmax); 0: "
+          "the visits alone, as upstream.");
+ABSL_FLAG(int, kickstart_depth, 2, "The teacher's alpha-beta depth, in plies.");
+ABSL_FLAG(double, kickstart_temperature, 1,
+          "The teacher's softmax temperature, in points of material.");
 ABSL_FLAG(int, learner_batches, 0,
           "Batches each learning step trains on; 0: one pass over the replay buffer "
           "(its size / train_batch_size), as upstream.");
@@ -183,6 +206,16 @@ int main(int argc, char** argv) {
     config.policy_epsilon = absl::GetFlag(FLAGS_policy_epsilon);
     config.untried_move_value = absl::GetFlag(FLAGS_untried_move_value);
     config.untried_move_reduction = absl::GetFlag(FLAGS_untried_move_reduction);
+    config.player_simulations = absl::GetFlag(FLAGS_player_simulations);
+    config.player_policy_temperature = absl::GetFlag(FLAGS_player_policy_temperature);
+    config.alphabeta_share = absl::GetFlag(FLAGS_alphabeta_share);
+    config.alphabeta_depth = absl::GetFlag(FLAGS_alphabeta_depth);
+    config.kickstart_weight = absl::GetFlag(FLAGS_kickstart_weight);
+    config.kickstart_depth = absl::GetFlag(FLAGS_kickstart_depth);
+    config.kickstart_temperature = absl::GetFlag(FLAGS_kickstart_temperature);
+    for (int p = 0; p < 2; ++p) {  // Stops here, not in an actor, on a malformed list.
+      open_spiel::thud_az::torch_az::AlphaBetaDepth(config, p);
+    }
     config.learner_batches = absl::GetFlag(FLAGS_learner_batches);
     config.symmetry_augmentation = absl::GetFlag(FLAGS_symmetry_augmentation);
     config.policy_target_pruning = absl::GetFlag(FLAGS_policy_target_pruning);

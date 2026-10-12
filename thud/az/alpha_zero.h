@@ -27,6 +27,8 @@
 #include <cstdint>
 #include <iostream>
 #include <iterator>
+#include <limits>
+#include <memory>
 #include <random>
 #include <string>
 #include <unordered_set>
@@ -36,7 +38,10 @@
 #include "open_spiel/utils/circular_buffer.h"
 #include "open_spiel/utils/file.h"
 #include "open_spiel/utils/json.h"
+#include "open_spiel/utils/logger.h"
 #include "open_spiel/utils/thread.h"
+#include "thud/az/alphabeta_player.h"
+#include "thud/az/mcts.h"
 
 namespace open_spiel {
 namespace thud_az {
@@ -87,6 +92,34 @@ struct AlphaZeroConfig {
   double policy_epsilon;
   std::string untried_move_value;  // Added: see UntriedMoveValue in thud/az/mcts.h.
   double untried_move_reduction;
+  // Added (thud/PLAN.md, training the dwarfs): per-player search settings, comma-
+  // separated values indexed by player (PerPlayerValues). player_simulations: each
+  // self-play search's simulations for the player to move at its root (empty or a
+  // missing entry: max_simulations). player_policy_temperature: the policy softmax
+  // temperature at nodes of each player (MCTSBot::SetPolicyTemperatures; empty: 1,
+  // upstream's search).
+  std::string player_simulations;
+  std::string player_policy_temperature;
+  // Added (thud/PLAN.md, How we evaluate networks: training against alpha-beta): the
+  // share of each actor's recorded positions that come from games against OpenSpiel's
+  // alpha-beta search to alphabeta_depth plies (AlphaBetaPlayer,
+  // thud/az/alphabeta_player.h), which plays the trolls in every other such game of an
+  // actor and the dwarfs in the rest; only the network's positions are recorded, and
+  // the learner reports these games apart from self-play. 0: self-play only, upstream's
+  // behaviour. alphabeta_depth: its depth in plies per player it plays, comma-separated
+  // (PerPlayerValues; "2,1": 2 as player 0, 1 as player 1 — since 2026-10-08), one
+  // value for both.
+  double alphabeta_share;
+  std::string alphabeta_depth;
+  // Added (thud/PLAN.md, kickstarting; Schmitt et al., "Kickstarting deep
+  // reinforcement learning", 2018): every recorded position's policy target becomes
+  // (1 - kickstart_weight) x the search's visits + kickstart_weight x a teacher's —
+  // the softmax over each legal move's AlphaBetaPlayer::Scores at kickstart_depth,
+  // in points over kickstart_temperature points. The move played is still the
+  // search's. 0: the visits alone, upstream's behaviour.
+  double kickstart_weight;
+  int kickstart_depth;
+  double kickstart_temperature;
   double temperature;
   double temperature_drop;
   double cutoff_probability;
@@ -127,6 +160,13 @@ struct AlphaZeroConfig {
         {"policy_epsilon", policy_epsilon},
         {"untried_move_value", untried_move_value},
         {"untried_move_reduction", untried_move_reduction},
+        {"player_simulations", player_simulations},
+        {"player_policy_temperature", player_policy_temperature},
+        {"alphabeta_share", alphabeta_share},
+        {"alphabeta_depth", alphabeta_depth},
+        {"kickstart_weight", kickstart_weight},
+        {"kickstart_depth", kickstart_depth},
+        {"kickstart_temperature", kickstart_temperature},
         {"temperature", temperature},
         {"temperature_drop", temperature_drop},
         {"cutoff_probability", cutoff_probability},
@@ -181,6 +221,33 @@ struct AlphaZeroConfig {
         config_json.count("untried_move_reduction")
             ? config_json.at("untried_move_reduction").GetDouble()
             : 0.2;
+    player_simulations = config_json.count("player_simulations")
+                             ? config_json.at("player_simulations").GetString()
+                             : "";
+    player_policy_temperature =
+        config_json.count("player_policy_temperature")
+            ? config_json.at("player_policy_temperature").GetString()
+            : "";
+    // A run from before the setting existed played only against itself.
+    alphabeta_share = config_json.count("alphabeta_share")
+                          ? config_json.at("alphabeta_share").GetDouble()
+                          : 0;
+    // Before 2026-10-08 a number, one depth for both sides.
+    alphabeta_depth =
+        !config_json.count("alphabeta_depth") ? "2"
+        : config_json.at("alphabeta_depth").IsInt()
+            ? std::to_string(config_json.at("alphabeta_depth").GetInt())
+            : config_json.at("alphabeta_depth").GetString();
+    // A run from before kickstarting trained on the visits alone.
+    kickstart_weight = config_json.count("kickstart_weight")
+                           ? config_json.at("kickstart_weight").GetDouble()
+                           : 0;
+    kickstart_depth = config_json.count("kickstart_depth")
+                          ? config_json.at("kickstart_depth").GetInt()
+                          : 2;
+    kickstart_temperature = config_json.count("kickstart_temperature")
+                                ? config_json.at("kickstart_temperature").GetDouble()
+                                : 1;
     temperature = config_json.at("temperature").GetDouble();
     temperature_drop = config_json.at("temperature_drop").GetDouble();
     cutoff_probability = config_json.at("cutoff_probability").GetDouble();
@@ -191,6 +258,70 @@ struct AlphaZeroConfig {
     max_steps = config_json.at("max_steps").GetInt();
   }
 };
+
+// Added (thud/PLAN.md, training the dwarfs): a comma-separated list of numbers, one
+// per player ("400,100"); empty entries and an empty string give no value for that
+// player, which gets the default (here: an empty vector or a shorter one).
+std::vector<double> PerPlayerValues(const std::string& list);
+
+// Added (training against alpha-beta): the depth alpha-beta searches when it plays
+// `player` — config.alphabeta_depth's entry for that player, or its one value for both.
+int AlphaBetaDepth(const AlphaZeroConfig& config, open_spiel::Player player);
+
+// A game an actor played, as the learner receives it. Moved here from alpha_zero.cc
+// (our change), with PlayGame below, so that checks can play games as the actors do.
+struct Trajectory {
+  struct State {
+    std::vector<float> observation;
+    open_spiel::Player current_player;
+    std::vector<open_spiel::Action> legal_actions;
+    open_spiel::Action action;
+    open_spiel::ActionsAndProbs policy;
+    double value;
+    // Our change (thud/PLAN.md, Instrumentation): how the search moved the
+    // network's own prior at the root, if the actor measured it (see PlayGame).
+    double prior_entropy = std::numeric_limits<double>::quiet_NaN();
+    double prior_kl = std::numeric_limits<double>::quiet_NaN();
+    int prior_top_agrees = -1;  // 1 or 0; -1 if not measured.
+  };
+
+  std::vector<State> states;
+  std::vector<double> returns;
+  std::string ending;  // Our change: how the game ended (GameEnding).
+  // Our change (training against alpha-beta): the player alpha-beta played, whose
+  // moves have no State here; kInvalidPlayer in self-play.
+  open_spiel::Player opponent = open_spiel::kInvalidPlayer;
+};
+
+class VPNetEvaluator;
+
+// One game as an actor (or, with no root noise in its bots, the evaluator) plays it:
+// each player's move by (*bots)[player]'s search — or, our change, `opponent_player`'s
+// by `opponent` (training against alpha-beta), recorded only in the logged moves.
+Trajectory PlayGame(open_spiel::Logger* logger, int game_num, const open_spiel::Game& game,
+                    std::vector<std::unique_ptr<MCTSBot>>* bots,
+                    std::mt19937* rng, double temperature, int temperature_drop,
+                    double cutoff_value, bool verbose = false,
+                    VPNetEvaluator* prior_source = nullptr,
+                    double pruning_k = 0, double uct_c = 0,
+                    const AlphaBetaPlayer* opponent = nullptr,
+                    open_spiel::Player opponent_player = open_spiel::kInvalidPlayer,
+                    const AlphaBetaPlayer* teacher = nullptr, double teacher_weight = 0,
+                    double teacher_temperature = 1);
+
+// Added (kickstarting): the teacher's policy over `state`'s legal moves — the softmax
+// of teacher.Scores(state) over `temperature` points.
+open_spiel::ActionsAndProbs TeacherPolicy(const open_spiel::State& state,
+                                          const AlphaBetaPlayer& teacher,
+                                          double temperature);
+
+// Added: the search the trainer uses — for self-play when player >= 0 (that
+// player's simulations and the policy temperatures), for evaluation games when
+// evaluation is true (no root noise).
+std::unique_ptr<MCTSBot> InitAZBot(const AlphaZeroConfig& config,
+                                   const open_spiel::Game& game,
+                                   std::shared_ptr<Evaluator> evaluator,
+                                   bool evaluation, int player = -1);
 
 bool AlphaZero(AlphaZeroConfig config, StopToken* stop, bool resuming);
 

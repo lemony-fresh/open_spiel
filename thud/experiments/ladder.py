@@ -43,10 +43,12 @@ rests on beating a near-random opponent and need not transfer.
 
 --anchor NAME fixes another player at 0; --exclude NAME,NAME drops every match of
 those players (default: A0 and the ambiguous "latest" checkpoints; --exclude '' keeps
-every match, with --anchor A0).
+every match, with --anchor A0). --compare A,B prints R_A - R_B with its 95% interval
+(from the fit's covariance, so it accounts for the two ratings' correlation): the
+promotion rule's second test (thud/PLAN.md, How we evaluate networks).
 
   python3 thud/experiments/ladder.py [MATCH_DIR] [--link tanh|linear] [--all]
-      [--anchor NAME] [--exclude NAME,...] [--misfits N]
+      [--anchor NAME] [--exclude NAME,...] [--misfits N] [--compare A,B]
 """
 
 import glob
@@ -58,7 +60,8 @@ import sys
 import numpy as np
 from scipy import optimize
 
-RUNS = {  # Run directory -> short name, and its own rule for untried moves.
+RUNS = {  # Run directory -> short name, its own rule for untried moves[, its own policy
+          # softmax temperatures per player, as the trainer's --player_policy_temperature].
     "stage1_sims100": ("A", "upstream"),
     "stage1_sims400": ("B", "upstream"),
     "stage1_sims100_buffer2x": ("A2x", "upstream"),
@@ -69,20 +72,31 @@ RUNS = {  # Run directory -> short name, and its own rule for untried moves.
     "stage5b_G_7x": ("G", "sibling_mean_minus_reduction"),
     "stage5b_Gaug_7x": ("G'", "sibling_mean_minus_reduction"),
     "stage5b_W_7x": ("W", "sibling_mean_minus_reduction"),
+    "runH_Gaug64_T15": ("H", "sibling_mean_minus_reduction", "1.5,1"),
+    "runI_Gaug64_T15_AB30": ("I", "sibling_mean_minus_reduction", "1.5,1"),
+    "runJ_Gaug64_T15_AB30_d21": ("J", "sibling_mean_minus_reduction", "1.5,1"),
+    "runK_Gaug64_T15_AB30_ks": ("K", "sibling_mean_minus_reduction", "1.5,1"),
+    "runK_Gaug64_T15_AB30_ks_cont": ("K", "sibling_mean_minus_reduction", "1.5,1"),
+    "runL_K83_conv": ("L", "sibling_mean_minus_reduction", "1.5,1"),
+    "runM_K83_conv_planes": ("M", "sibling_mean_minus_reduction", "1.5,1"),
 }
 ANCHOR = "E44"  # The default; --anchor chooses another.
 # By default the untrained network and the ambiguous "latest" checkpoints are left out.
 EXCLUDED = "A0,A(latest),B(latest)"
 
 
-def player(spec, rule, sims):
+def player(spec, rule, sims, temperature=""):
   run, step = spec.rstrip("/").split("/")[-1].rsplit(":", 1)
-  short, own = RUNS.get(run, (run, "sibling_mean_minus_reduction"))
+  entry = RUNS.get(run, (run, "sibling_mean_minus_reduction"))
+  short, own = entry[0], entry[1]
+  own_temperature = entry[2] if len(entry) > 2 else ""
   rule = rule or "upstream"  # Matches before the rule existed searched as upstream.
   step = "(latest)" if step == "-1" else step
   name = f"{short}{step}" if len(short.rstrip("'")) == 1 else f"{short}:{step}"
   if rule != own:
     name += f" [{'upstream rule' if rule == 'upstream' else rule}]"
+  if (temperature or "") != own_temperature:
+    name += f" [temperature {temperature or 'none'}]"
   if sims != 100:
     name += f" @{sims}"
   return name
@@ -96,8 +110,10 @@ def load(directory):
     if not summaries or "a_mean_pair_margin" not in summaries[-1]:
       continue  # Not a match.
     s = summaries[-1]
-    a = player(s["a"], s.get("untried_a", s.get("untried")), s.get("sims_a", s.get("sims", 100)))
-    b = player(s["b"], s.get("untried_b", s.get("untried")), s.get("sims_b", s.get("sims", 100)))
+    a = player(s["a"], s.get("untried_a", s.get("untried")), s.get("sims_a", s.get("sims", 100)),
+               s.get("temperature_a", ""))
+    b = player(s["b"], s.get("untried_b", s.get("untried")), s.get("sims_b", s.get("sims", 100)),
+               s.get("temperature_b", ""))
     pairs = [l for l in lines if "pair" in l and "a_as_dwarfs" in l]
     matches.append({"name": os.path.basename(path)[:-6], "a": a, "b": b, "pairs": pairs,
                     "margin": s["a_mean_pair_margin"], "ci95": s.get("ci95")})
@@ -112,7 +128,8 @@ def fit(matches, anchor, link="tanh"):
   """Fits every player's dwarf and troll strengths to the matches' games, `anchor` at 0.
 
   Returns a Fit with: players; rating(p) -> (R, its standard error, D, its standard
-  error, T, its standard error); side(p, "D" or "T"); expected(z), a battle's expected
+  error, T, its standard error); difference(p, q) -> (R_p - R_q, its standard error,
+  from the fit's covariance); side(p, "D" or "T"); expected(z), a battle's expected
   margin for D_dwarfs - T_trolls; sigma2, the residual variance of a game; games and
   opponents per player; the number of games.
   """
@@ -168,6 +185,14 @@ def fit(matches, anchor, link="tanh"):
     se = math.sqrt(max(0.0, cov[d, d] + cov[t, t] + 2 * cov[d, t]))
     return r, se, coef[d], math.sqrt(max(0.0, cov[d, d])), coef[t], math.sqrt(max(0.0, cov[t, t]))
 
+  def difference(p, q):  # R_p - R_q and its standard error.
+    w = np.zeros(len(col))
+    for player, sign in ((p, 1), (q, -1)):
+      if player != anchor:
+        w[col[("D", player)]] += sign
+        w[col[("T", player)]] += sign
+    return float(w @ coef), math.sqrt(max(0.0, float(w @ cov @ w)))
+
   games = {p: 0 for p in players}
   opponents = {p: set() for p in players}
   for m in matches:
@@ -176,6 +201,7 @@ def fit(matches, anchor, link="tanh"):
     opponents[m["a"]].add(m["b"])
     opponents[m["b"]].add(m["a"])
   result.players, result.rating, result.side, result.expected = players, rating, side, expected
+  result.difference = difference
   result.sigma2, result.games, result.opponents, result.n_games = sigma2, games, opponents, len(y)
   return result
 
@@ -183,7 +209,7 @@ def fit(matches, anchor, link="tanh"):
 def main():
   argv = sys.argv[1:]
   options = {"--misfits": "10", "--link": "tanh", "--anchor": ANCHOR,
-             "--exclude": EXCLUDED}
+             "--exclude": EXCLUDED, "--compare": ""}
   for key in options:
     if key in argv:
       i = argv.index(key)
@@ -212,6 +238,10 @@ def main():
     mark = " *" if f.opponents[p] == {anchor} else ""
     print(f"{p + mark:30s} {r:+7.1f} ±{1.96 * rs:4.1f} {d:+7.1f} ±{1.96 * ds:4.1f} "
           f"{t:+7.1f} ±{1.96 * ts:4.1f} {f.games[p]:6d}")
+  if options["--compare"]:  # The promotion rule's second test (thud/PLAN.md).
+    a, b = options["--compare"].split(",")
+    d, se = f.difference(a, b)
+    print(f"\n{a} - {b}: {d:+.1f} (95% interval {d - 1.96 * se:+.1f} to {d + 1.96 * se:+.1f})")
   print(f"\nFit check, the {misfits} largest misfits (observed mean pair margin against "
         f"the ratings' difference):")
   checks = []
