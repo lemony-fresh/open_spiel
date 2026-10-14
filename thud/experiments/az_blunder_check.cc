@@ -32,6 +32,16 @@
 //      return); as a control, its response to removing the troll the dwarf threatened
 //      from the position after the blunder (a hurl's worth, 4/32), which a working
 //      value head must register.
+//   4. the search's own comparison (2026-10-13; thud/DESIGN_dwarf_signal.md, check Q1):
+//      the blunder against the best safe move — the non-capturing move other than the
+//      blunder that kickstarting's teacher (AlphaBetaPlayer::Scores at depth 2) scores
+//      best, the network's prior breaking ties (`teacher_gap`: its score minus the
+//      blunder's, in points; 0 when the teacher sees no loss in the blunder): both root children's mean value Q and visits in the search as
+//      played; each child's own value (trolls to move: what a child visited once is
+//      worth to the search); and each after the trolls' reply (the capture played after
+//      the blunder; after the safe move the reply taking the most material, the
+//      network's prior breaking ties). A value that weighed a dwarf at its worth would
+//      put the safe move's line about 1/32 above the blunder's after the reply.
 //
 //   thud/az/build.sh thud/experiments/az_blunder_check.cc
 //   OMP_NUM_THREADS=4 build-shared/az_blunder_check a=RUN_DIR:STEP \
@@ -57,6 +67,7 @@
 #include "open_spiel/games/thud/thud.h"
 #include "open_spiel/spiel.h"
 #include "thud/az/alpha_zero.h"
+#include "thud/az/alphabeta_player.h"
 #include "thud/az/device_manager.h"
 #include "thud/az/mcts.h"
 #include "thud/az/vpevaluator.h"
@@ -130,6 +141,24 @@ struct Blunder {
 
 double Mean(const std::vector<double>& v) {
   return v.empty() ? NAN : std::accumulate(v.begin(), v.end(), 0.0) / v.size();
+}
+// The mean and its standard error over the values that are not NaN.
+double MeanOf(const std::vector<double>& v) {
+  double sum = 0;
+  int n = 0;
+  for (double x : v) {
+    if (!std::isnan(x)) sum += x, ++n;
+  }
+  return n ? sum / n : NAN;
+}
+double SeOf(const std::vector<double>& v) {
+  const double m = MeanOf(v);
+  double sum = 0;
+  int n = 0;
+  for (double x : v) {
+    if (!std::isnan(x)) sum += (x - m) * (x - m), ++n;
+  }
+  return n > 1 ? std::sqrt(sum / (n - 1) / n) : NAN;
 }
 double Median(std::vector<double> v) {
   if (v.empty()) return NAN;
@@ -217,10 +246,12 @@ int main(int argc, char** argv) {
     return bot;
   };
   std::unique_ptr<MCTSBot> bot = make_bot(sims), deep_bot = make_bot(deep_sims);
+  const open_spiel::thud_az::AlphaBetaPlayer teacher(*game, 2), reply_scorer(*game, 1);
 
   std::vector<double> p_blunder, rank, top, unsafe_mass, unsafe_share, chosen_again,
       chosen_deep, cap_prior, cap_visited, cap_visit_share, cap_visited_deep, q_blunder,
-      v_before, v_after, v_captured, v_drop, v_troll_removed;
+      v_before, v_after, v_captured, v_drop, v_troll_removed, q_safe, n_blunder, n_safe,
+      dq, v_safe_after, v_safe_replied, dv_child, dv_replied, teacher_gap;
   for (int i : chosen) {
     const Blunder& b = blunders[i];
     const State& s = *b.before;
@@ -238,12 +269,39 @@ int main(int argc, char** argv) {
         ++unsafe;
       }
     }
+    // 4 (first part). The best safe move: the teacher's best non-capturing move, the
+    // network's prior breaking ties.
+    Action safe = open_spiel::kInvalidAction;
+    double gap = NAN;
+    {
+      const std::vector<Action> legal = s.LegalActions();
+      const std::vector<double> scores = teacher.Scores(s);
+      std::map<Action, double> prior_of(prior.begin(), prior.end());
+      double best = -1e9, best_prior = -1, blunder_score = NAN;
+      for (int k = 0; k < legal.size(); ++k) {
+        if (legal[k] == b.blunder) blunder_score = scores[k];
+        if (legal[k] == b.blunder || s.ActionToString(legal[k]).back() == 'x') continue;
+        const double p = prior_of[legal[k]];
+        if (scores[k] > best + 1e-9 || (std::abs(scores[k] - best) <= 1e-9 && p > best_prior)) {
+          best = scores[k];
+          best_prior = p;
+          safe = legal[k];
+        }
+      }
+      if (safe != open_spiel::kInvalidAction) gap = best - blunder_score;
+    }
+    double qs = NAN, nb = 0, ns = 0;
     // 2. The search as played, and deeper.
     auto examine = [&](MCTSBot* searcher, double* chose, double* visited, double* share,
-                       double* prior_of_capture, double* q) {
+                       double* prior_of_capture, double* q, bool with_safe) {
       std::unique_ptr<SearchNode> root = searcher->MCTSearch(s);
       *chose = root->BestChild().action == b.blunder;
       for (const SearchNode& c : root->children) {
+        if (with_safe && c.action == safe) {
+          qs = c.explore_count ? c.total_reward / c.explore_count : NAN;
+          ns = c.explore_count;
+        }
+        if (with_safe && c.action == b.blunder) nb = c.explore_count;
         if (c.action != b.blunder) continue;
         if (q) *q = c.explore_count ? c.total_reward / c.explore_count : NAN;
         *visited = 0;
@@ -260,8 +318,8 @@ int main(int argc, char** argv) {
     };
     double chose = 0, visited = 0, share = 0, pc = NAN, q = NAN, chose_d = 0,
            visited_d = 0, share_d = 0;
-    examine(bot.get(), &chose, &visited, &share, &pc, &q);
-    examine(deep_bot.get(), &chose_d, &visited_d, &share_d, nullptr, nullptr);
+    examine(bot.get(), &chose, &visited, &share, &pc, &q, /*with_safe=*/true);
+    examine(deep_bot.get(), &chose_d, &visited_d, &share_d, nullptr, nullptr, false);
     // 3. The value head, from the dwarfs' side.
     std::unique_ptr<State> after = s.Child(b.blunder);
     std::unique_ptr<State> captured = after->Child(b.capture);
@@ -288,6 +346,42 @@ int main(int argc, char** argv) {
         }
       }
     }
+    // 4 (second part). The safe move's child and its line after the trolls' reply.
+    double vsa = NAN, vsr = NAN;
+    std::string safe_text = "", reply_text = "";
+    if (safe != open_spiel::kInvalidAction) {
+      safe_text = s.ActionToString(safe);
+      std::unique_ptr<State> after_safe = s.Child(safe);
+      vsa = value(*after_safe);
+      if (!after_safe->IsTerminal()) {
+        const std::vector<Action> replies = after_safe->LegalActions();
+        const std::vector<double> scores = reply_scorer.Scores(*after_safe);
+        const open_spiel::ActionsAndProbs reply_prior = eval->Prior(*after_safe);
+        std::map<Action, double> reply_prior_of(reply_prior.begin(), reply_prior.end());
+        double best = -1e9, best_prior = -1;
+        Action reply = replies[0];
+        for (int k = 0; k < replies.size(); ++k) {
+          const double p = reply_prior_of[replies[k]];
+          if (scores[k] > best + 1e-9 ||
+              (std::abs(scores[k] - best) <= 1e-9 && p > best_prior)) {
+            best = scores[k];
+            best_prior = p;
+            reply = replies[k];
+          }
+        }
+        reply_text = after_safe->ActionToString(reply);
+        vsr = value(*after_safe->Child(reply));
+      }
+    }
+    q_safe.push_back(qs);
+    n_blunder.push_back(nb);
+    n_safe.push_back(ns);
+    dq.push_back(qs - q);
+    v_safe_after.push_back(vsa);
+    v_safe_replied.push_back(vsr);
+    dv_child.push_back(vsa - va);
+    dv_replied.push_back(vsr - vc);
+    teacher_gap.push_back(gap);
     p_blunder.push_back(pb);
     rank.push_back(better + 1);
     top.push_back(better == 0);
@@ -311,11 +405,15 @@ int main(int argc, char** argv) {
                      "\"chosen\": %d, \"chosen_deep\": %d, \"capture_prior\": %.4f, "
                      "\"capture_visited\": %d, \"capture_visited_deep\": %d, "
                      "\"q_blunder\": %.3f, \"v_before\": %.3f, \"v_after\": %.3f, "
-                     "\"v_captured\": %.3f, \"v_troll_removed\": %.3f}",
+                     "\"v_captured\": %.3f, \"v_troll_removed\": %.3f, \"safe\": \"%s\", "
+                     "\"teacher_gap\": %.0f, \"q_safe\": %.3f, \"n_blunder\": %.0f, "
+                     "\"n_safe\": %.0f, \"v_safe_after\": %.3f, \"safe_reply\": \"%s\", "
+                     "\"v_safe_replied\": %.3f}",
                      s.ActionToString(b.blunder), after->ActionToString(b.capture), pb,
                      better + 1, mass, unsafe_share.back(), static_cast<int>(chose),
                      static_cast<int>(chose_d), pc, static_cast<int>(visited),
-                     static_cast<int>(visited_d), q, vb, va, vc, vt)
+                     static_cast<int>(visited_d), q, vb, va, vc, vt, safe_text, gap, qs, nb,
+                     ns, vsa, reply_text, vsr)
               << std::endl;
   }
   std::cout << absl::StrFormat(
@@ -331,7 +429,12 @@ int main(int argc, char** argv) {
                    "\"v_before_mean\": %.3f, \"v_after_mean\": %.3f, "
                    "\"v_captured_mean\": %.3f, \"v_drop_mean\": %.3f, "
                    "\"v_drop_median\": %.3f, \"v_troll_removed_mean\": %.3f, "
-                   "\"one_dwarf\": %.4f, \"one_troll\": %.4f}",
+                   "\"one_dwarf\": %.4f, \"one_troll\": %.4f, "
+                   "\"teacher_gap_mean\": %.2f, \"q_blunder_mean_visited\": %.4f, "
+                   "\"q_safe_mean\": %.4f, \"dq_mean\": %.4f, \"dq_se\": %.4f, "
+                   "\"n_blunder_mean\": %.1f, \"n_safe_mean\": %.1f, "
+                   "\"dv_child_mean\": %.4f, \"dv_child_se\": %.4f, "
+                   "\"dv_replied_mean\": %.4f, \"dv_replied_se\": %.4f}",
                    spec, games_path, battles, dwarf_moves, blunders.size(), chosen.size(),
                    sims, deep_sims, Median(p_blunder), Median(rank), Mean(top),
                    Mean(unsafe_mass), Mean(unsafe_share), Mean(chosen_again),
@@ -339,7 +442,10 @@ int main(int argc, char** argv) {
                    Mean(cap_visit_share), Mean(cap_visited_deep), Mean(q_blunder),
                    Mean(v_before), Mean(v_after), Mean(v_captured), Mean(v_drop),
                    Median(v_drop), Mean(v_troll_removed), 1.0 / thud::kMaxMargin,
-                   static_cast<double>(thud::kTrollValue) / thud::kMaxMargin)
+                   static_cast<double>(thud::kTrollValue) / thud::kMaxMargin,
+                   MeanOf(teacher_gap), MeanOf(q_blunder), MeanOf(q_safe), MeanOf(dq),
+                   SeOf(dq), MeanOf(n_blunder), MeanOf(n_safe), MeanOf(dv_child),
+                   SeOf(dv_child), MeanOf(dv_replied), SeOf(dv_replied))
             << std::endl;
   return 0;
 }

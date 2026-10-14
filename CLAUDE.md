@@ -108,7 +108,10 @@ options*).
   a match of 64+ pairs alone with `threads=64 batch=32` and `OMP_NUM_THREADS=4` (1,923
   simulations/s for 64 x 4); smaller matches up to 3 at once with `OMP_NUM_THREADS=1`
   and threads = pairs (1,720) — against ~1,050 for one match at a time with its default
-  16 threads, whose last long pairs leave most threads idle (2026-09-29).
+  16 threads, whose last long pairs leave most threads idle (2026-09-29). With the
+  50-plane network (M102) one 40-pair match alone ran ~680 simulations/s, three at once
+  ~1,500 together, six at once no more (~1,400-1,700; 2026-10-13); the teacher mixed into
+  a prior (`teacher_mix_a`) costs ~1.5x.
 - **Jobs beside a training run: the idle scheduling class, and mind the memory.**
   `nice -n 19` competes as an equal with our trainers, which run at nice 19 themselves;
   `chrt --idle 0 CMD` (SCHED_IDLE, allowed unprivileged here) weighs 3 against a nice-19
@@ -265,7 +268,10 @@ and `--replay_buffer_start_size` (2026-10-04), `--player_policy_temperature` and
 `thud/az/alphabeta_player.h`, only the network's positions recorded, reported apart
 as `vs_alphabeta`), `--kickstart_weight`, `--kickstart_depth` and
 `--kickstart_temperature` (2026-10-08: each recorded position's policy target mixed with
-a softmax of alpha-beta's move scores, a teacher; actors log the settings); since 2026-10-05 a replay buffer that moves
+a softmax of alpha-beta's move scores, a teacher; actors log the settings),
+`--player_kickstart_weight` and `--player_policy_alpha` / `--player_policy_epsilon`
+(2026-10-13: the teacher's weight and the root noise per player to move; empty: as
+before; built as `az_trainer_d1`); since 2026-10-05 a replay buffer that moves
 positions into their slots and compacts itself after loading (`thud/az/replay_buffer.h`)
 and actor and evaluator logs that append; and since 2026-10-03
 logging per-side losses, self-play margins and endings and search statistics —
@@ -277,9 +283,12 @@ extra arguments, as its header says), `untried_move_check`, `conv_policy_check`,
 and from
 `thud/experiments/`
 `az_match` (since 2026-10-07 also against players without a network:
-`b=hexparrot:N`, through `hexparrot_player.py`, `b=alphabeta:N`, `b=mcts:N`), `az_forgetting`, `az_merge_buffers`, `az_target_quality`, `az_head_check`,
+`b=hexparrot:N`, through `hexparrot_player.py`, `b=alphabeta:N`, `b=mcts:N`; since
+2026-10-13 self-play's root noise per side and sampled plies, `noise=`, `sample_plies=`,
+and the teacher in one network's prior, `teacher_mix_a=`), `az_forgetting`, `az_merge_buffers`, `az_target_quality`, `az_head_check`,
 `az_reference_pilot`, `az_noise_check`, `az_search_cost`, `az_blunder_check`,
-`az_capture_targets`, `az_teacher_stats`, `az_feature_probe` and `az_long_capture_probe`;
+`az_capture_targets`, `az_teacher_stats`, `az_feature_probe`, `az_long_capture_probe`,
+`az_input_plane_trace`, `az_risk_probe` and `az_dwarf_value_probe`;
 `az_restructure`, which builds a network of a new structure from a trained one and
 its replay buffer, and `az_fresh_optimizer`, a network's weights with a fresh optimizer)
 are built by

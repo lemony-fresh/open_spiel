@@ -221,33 +221,54 @@ held-out policy loss 3.653 against K83's own 3.665) — real 2-square hurls from
 53x a blind prior's probability, the top move 81% of the time (K83 never); built shoves
 2.4-4.0x at every distance (K83 ~1x); hurls of 4-7 squares still missed (rare in the
 games; the input planes' case); and convK83 beats K83 by +16.8 a pair (+14.1 to +19.5,
-39 of 40). **Running** (from 2026-10-11 00:20, detached): `~/thud-runs/night5_2026-10-11.py`
-— **run L** (convK83 trained on with run K's recipe, steps 84-102; done 00:20-08:00),
-**run K continued** (its control, the same steps; from 08:00), then their evaluation
-(hexparrot, alpha-beta 1-3, the watcher, L102 against K102). **Queued behind it** (from 14:16,
-detached): `~/thud-runs/night6_2026-10-11.py` — today's match program installed (it reads
-the input planes; it prints the network-match baseline exactly), the offline check of
-the planes (convK83 trained on run K's buffer without and with them, the new weights
-traced over the batches, then the long-capture probe on both), **run M** (convK83 with
-the 50 input planes by net surgery, run K's recipe, steps 84-102, today's trainer) and
-its evaluation (M102 against L102 the planes' test).
+39 of 40). **Runs L and K continued** (2026-10-11): **L102 against K102 +10.72 a pair (+7.81 to
++13.64), 34 of 40** — the convolutional head wins at equal training; against hexparrot
+L102 −21.4 (K102 −37.1), alpha-beta depth 1 +19.3 (+12.4); ladder L100 +95.3, K100
++64.7. **Run M ties run L** (M102 against L102 +0.65 a pair, −1.63 to +2.93): **M is the
+main line, M102 the top anchor** (the user, 2026-10-12; M102 beat K83 by +11.97 a pair,
+38 of 40). The standing checks on M102 (`PLAN.md`): the planes help 3-square hurls, 4+
+still missed; blunders 25% of the dwarfs' moves; destination risk avoided well at 2-9
+squares, less at 12-14. **The dwarfs' training signal** (`thud/DESIGN_dwarf_signal.md`,
+final 2026-10-13 after its checks and three reviews): losing every dwarf (every self-play
+game since run K's step ~77; and self-play's blunders rising within every run) is not
+forced by the game but how our network plays the dwarfs — alpha-beta at depth 2 as the
+dwarfs keeps dwarfs alive against M102's trolls in 20 of 20 battles. **The checks**
+(night of 2026-10-13, matches only): the value counts a dwarf with the trolls to move but
+hardly with the dwarfs to move, a gap that came with the games against alpha-beta (check
+4; H83 the clean control); the teacher in M102's dwarf prior at play time gains the
+dwarfs +15.9 points a battle against L102 at a mix of 0.7 (+12.8 against K83), our trolls
+unchanged — but by stalls, in matches without noise (check 2); the dwarfs' own noise
+costs them ~1.8 points and 6 dwarfs by ply 60, and either side's noise breaks stalls
+(check 3); against K83's trolls dwarfs survive only by killing every troll (check 5).
+**Decided** (the user, 2026-10-13): test runs from M102 — a control and D1 (the dwarfs'
+kickstarting weight 0.7); its taper slow and gated; regression gates in the promotion
+rule (`PLAN.md`). **Built**: `--player_kickstart_weight` (D1) and the root noise per
+player (C3), both checked, in `az_trainer_d1`; the run folders
+`runM_K83_conv_planes_cont` (the control) and `runN_M102_d1` (run N: D1) from M102's
+state; the runner `~/thud-runs/night8_2026-10-13.py control|d1`.
+D1's weight capped at 0.7 (the user). **Open with the user**: the endpoint's rule.
+**Check 2b** (18:22-20:12): under the trainer's noise the teacher-guided dwarfs keep
+no dwarf (0 of 40); with the dwarfs' roots noise-free, 28 of 40 battles keep dwarfs — so
+run N is **D1 together with C3** (its config set; the user may still veto). **Running:**
+the control run ("M continued", `runM_K83_conv_planes_cont`), since 20:13, to step 121
+(~05:30; `~/thud-runs/night8_2026-10-13.py control`, detached); **run N (D1 + C3)
+chained after it** (the user: right after; `night8_2026-10-13.py d1`, waiting for the
+control's trainer to end; ~05:30 to ~15:00).
 **Done** (2026-10-07 16:28 to 2026-10-08 05:34): the night of matches against players
 without a network, run I and its evaluation (`~/thud-runs/night2_2026-10-07.py`).
 Deferred: MCTS-10,000 and -100,000, alpha-beta depth 4 (informative once our networks
 beat the lower rungs).
-**Next:** the results of runs L, K continued and M — the main line from K83 with the
-convolutional head (L) or also the input planes (M), by those results; the trace of
-the new input weights over run M's checkpoints (the user); the destination risk
-re-evaluated after run M (the blunder diagnosis and a probe of risks by distance;
-`PLAN.md`); the dwarfs' training signal (their outcomes saturated: they lose every
-dwarf against alpha-beta's trolls in training); kickstarting tapered in long runs; an
+**Next:** the control run finishing (~05:30), run N following by itself (D1 + C3, ~15:00); meanwhile the regression gates set up (standard errors, positive controls);
+then the evaluation of both against each other and against M102 (the design's §7-8),
+with the stalls watched (game lengths, the share of positions after a battle's last
+capture); the distance-4 anomaly of the risk probe (examples; baits proved rare); kickstarting tapered in long runs; an
 alpha-beta of our own (captures first, a table of positions, iterative deepening) for
 equal-time matches (the user) and an affordable depth-3 teacher; the trainer's
 evaluator and the ladder with players without a network. The upstream PR
 for the buffer fix: [PR #1637](https://github.com/google-deepmind/open_spiel/pull/1637),
 opened 2026-10-06, the CLA check passed — waiting for upstream's CI and the maintainers'
 review (`PLAN.md`, *Upstreaming*); the hybrid head
-once the dwarfs learn; the GPU phase from tomorrow at the earliest (a cheap machine first, a budget of tens of
+once the dwarfs learn; the GPU phase (a cheap machine first, a budget of tens of
 dollars first; `PLAN.md`, *Cloud GPU options*). Still open: playout caps (recommended: on
 the GPU).
 
@@ -2793,12 +2814,165 @@ instrumentation, and the pattern agreed for later, are in `PLAN.md` Phase 5).
   table's verdicts fixed in place) and everything since 2026-10-06 committed in two
   commits and pushed (the user: "Please push, I trust you"). At 27 minutes a step the run
   takes ~8.8 hours, ~1 hour under the trainer's 10-hour timeout; if it is cut short,
-  the script evaluates its last step as K83's stand-in and the run can be resumed.
+  the script evaluates its last step as K83's stand-in and the run can be resumed. The user also reviewed the
+  change itself in a side-by-side diff (the first version rebuilt from the session
+  record, as the file was never committed before; VS Code's `code --diff`) — fine.
+- **2026-10-11, 16:06-23:00: runs L and K continued evaluated; the night paused.** Run K
+  continued finished at 16:06; the evaluation ended at 22:29: **L102 against K102 +10.72
+  a pair (+7.81 to +13.64), 34 of 40** — the convolutional head wins in training too,
+  the dwarfs included (against hexparrot L102 −21.4, K102 −37.1; `PLAN.md`). night6
+  started at 22:30 (today's `az_match` installed; `az_match_before_planes` kept) and its
+  first offline training (A) at once; at the user's request (~23:00) that process was
+  paused (SIGSTOP, PID 3063588) and `~/thud-runs/resume_2026-10-12.py` (tested with a
+  paused stand-in) continues it after 01:00 once there has been no input for 20 minutes,
+  on mains; night6 then goes on by itself.
+- **2026-10-12, 01:44-10:40: the offline check; run M.** The resumer continued at 01:44
+  (20 minutes without input). The offline check (`PLAN.md`, the input planes): both
+  trainings overfit run K's fixed buffer at once, B (with the planes) ~0.014 below A at
+  every report; the new weights grow steadily, spread across filters, and move the
+  outputs more and more — no collapse; the long hurls of 4+ squares are a matter of
+  examples (4 in 200 games). Run M from 03:25, at step 97 by 10:30 (no pause).
+- **2026-10-12, 10:40-19:30: run M evaluated — a tie with L; M the main line.** Run M
+  finished at 12:43, its evaluation at 16:37: M102 against L102 +0.65 a pair (−1.63 to
+  +2.93); against alpha-beta depth 3 M − L +8.3 pair by pair (+0.3 to +16.2, the
+  trolls), at depth 1 −4.6 (−9.3 to +0.2) — suggestive at most (`PLAN.md`, run M). The
+  user decided M as the main line (the planes kept) and asked for the promotion match
+  and the standing checks: M102 against K83 from 19:17 (`~/thud-runs/promoteM_2026-10-12.sh`);
+  the long-capture probe on M102, L102 and K83; the blunder diagnosis on M102 and L102
+  (`az_blunder_check` rebuilt to read the planes); the trace of the input weights over
+  run M's checkpoints (`az_input_plane_trace`, new): they learn steadily, as the games'
+  captures allow, the filters grow apart, no collapse. The long-capture probe: the
+  planes help the 3-square hurls (real 13.9x against L102's 4.8x, 14 cases; built 7.4x
+  against 2.4x), 4+ still missed by both, long shoves now recognized by both. The blunder
+  diagnosis: blunders 25% of the dwarfs' moves (K83 36%), the prior still favouring
+  unsafe moves (0.256 on 18.8%), and the value registering a lost dwarf at −0.002 —
+  practically blind to it (the saturated outcome); two of the destination-risk
+  trigger's three conditions hold, the third needs the risk-by-distance probe.
+- **2026-10-12, 20:05-23:15: M102 passes both promotion tests; the risk probe.** M102
+  against K83 +11.97 a pair (+8.97 to +14.98), 38 of 40; ladder difference +35.4
+  (+15.8 to +55.1) — proposed to the user for promotion. The user asked about the
+  downsides of a higher teacher weight for the dwarfs (answered: it flattens their
+  quiet moves, caps them at the teacher's 2-ply horizon, treats the symptom — the
+  value's blindness — and weakens the search's own improvement; a veto-style teacher
+  and the decay as gentler forms). `az_risk_probe` (new): the prior avoids moves the
+  teacher scores as losing at short and middle distances (M102 0.58-0.69 of the best
+  moves' probability at 2-9 squares), less at 12-14 (0.87-0.91), and not at all at 4
+  squares, for every network (likely the teacher's horizon: baits; unchecked). **M102
+  promoted to top anchor** (the user; `watch_run.py` lists it first, K83 kept).
+- **2026-10-12, 23:15 to 2026-10-13: the design for the dwarfs' training signal.** The
+  user asked for a design in its own file comparing approaches (upsides, downsides,
+  costs of development, training and running, validation), judged twice by an
+  adversarial but constructive reviewer agent: `thud/DESIGN_dwarf_signal.md`, final.
+  Before review, draft 1's numbers were checked against the logs (a game length of ~460
+  plies was wrong: ~95 now) and new evidence gathered: self-play endings per step
+  (every dwarf gone in 98-100% of games since run K's step ~77; the dwarfs won 20-61% in
+  run G'), replays of the matches (M102's dwarfs keep dwarfs against K83's trolls in ≥15
+  of 40 battles, against hexparrot's in 1 of 40; hexparrot's dwarfs against M102's trolls
+  in 30 of 40). **Review 1**, each finding checked at the source before it was taken
+  over (the reviewer's scripts rerun, games replayed): on the same positions the value's
+  sensitivity to a lost dwarf is about −0.01 to −0.006 in every line, only M102 −0.002 ±
+  0.003 — the "steady fall" and "practically blind" of 2026-10-12 were artefacts of
+  different position sets and tanh (corrected in place in `PLAN.md`); alpha-beta at
+  depth 2 as the dwarfs keeps dwarfs alive against our trolls (20 of 20 matches, 236 of
+  236 logged training games): the dwarfs' policy is the bottleneck; run H against run I
+  dates the onset to training against alpha-beta, not kickstarting; blunders are 32% of
+  the dwarfs' losses, baits rare (0.7% against 3.6%); material-ahead targets (B1) would be
+  delayed by the buffer and diluted by the saturation; PUCT's exploration term for the
+  dwarfs ~0.07, not ~1 (my error). **This revises my answer of 2026-10-12 on a higher
+  dwarfs' teacher weight** ("treats the symptom"): it changes the play that generates the
+  data — now the main recommendation (D1). **Review 2**: C7 (alpha-beta's dwarf positions
+  as value data) would, recorded naively, dilute the policy gradient by a quarter,
+  displace a quarter of each step's positions and change the alpha-beta share (the
+  trainer's counting, checked) and reverses the user's rule of 2026-10-07; ~26% of the
+  buffer already is our trolls' positions from games where alpha-beta's dwarfs survive
+  (hence Q5); the endpoint against alpha-beta 2's trolls sits at the floor (−31.2), so
+  the dwarf side is measured against depth 1, the trolls against depth 3's dwarfs; D1's
+  weight from Q2, else 0.5; no seed in the trainer (a replicate is a rerun, of the control
+  too). Also: WSL's swap 3.9 of 4 GB full (RAM free). Nothing ran; nothing committed.
+  **Next:** the user's decisions (D1's weight, C7 and the rule, the endpoint), then the
+  checks and the three nights (the design's §8).
+- **2026-10-13, 01:50 to 15:35: the checks of the design, the night and the day after.**
+  The user, too tired to judge designs, asked for experiments to run while they slept
+  that would show which approaches likely help. Built and checked first: `az_match`
+  options for self-play's conditions (`noise=` per side, `sample_plies=`) and for the
+  teacher in network A's prior (`teacher_mix_a=`) — with them off it reproduces the old
+  binary's matches exactly, pairs and request counts (one thread), its noisy battles are
+  the same on 1 and 3 threads (fresh searches seeded from each battle: the searches'
+  random tie-breaks, not only the noise, use their generator); `az_dwarf_value_probe`
+  (new; a placebo control, since an untrained network's value does not vary with the
+  input); `az_blunder_check` extended by the search's own comparison (its old fields
+  unchanged). The runner (`~/thud-runs/night7_2026-10-13.py`, three matches at once) was
+  replaced at 02:14 by `night7b` with six (stopped by its PID; its three matches kept
+  running) — the total did not rise (~1,400-1,700 simulations/s: matches side by side do
+  not add up). **The laptop went into standby at 04:17** (on battery: the user had kicked
+  the charger cable) and resumed at 13:36; WSL was frozen, not restarted, and everything
+  went on. **Results** (the design's §4): check 4 — the value counts a far dwarf at about
+  its material with the trolls to move (M102 +0.021, K83 +0.050) but hardly with the
+  dwarfs to move (M102 +0.002 to +0.011); G'64 has no such gap: the gap came with the
+  games against alpha-beta, whose only recorded positions with surviving dwarfs are
+  trolls-to-move positions. Check 1 — at M102's blunders the value one ply down prefers
+  the safe move by a third of a dwarf, after the trolls' reply not at all; the search's Q
+  prefers the blunder (85 of 114). Check 2 — the teacher in M102's dwarf prior at play
+  time: +7.6 / +10.6 / +15.9 points a battle against L102 at 0.3 / 0.5 / 0.7, +5.5 /
+  +9.8 / +12.8 against K83, 37-40 of 40 battles keeping dwarfs, our trolls unchanged.
+  Check 3 — the noisy cell reproduces the trainer's self-play (91 plies, −25.9); the
+  dwarfs' noise costs them 6.3 dwarfs by ply 60 (C3's rule met) but not the final result
+  (−25.9 without noise too). Check 5 — older trolls (K83's) under noise: 9 of 40 battles
+  keep dwarfs, −9.4. The design revised (draft 5: a glossary, the checks renamed 1-5 — in
+  the chat Q1, Q2, Q3, Q5, P5 —, "test run" and "control run" for "arm", plain wording for
+  "the bottleneck"). **Decided** (the user): D1's weight by results — check 2 at 0.85 and
+  1.0 before the runs (my argument against high weights, "the dwarfs could never pass the
+  teacher", was moot with a taper; the real one is the visits' knowledge beyond 2 plies,
+  which the gates now watch); the taper slow and gated; regression gates added to the
+  promotion rule (`PLAN.md`, both recorded in the decision log); the buffer kept (the
+  user asked whether to clear it: an empty one trains on few, correlated positions —
+  runs C → D → E — and the control inherits the same). **Half-finished:** check 2 at 0.85
+  and 1.0 (the script is ready); the design's third review; D1 not implemented; the gates
+  not set up; nothing committed (the docs wait for the user's review).
+- **2026-10-13, 16:20 to 17:00: after the restart — D1 built, the third review, the design
+  final.** WSL restarted by the user (the 8 GB swap in effect); the laptop on battery
+  again afterwards (Windows: power offline, 72% → 66%) although the user had plugged it
+  in — the matches held back. **D1 built**: `--player_kickstart_weight` (a new optional
+  list beside `kickstart_weight`, like `player_simulations`; `KickstartWeights`; PlayGame
+  takes the weights per player to move), `kickstart_check` extended — the same moves
+  played, every dwarf position's target 0.3 × the visits + 0.7 × the teacher's, every
+  troll position's unchanged, an empty list changes nothing, the configuration
+  round-trips — all pass, no existing part changed; `build-shared/az_trainer_d1`. **The
+  third review** (checked at the source: games replayed, H83 probed, the trend rerun):
+  check 2's dwarfs survive by stalls, without noise, and noise breaks stalls — D1's
+  chain untested where it must work (check 2b added, to run first); check 1's "the search
+  prefers the blunder" was a selection effect (dropped; my reading in the session entry
+  above and in the chat was wrong); self-play slides within every run (the control will
+  too: compare with M102); training above 0.7 would be near the imitation ruled out on
+  2026-10-07 — and I had logged "the weight by results" as the user's decision when they
+  were only asking (corrected in the decision log; open with the user); C3's rank
+  rested on the wrong contrast (corrected: the dwarfs' noise is worth ~1.8 points, but
+  outcomes stay saturated without it); the troll measure and the gates refined (alpha-beta
+  2's dwarfs, 2 standard errors, a troll-kills gate, bootstrap errors, the false-alarm
+  rate stated); check 5's survivals are troll wipe-outs; my §1.2 row for alpha-beta depth
+  1 was mislabelled (its dwarfs lose every dwarf, −30.0). `PLAN.md` and the status block
+  brought in line. Nothing committed.
+- **2026-10-13, 17:00 to 20:20: check 2b; the control run started.** The user, back on
+  mains at 18:20: check 2b started (the 0.7 mix in M102's dwarf prior, self-play's
+  conditions, against plain M102). Meanwhile C3 built too: `--player_policy_epsilon` /
+  `--player_policy_alpha` (the root noise per player to move; a player whose listed
+  epsilon is 0 gets none; without a list the old expression exactly),
+  `search_settings_check` extended (the dwarfs' search un-noised with "0,0.25", the
+  trolls' noised, evaluation none; the control: no list, both noised) — all pass, in
+  `az_trainer_d1`; the run folders prepared from M102's state (`runM_K83_conv_planes_cont`,
+  `runN_M102_d1`; its latest checkpoint checked equal to step 102 by the values it gives);
+  a 4-minute dry start of the new trainer from a copy resumed and logged the weights; the
+  runner `night8_2026-10-13.py control|d1`. **Decided** (the user): D1's weight capped at
+  0.7 ("That needs to be enough. If it's not enough then we need to taper … later");
+  check 2 at 0.85 and 1.0 not run. The user asked whether D1 alone might still get there
+  with more steps — yes, possibly: check 2b measures the start, the D1 run the course
+  (the wording softened). **Check 2b**: under both sides' noise 0 of 40 battles keep
+  dwarfs (−22.0 against −25.9 without the mix), with the dwarfs' roots noise-free 28 of 40
+  (−17.0; mostly stalls, 621 plies on average) — by its rule **run N is D1 together with
+  C3** (config set: `player_kickstart_weight` "0.7", `player_policy_epsilon` "0,0.25").
+  **The control run started at 20:13** (detached; the runner waited for check 2b).
+  Nothing committed.
 
-**Next step:** as recorded in `## Current status` — run K continued and the evaluation
-(running); the trainer built with the input planes and checked against the old
-binary's outputs; run M's folder and tonight's runner (after the evaluation: the
-offline check of the planes' learning on run K's buffer, then run M); then kickstarting or the features by
-the results; an alpha-beta of our own for equal-time matches and a depth-3 teacher; run
-H as the main line (proposed); the trainer's evaluator and the ladder with players
-without a network.
+**Next step:** as recorded in `## Current status` — the control run (until ~05:30), then
+run N (D1 + C3) by itself, until ~15:00; the regression gates set up; the evaluation against each other
+and M102; the user's word on the endpoint's rule.

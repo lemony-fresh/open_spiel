@@ -27,9 +27,14 @@
 //   3. PlayGame: weight 0 records exactly the targets without a teacher; with weight w
 //      the same moves are played (the teacher does not choose) and every recorded
 //      target is (1 - w) x the target without + w x TeacherPolicy of its position —
-//      the control: they differ.
-//   4. The configuration: the three settings round-trip; an older config.json loads
-//      with weight 0.
+//      the control: they differ. Per player (approach D1 of
+//      thud/DESIGN_dwarf_signal.md): with the weights 0.7 for the dwarfs and the
+//      single weight 0.3 left for the trolls, the same moves again, each dwarf
+//      position's target 0.3 x the visits + 0.7 x the teacher's and each troll
+//      position's as with the single weight; an empty list changes nothing.
+//   4. The configuration: the settings round-trip; an older config.json loads with
+//      weight 0 and no per-player weights; KickstartWeights fills missing entries
+//      from the single weight.
 //   5. Cost (printed): Scores at depths 2 and 3 on self-play-like positions.
 //
 //   thud/az/build.sh thud/az/kickstart_check.cc
@@ -80,7 +85,8 @@ class StandIn : public open_spiel::thud_az::Evaluator {
   }
 };
 
-Trajectory Play(const open_spiel::Game& game, const AlphaBetaPlayer* teacher, double weight) {
+Trajectory Play(const open_spiel::Game& game, const AlphaBetaPlayer* teacher, double weight,
+                const std::vector<double>& weights = {}) {
   auto evaluator = std::make_shared<StandIn>();
   std::vector<std::unique_ptr<MCTSBot>> bots;
   for (int p = 0; p < 2; ++p) {
@@ -92,7 +98,8 @@ Trajectory Play(const open_spiel::Game& game, const AlphaBetaPlayer* teacher, do
   open_spiel::NoopLogger logger;
   return PlayGame(&logger, 1, game, &bots, &rng, /*temperature=*/1, /*temperature_drop=*/10,
                   /*cutoff_value=*/2, false, nullptr, 0, 2, nullptr,
-                  open_spiel::kInvalidPlayer, teacher, weight, /*teacher_temperature=*/1);
+                  open_spiel::kInvalidPlayer, teacher, weight, /*teacher_temperature=*/1,
+                  weights);
 }
 
 const char* kRows =
@@ -207,6 +214,45 @@ int main() {
     Check(same_moves, "3. with weight 0.3 the same moves are played");
     Check(mix_exact && differ,
           "3. every target is 0.7 x the visits + 0.3 x TeacherPolicy (control: they differ)");
+    // Per player: the dwarfs 0.7, the trolls the single weight.
+    const Trajectory empty_list = Play(*game, &depth2, w, {});
+    const Trajectory per_player = Play(*game, &depth2, w, {0.7});
+    bool empty_same = mixed.states.size() == empty_list.states.size();
+    for (int i = 0; empty_same && i < mixed.states.size(); ++i) {
+      empty_same = mixed.states[i].policy == empty_list.states[i].policy;
+    }
+    bool per_moves = none.states.size() == per_player.states.size();
+    for (int i = 0; per_moves && i < none.states.size(); ++i) {
+      per_moves = none.states[i].action == per_player.states[i].action;
+    }
+    bool dwarfs_exact = per_moves, trolls_as_single = per_moves, dwarfs_differ = false;
+    int dwarf_positions = 0, troll_positions = 0;
+    state = game->NewInitialState();
+    for (int i = 0; per_moves && i < none.states.size(); ++i) {
+      const bool dwarfs = state->CurrentPlayer() == open_spiel::thud::kDwarfPlayer;
+      ++(dwarfs ? dwarf_positions : troll_positions);
+      std::map<Action, double> taught;
+      for (const auto& [a, p] : TeacherPolicy(*state, depth2, 1)) taught[a] = p;
+      for (int j = 0; j < none.states[i].policy.size(); ++j) {
+        const auto& [a, v] = none.states[i].policy[j];
+        const double got = per_player.states[i].policy[j].second;
+        if (dwarfs) {
+          dwarfs_exact = dwarfs_exact && std::abs(got - (0.3 * v + 0.7 * taught[a])) < 1e-12;
+          dwarfs_differ = dwarfs_differ ||
+                          std::abs(got - mixed.states[i].policy[j].second) > 1e-9;
+        } else {
+          trolls_as_single = trolls_as_single && got == mixed.states[i].policy[j].second;
+        }
+      }
+      state->ApplyAction(none.states[i].action);
+    }
+    Check(empty_same, "3. an empty list of weights per player changes nothing");
+    Check(per_moves && dwarf_positions > 0 && troll_positions > 0,
+          "3. with the dwarfs' weight 0.7 the same moves are played");
+    Check(dwarfs_exact && dwarfs_differ,
+          "3. every dwarf position's target is 0.3 x the visits + 0.7 x TeacherPolicy "
+          "(control: it differs from the single weight's)");
+    Check(trolls_as_single, "3. every troll position's target is the single weight's");
   }
 
   // 4. The configuration.
@@ -226,16 +272,27 @@ int main() {
         {"actors", 1}, {"evaluators", 1}, {"eval_levels", 1}, {"max_steps", 0}};
     c.FromJson(j);
     const bool old_ok = c.kickstart_weight == 0 && c.kickstart_depth == 2 &&
-                        c.kickstart_temperature == 1;
+                        c.kickstart_temperature == 1 && c.player_kickstart_weight.empty();
     c.kickstart_weight = 0.3;
     c.kickstart_depth = 3;
     c.kickstart_temperature = 0.5;
+    c.player_kickstart_weight = "0.7";
     AlphaZeroConfig back;
     back.FromJson(c.ToJson());
     Check(old_ok && back.kickstart_weight == 0.3 && back.kickstart_depth == 3 &&
-              back.kickstart_temperature == 0.5,
+              back.kickstart_temperature == 0.5 && back.player_kickstart_weight == "0.7",
           "4. the settings round-trip; an older config.json loads with weight 0, depth 2, "
-          "temperature 1");
+          "temperature 1, no weights per player");
+    const std::vector<double> filled = open_spiel::thud_az::torch_az::KickstartWeights(back);
+    back.player_kickstart_weight = "";
+    const std::vector<double> single = open_spiel::thud_az::torch_az::KickstartWeights(back);
+    back.player_kickstart_weight = "0.3,0.6";
+    const std::vector<double> both = open_spiel::thud_az::torch_az::KickstartWeights(back);
+    Check(filled == std::vector<double>({0.7, 0.3}) &&
+              single == std::vector<double>({0.3, 0.3}) &&
+              both == std::vector<double>({0.3, 0.6}),
+          "4. KickstartWeights: \"0.7\" gives the dwarfs 0.7 and the trolls the single "
+          "weight; empty gives both the single weight; \"0.3,0.6\" sets both");
   }
 
   // 5. Cost.

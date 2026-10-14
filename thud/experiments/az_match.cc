@@ -55,13 +55,30 @@
 // diagnosis): per player, the least prior mass network A's search gives the captures
 // (moves written with an "x") at that player's nodes ("0,0.5": at the trolls' nodes
 // half the prior) — MCTSBot::SetPriorFloors.
+// Self-play's conditions (2026-10-13; thud/DESIGN_dwarf_signal.md, check Q3), off by
+// default: `noise=LIST` gives the searches at each player's roots the trainer's root noise
+// (per player 0 or 1, "1,0": at the dwarfs' roots, in both networks' searches; Dirichlet
+// `noise_alpha`, default 0.1, mixed in at `noise_epsilon`, default 0.25), and
+// `sample_plies=N` chooses each battle's first N plies, the opening's included, by
+// sampling from the root's visit counts, as the trainer does before its temperature drop
+// (temperature 1). With either, every battle gets fresh searches seeded from `seed`, the
+// pair and the side, so reruns play the same battles whichever thread plays them (the
+// searches' random tie-breaks and noise included); without them nothing changes.
+// `teacher_mix_a=LIST` (check Q2): per player, network A's prior at that player's nodes
+// mixed with kickstarting's teacher ("0.5,0": at the dwarfs' nodes, half the teacher) —
+// (1 - w) x the network's + w x the softmax of AlphaBetaPlayer::Scores at `teacher_depth`
+// plies (default 2) over `teacher_temperature` points (default 0.25), the trainer's
+// TeacherPolicy; in all of A's searches, as a network trained toward the teacher would
+// have it.
 //
 //   thud/az/build.sh thud/experiments/az_match.cc
 //   OMP_NUM_THREADS=4 build-shared/az_match a=RUN_DIR:STEP b=RUN_DIR:STEP sims=100 \
 //     pairs=50 [sims_a=SIMS sims_b=SIMS opening=4 threads=16 batch=16 seed=1 \
 //     untried=upstream untried_a=UNTRIED untried_b=UNTRIED temperature_a=LIST \
 //     temperature_b=LIST progress=0 cache=262144 share=0 mcts_memory=1000 \
-//     hexparrot_player=PATH games=PATH capture_floor_a=LIST]
+//     hexparrot_player=PATH games=PATH capture_floor_a=LIST noise=LIST noise_alpha=0.1 \
+//     noise_epsilon=0.25 sample_plies=0 teacher_mix_a=LIST teacher_depth=2 \
+//     teacher_temperature=0.25]
 //
 // STEP is a checkpoint step of that run (-1: its most recent checkpoint).
 
@@ -71,6 +88,7 @@
 #include <unistd.h>
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <cmath>
@@ -186,6 +204,87 @@ Chooser NetworkChooser(MCTSBot* bot) {
     return root->BestChild().action;
   };
 }
+
+// A network's move in self-play's conditions (`noise`, `sample_plies`): searched by
+// bots[the player to move], and in the first `sample_plies` plies sampled from the root's
+// visit counts (the trainer's temperature 1), else its most visited.
+Chooser SelfPlayChooser(std::array<MCTSBot*, 2> bots, int sample_plies,
+                        std::mt19937* rng) {
+  return [bots, sample_plies, rng](const open_spiel::State& state) {
+    std::unique_ptr<SearchNode> root = bots[state.CurrentPlayer()]->MCTSearch(state);
+    simulations_done += root->explore_count;
+    if (state.MoveNumber() >= sample_plies) return root->BestChild().action;
+    open_spiel::ActionsAndProbs visits;
+    for (const SearchNode& child : root->children) {
+      visits.emplace_back(child.action, child.explore_count);
+    }
+    double sum = 0;
+    for (const auto& [action, n] : visits) sum += n;
+    for (auto& [action, n] : visits) n /= sum;
+    return open_spiel::SampleAction(visits, *rng).first;
+  };
+}
+
+// Network A's prior mixed with kickstarting's teacher at some players' nodes
+// (`teacher_mix_a`); its values are the network's. The teacher's policies are kept for
+// positions searched again (a search's tree is rebuilt every move), up to kCacheSize.
+class TeacherMixEvaluator : public open_spiel::thud_az::Evaluator {
+ public:
+  TeacherMixEvaluator(const open_spiel::Game& game,
+                      std::shared_ptr<open_spiel::thud_az::Evaluator> network,
+                      std::vector<double> mix, int depth, double temperature)
+      : network_(std::move(network)),
+        mix_(std::move(mix)),
+        teacher_(game, depth),
+        temperature_(temperature) {}
+
+  std::vector<double> Evaluate(const open_spiel::State& state) override {
+    return network_->Evaluate(state);
+  }
+
+  open_spiel::ActionsAndProbs Prior(const open_spiel::State& state) override {
+    open_spiel::ActionsAndProbs prior = network_->Prior(state);
+    const open_spiel::Player player = state.CurrentPlayer();
+    const double w = player >= 0 && player < mix_.size() ? mix_[player] : 0;
+    if (w <= 0) return prior;
+    const std::map<Action, double> teacher = TeacherOf(state);
+    double sum = 0;
+    for (auto& [action, p] : prior) {
+      p = (1 - w) * p + w * teacher.at(action);
+      sum += p;
+    }
+    for (auto& [action, p] : prior) p /= sum;  // Only rounding: both sum to 1.
+    return prior;
+  }
+
+ private:
+  static constexpr int kCacheSize = 20000;
+
+  std::map<Action, double> TeacherOf(const open_spiel::State& state) {
+    const std::string key = state.ToString();
+    {
+      std::lock_guard<std::mutex> lock(mutex_);
+      auto it = cache_.find(key);
+      if (it != cache_.end()) return it->second;
+    }
+    std::map<Action, double> policy;
+    for (const auto& [action, p] :
+         open_spiel::thud_az::torch_az::TeacherPolicy(state, teacher_, temperature_)) {
+      policy[action] = p;
+    }
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (cache_.size() >= kCacheSize) cache_.clear();
+    cache_[key] = policy;
+    return policy;
+  }
+
+  std::shared_ptr<open_spiel::thud_az::Evaluator> network_;
+  const std::vector<double> mix_;
+  const open_spiel::thud_az::AlphaBetaPlayer teacher_;
+  const double temperature_;
+  std::mutex mutex_;
+  std::map<std::string, std::map<Action, double>> cache_;
+};
 
 // One battle from `opening`, network A playing `a_player`.
 Battle Play(const open_spiel::Game& game, const std::vector<Action>& opening,
@@ -394,6 +493,21 @@ int main(int argc, char** argv) {
   const std::string capture_floor_a = args.Get("capture_floor_a", "");
   const std::vector<double> capture_floors_a =
       open_spiel::thud_az::torch_az::PerPlayerValues(capture_floor_a);
+  const std::string noise_list = args.Get("noise", "");
+  const std::vector<double> noise =
+      open_spiel::thud_az::torch_az::PerPlayerValues(noise_list);
+  const double noise_alpha = std::stod(args.Get("noise_alpha", "0.1"));
+  const double noise_epsilon = std::stod(args.Get("noise_epsilon", "0.25"));
+  const int sample_plies = args.GetInt("sample_plies", 0);
+  const std::string teacher_mix_list = args.Get("teacher_mix_a", "");
+  const std::vector<double> teacher_mix_a =
+      open_spiel::thud_az::torch_az::PerPlayerValues(teacher_mix_list);
+  const int teacher_depth = args.GetInt("teacher_depth", 2);
+  const double teacher_temperature = std::stod(args.Get("teacher_temperature", "0.25"));
+  // Self-play's conditions: fresh searches every battle (SelfPlayChooser).
+  const bool self_play_conditions =
+      sample_plies > 0 || std::any_of(noise.begin(), noise.end(),
+                                      [](double x) { return x != 0; });
   const std::string hexparrot_player = args.Get(
       "hexparrot_player",
       (std::filesystem::read_symlink("/proc/self/exe").parent_path().parent_path() /
@@ -425,6 +539,13 @@ int main(int argc, char** argv) {
                 : outside ? nullptr
                           : LoadEvaluator(*game, spec_b, &devices_b, batch,
                                           inference_threads, cache_size);
+  // Network A's searches, with the teacher in its prior if `teacher_mix_a` asks for it.
+  std::shared_ptr<open_spiel::thud_az::Evaluator> search_eval_a = eval_a;
+  if (std::any_of(teacher_mix_a.begin(), teacher_mix_a.end(),
+                  [](double w) { return w > 0; })) {
+    search_eval_a = std::make_shared<TeacherMixEvaluator>(
+        *game, eval_a, teacher_mix_a, teacher_depth, teacher_temperature);
+  }
   // The requests of both evaluators (one if shared or B has none).
   auto requests = [&]() {
     VPNetEvaluator::RequestCounts sum = eval_a->GetRequestCounts();
@@ -497,14 +618,17 @@ int main(int argc, char** argv) {
   std::vector<std::thread> workers;
   for (int t = 0; t < threads; ++t) {
     workers.emplace_back([&, t]() {
-      auto make_bot = [&](std::shared_ptr<VPNetEvaluator> eval, int simulations,
+      auto make_bot = [&](std::shared_ptr<open_spiel::thud_az::Evaluator> eval,
+                          int simulations,
                           open_spiel::thud_az::UntriedMoveValue untried_rule,
                           const std::vector<double>& temperatures,
-                          const std::vector<double>& capture_floors) {
+                          const std::vector<double>& capture_floors, int bot_seed,
+                          double dirichlet_alpha, double dirichlet_epsilon) {
         auto bot = std::make_unique<MCTSBot>(
             *game, eval, /*uct_c=*/2, simulations, /*max_memory_mb=*/1000, /*solve=*/false,
-            /*seed=*/t, /*verbose=*/false,
-            open_spiel::thud_az::ChildSelectionPolicy::PUCT, 0, 0,
+            bot_seed, /*verbose=*/false,
+            open_spiel::thud_az::ChildSelectionPolicy::PUCT, dirichlet_alpha,
+            dirichlet_epsilon,
             /*dont_return_chance_node=*/false, /*max_wall_clock_time=*/-1, untried_rule);
         bot->SetPolicyTemperatures(temperatures);
         if (!capture_floors.empty()) {
@@ -514,12 +638,12 @@ int main(int argc, char** argv) {
         }
         return bot;
       };
-      std::unique_ptr<MCTSBot> a =
-          make_bot(eval_a, sims_a, rule_a, temperatures_a, capture_floors_a);
+      std::unique_ptr<MCTSBot> a = make_bot(search_eval_a, sims_a, rule_a, temperatures_a,
+                                            capture_floors_a, /*bot_seed=*/t, 0, 0);
       std::unique_ptr<MCTSBot> b;
       std::unique_ptr<Opponent> opponent;
       if (!outside) {
-        b = make_bot(eval_b, sims_b, rule_b, temperatures_b, {});
+        b = make_bot(eval_b, sims_b, rule_b, temperatures_b, {}, /*bot_seed=*/t, 0, 0);
       } else if (kind_b == "mcts") {
         opponent = std::make_unique<MctsOpponent>(*game, strength_b, mcts_memory);
       } else if (kind_b == "alphabeta") {
@@ -533,12 +657,37 @@ int main(int argc, char** argv) {
             return opponent->Choose(state);
           })
                   : NetworkChooser(b.get());
+      // One battle of pair i, network A playing a_player; in self-play's conditions with
+      // searches of its own, per network and player to move, seeded from the battle.
+      auto battle = [&](int i, int a_player) {
+        if (outside) opponent->NewBattle(BattleSeed(seed, i, a_player));
+        if (!self_play_conditions) {
+          return Play(*game, openings[i], choose_a, choose_b, a_player);
+        }
+        const int base = 8 * BattleSeed(seed, i, a_player);
+        std::array<std::unique_ptr<MCTSBot>, 2> bots_a, bots_b;
+        for (int p : {0, 1}) {
+          const bool noisy = p < noise.size() && noise[p] != 0;
+          const double alpha = noisy ? noise_alpha : 0, epsilon = noisy ? noise_epsilon : 0;
+          bots_a[p] = make_bot(search_eval_a, sims_a, rule_a, temperatures_a,
+                               capture_floors_a, base + p, alpha, epsilon);
+          if (!outside) {
+            bots_b[p] = make_bot(eval_b, sims_b, rule_b, temperatures_b, {}, base + 2 + p,
+                                 alpha, epsilon);
+          }
+        }
+        std::mt19937 rng(base + 4);
+        const Chooser self_play_a =
+            SelfPlayChooser({bots_a[0].get(), bots_a[1].get()}, sample_plies, &rng);
+        const Chooser self_play_b =
+            outside ? choose_b
+                    : SelfPlayChooser({bots_b[0].get(), bots_b[1].get()}, sample_plies, &rng);
+        return Play(*game, openings[i], self_play_a, self_play_b, a_player);
+      };
       for (int i = next++; i < pairs; i = next++) {
         const auto start = std::chrono::steady_clock::now();
-        if (outside) opponent->NewBattle(BattleSeed(seed, i, 0));
-        const Battle as_dwarfs = Play(*game, openings[i], choose_a, choose_b, 0);
-        if (outside) opponent->NewBattle(BattleSeed(seed, i, 1));
-        const Battle as_trolls = Play(*game, openings[i], choose_a, choose_b, 1);
+        const Battle as_dwarfs = battle(i, 0);
+        const Battle as_trolls = battle(i, 1);
         const double seconds =
             std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
         a_dwarfs[i] = as_dwarfs.a_return * kMaxMargin + 0.0;  // + 0.0: no "-0".
@@ -623,6 +772,18 @@ int main(int argc, char** argv) {
             << (capture_floor_a.empty()
                     ? ""
                     : absl::StrFormat(", \"capture_floor_a\": \"%s\"", capture_floor_a))
+            << (self_play_conditions
+                    ? absl::StrFormat(", \"noise\": \"%s\", \"noise_alpha\": %g, "
+                                      "\"noise_epsilon\": %g, \"sample_plies\": %d, "
+                                      "\"opening\": %d, \"seed\": %d",
+                                      noise_list, noise_alpha, noise_epsilon, sample_plies,
+                                      opening_moves, seed)
+                    : "")
+            << (teacher_mix_list.empty()
+                    ? ""
+                    : absl::StrFormat(", \"teacher_mix_a\": \"%s\", \"teacher_depth\": %d, "
+                                      "\"teacher_temperature\": %g",
+                                      teacher_mix_list, teacher_depth, teacher_temperature))
             << (outside ? absl::StrFormat(", \"seed\": %d, \"mcts_memory\": %d, "
                                           "\"b_fallbacks\": %d, "
                                           "\"seconds_per_move\": [%.3f, %.3f]",

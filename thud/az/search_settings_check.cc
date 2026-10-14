@@ -29,7 +29,11 @@
 //      the first stand-in shows that, and the control was changed to this one on
 //      2026-10-06, to review with the user.)
 //   3. InitAZBot: each self-play player's search has its simulations and the
-//      temperatures; the evaluation search max_simulations.
+//      temperatures; the evaluation search max_simulations. The root noise per
+//      player (player_policy_epsilon, approach C3 of thud/DESIGN_dwarf_signal.md):
+//      with "0,0.25" the dwarfs' self-play search has exactly the un-noised prior
+//      at its root, the trolls' a noised one, the evaluation search none; the
+//      control: with no list both self-play searches are noised.
 //   4. The config's JSON keeps both settings, and a config without them loads as
 //      empty (old runs' config.json).
 //   5. The prior floor (MCTSBot::SetPriorFloors, ApplyPriorFloor; 2026-10-08, a
@@ -271,19 +275,53 @@ int main(int argc, char** argv) {
         "prior by 1.5");
   Check(PriorsMatch(*t, eval->Prior(*trolls_to_move)),
         "3. temperatures: the trolls' prior stays as it was");
+  {
+    // The root noise per player.
+    open_spiel::thud_az::torch_az::AlphaZeroConfig noisy = config;
+    noisy.policy_alpha = 0.1;
+    noisy.policy_epsilon = 0.25;
+    auto root_priors = [&](const std::string& epsilons, bool evaluation, int player,
+                           const State& state) {
+      noisy.player_policy_epsilon = epsilons;
+      auto bot = open_spiel::thud_az::torch_az::InitAZBot(noisy, *game, eval, evaluation,
+                                                           player);
+      return bot->MCTSearch(state);
+    };
+    const ActionsAndProbs trolls_raw = eval->Prior(*trolls_to_move);
+    const bool both_noised = !PriorsMatch(*root_priors("", false, 0, *dwarfs_to_move),
+                                          flattened) &&
+                             !PriorsMatch(*root_priors("", false, 1, *trolls_to_move),
+                                          trolls_raw);
+    Check(both_noised, "3. root noise, control: with no list both self-play searches are "
+                       "noised");
+    Check(PriorsMatch(*root_priors("0,0.25", false, 0, *dwarfs_to_move), flattened),
+          "3. root noise \"0,0.25\": the dwarfs' self-play search has the un-noised prior");
+    Check(!PriorsMatch(*root_priors("0,0.25", false, 1, *trolls_to_move), trolls_raw),
+          "3. root noise \"0,0.25\": the trolls' self-play search is noised");
+    Check(PriorsMatch(*root_priors("0,0.25", true, -1, *dwarfs_to_move), flattened),
+          "3. root noise: the evaluation search has none");
+  }
 
   // 4. The config's JSON.
   open_spiel::thud_az::torch_az::AlphaZeroConfig full = config;
   full.game = "thud";
   open_spiel::json::Object json = full.ToJson();
+  full.player_policy_alpha = "0.035,0.2";
+  full.player_policy_epsilon = "0,0.25";
+  json = full.ToJson();
   Check(json.at("player_simulations").GetString() == "300,50" &&
-            json.at("player_policy_temperature").GetString() == "1.5,1",
-        "4. ToJson keeps both settings");
+            json.at("player_policy_temperature").GetString() == "1.5,1" &&
+            json.at("player_policy_alpha").GetString() == "0.035,0.2" &&
+            json.at("player_policy_epsilon").GetString() == "0,0.25",
+        "4. ToJson keeps the settings per player");
   json.erase("player_simulations");
   json.erase("player_policy_temperature");
+  json.erase("player_policy_alpha");
+  json.erase("player_policy_epsilon");
   open_spiel::thud_az::torch_az::AlphaZeroConfig old;
   old.FromJson(json);
-  Check(old.player_simulations.empty() && old.player_policy_temperature.empty(),
+  Check(old.player_simulations.empty() && old.player_policy_temperature.empty() &&
+            old.player_policy_alpha.empty() && old.player_policy_epsilon.empty(),
         "4. a config without them (an old run's) loads them as empty");
 
   // 5. The prior floor.

@@ -641,6 +641,11 @@ the search and trainer*, run C'.
 | 2026-10-11 | Run L (convK83, the convolutional head, trained on with run K's recipe) against run K continued, same start and steps; then run M (the input planes) against run L: one change a run | user (Claude's order; the user: clean evaluation) | the long-capture probe; a tool to restructure a network |
 | 2026-10-11 | The input planes: 58 at first (56 move planes, direction x distance 1-7 at the moving piece's square, shared by both sides; 2 maps at the affected squares, takeable and danger merged); tests before code; learning traced over many steps; the destination risk re-evaluated after run M | user | *How we evaluate networks*: the input planes, as decided |
 | 2026-10-11 | 50 input planes, not 58: the 8 diagonal move planes of 6 and 7 squares left out — a capture of k squares needs 2k squares in a line, the longest diagonals hold 10, so they are zero in every position (checked: the board has room for every kept kind, direction and distance and none of these); a uniform layout brings nothing (a convolution ignores its channels' order) | user | the input planes, as decided |
+| 2026-10-12 | Run M (the input planes) ties run L (M102 against L102 +0.65 a pair, −1.63 to +2.93): **the main line is M** — the planes kept in case they help later (longer dwarf lines, long hurls), as the network does use them; promotion test M102 against K83; the standing checks on M102 and L102 | user | the input planes, as decided |
+| 2026-10-12 | M102 the top anchor (both tests of the promotion rule: +11.97 against K83 in 40 pairs, +8.97 to +14.98; ladder difference +35.4, +15.8 to +55.1); K83 stays an anchor | user | *How we evaluate networks*; run M |
+| 2026-10-13 | The dwarfs' training signal: test runs from M102 — a control and **D1** (a higher kickstarting weight for the dwarfs, 0.7 by check 2's rule, the trolls at 0.3); check 2b first (teacher-guided dwarfs under the trainer's noise: D1 alone, or with per-side noise C3); B1′ or C7 only if D1 leaves the side-to-move gap open. **0.7 is the cap** (the user: "That needs to be enough. If it's not enough then we need to taper … later than anticipated") — at 0.85-1.0 the dwarfs' target would be (nearly) the imitation ruled out on 2026-10-07; check 2 at those mixes is not run | user (Claude recommended, after the checks of the night and the third review) | *the dwarfs' training signal*; `thud/DESIGN_dwarf_signal.md` §8 |
+| 2026-10-13 | D1's taper slow and gated: −0.1 at most once per buffer length (~20 steps), only once our dwarfs match the teacher against the same trolls and the regression gates hold ("I'd rather be safe than sorry"); after the third review also only once the search no longer amplifies unsafe dwarf moves (the visits' mass on them no higher than the prior's) | user; the last condition Claude's, from the review | the design, §5 D1 |
+| 2026-10-13 | Regression gates added to the promotion rule (test 3): alpha-beta per side, blunders, troll kills, short hurls, the trolls' captures; long hurls monitored; each at 2 standard errors against the top anchor, each with a positive control (the set refined after the design's third review: troll kills added, the trolls measured against alpha-beta 2's dwarfs, standard errors by bootstrap) | user (asked for them and approved the first set; Claude proposed and refined it) | *How we evaluate networks*, promotion rule; the design, §7 |
 
 **Considered and set aside** (with the reason): the Python AlphaZero (a layout bug, and
 slow; fallback note below); a 32 x 2 network (its convolutions see 11 x 11 squares);
@@ -2027,8 +2032,9 @@ keep for the rest of the project):
   D29 −5.4 ± 2.1, C29 −10.3 ± 2.5, G'16 −10.5 ± 5.2, C16 −13.3 ± 2.2, G16 −21.4 ± 3.9,
   C'16 −21.5 ± 3.3 — the order of every head-to-head we have (G'16 above G16 by 10.9,
   observed 10.2; C16 above C'16); per side, C''s trolls +7.4 against E44's (its dwarfs
-  −28.9), A14's +12.4 (its dwarfs −10.6). **Anchors:** K83 (the top anchor, promoted
-  2026-10-10; as trained, with its run's dwarf temperature 1.5), H83 (promoted
+  −28.9), A14's +12.4 (its dwarfs −10.6). **Anchors:** M102 (the top anchor, promoted
+  2026-10-12: the convolutional head and the 50 input planes; as trained), K83
+  (promoted 2026-10-10; as trained, with its run's dwarf temperature 1.5), H83 (promoted
   2026-10-07 evening; as trained, likewise), G'64 (promoted
   2026-10-07 morning), G'44 (promoted 2026-10-04), A14, E44, D29, C29, C16 (as trained). **Promotion rule** (decided by the user,
   2026-10-04; **tightened 2026-10-06**): a network joins the anchors when (1) it beats
@@ -2041,7 +2047,21 @@ keep for the rest of the project):
   opponents). Test (2) was added after G'73 met (1) by exploiting G'44's dwarfs (+4.7,
   +1.9 to +7.5) while rating no higher (+0.4, −2.0 to +2.8): head-to-head alone can
   reward a network that beats the top anchor in particular (a non-transitive result);
-  the ladder weighs every opponent. Unlike Leela Zero's gate, ours does not choose
+  the ladder weighs every opponent. **(3) The regression gates** (decided by the user
+  2026-10-13, refined the same day after the design's third review,
+  `thud/DESIGN_dwarf_signal.md` §7; to be set up before the next promotion): tests (1)
+  and (2) ask whether a network is better, the gates whether it lost a skill, against
+  the top anchor — our dwarfs against alpha-beta depth 1 and our trolls against depth 2's
+  dwarfs (40 battles each); blunders against hexparrot (the standard error clustered by
+  battle); the trolls our dwarfs kill a battle against hexparrot and alpha-beta depth 1;
+  the long-capture probe's built 2-3-square hurls; the trolls' captures (the prior's top
+  move a capture where one exists) — each failing if worse than the anchor's by more than
+  2 standard errors (analytic or bootstrap; the blunders: ≥ 4 percentage points); long
+  hurls (4+ squares) monitored, never a gate. Each gate with a positive control (a
+  network known to be worse must fail it: K83 the short-hurl gate, G'64 the blunder
+  gate). Together the gates trip on an unchanged network in up to ~15% of evaluations, so
+  a failed gate stops the promotion — and a step of D1's taper — until looked into (first
+  a rerun of that measure with more battles), not automatically. Unlike Leela Zero's gate, ours does not choose
   which network generates the training games — it only adds a reference point — so a
   wrong promotion costs little. **G'44 promoted** (2026-10-04: beat A14 by +3.2, +0.7
   to +5.8, 60 pairs); **G'73 not promoted** (2026-10-06; the user: keep G'44 for the
@@ -2554,7 +2574,19 @@ keep for the rest of the project):
   learner.jsonl to step 83 and a copy of its final buffer. Run K continued
   (`~/thud-runs/runK_Gaug64_T15_AB30_ks_cont`): run K's checkpoint 83 with its
   optimizer, the same learner.jsonl and buffer, max_steps 102. Both use run K's trainer
-  binary.
+  binary. **Results** (run L 2026-10-11 00:20-08:00, run K continued 08:00-16:06, the
+  evaluation to 22:29): **the convolutional head wins in training too — L102 against
+  K102 +10.72 a pair (+7.81 to +13.64), 34 of 40 pairs won, 2 lost** (L102 as dwarfs
+  −19.4, as trolls +30.1). Against players without a network L102 / K102 / K83:
+  hexparrot **−21.4** / −37.1 / −36.9 (L102's dwarfs −21.9 against K102's −29.1, its
+  trolls +0.6 against −8.0), alpha-beta depth 1 **+19.3** / +12.4 / +8.7, depth 2
+  **−20.6** / −28.6 / −33.7 (L102's trolls +10.6), depth 3 **−37.9** / −46.5 / −45.7.
+  Ladder (against E44): L88 +89.1, L92 +92.3, L96 +87.6, L100 +95.3; K88 +63.1, K92
+  +69.3, K96 +75.5, K100 +64.7 (K83 +59.2 refitted). L102 and K102 have so far played
+  only each other, so the ladder rates their difference (+33.5, +13.6 to +53.4) but not
+  their level. In training, L's trolls ended at +19.6 against alpha-beta's depth-2
+  dwarfs (K continued +1.9 at step 90); both runs' dwarfs still lost every dwarf to
+  alpha-beta's trolls (−32 throughout).
 - **The input planes, as decided** (the user, 2026-10-11, after the long-capture
   probe; replacing the 20 planes built on 2026-10-08, never wired in): **50 planes**
   (`thud/az/thud_features.h`, whose comments give each plane's meaning in full),
@@ -2638,6 +2670,74 @@ keep for the rest of the project):
     loss is no worse than without the planes, the old weights stay in range, and zeroing
     the planes changes the outputs more and more — a small tool reading the checkpoints,
     no change to the trainer.
+  - **The offline check** (2026-10-12 01:44-03:25, after the user's pause;
+    `~/thud-runs/probe_2026-10-11/`): convK83 trained on as a whole on run K's buffer,
+    without the planes (A) and with them (B), learning rate 0.0001. **Both overfit at
+    once** — the training loss falls, the held-out loss rises from the first report (A:
+    3.653 → 3.665 → 3.681 → 3.683 → 3.704 at 0-1,000 batches; the value loss 0.057 →
+    0.087): K83's network already fits these positions, and a fixed buffer cannot teach
+    it more, so this offline setting is no test of the planes' worth; self-play (run M)
+    is. **Even so the planes help**: B stays ~0.014 below A at every report (3.651 at
+    250 batches, its best, against A's 3.665), its value loss lower too (0.061 against
+    0.067). **The zero-initialised weights learn and do not collapse** (the user's
+    question): their size per plane grows steadily (median 0.065 → 0.177, largest 0.12
+    → 0.46 over 1,250 batches), they spread apart across filters (0.002 → 0.008), and
+    the network leans on them more and more (zeroing them moves the policy by 0.071 →
+    0.092 of its mass, the value by 0.11 → 0.19). The long-capture probe on B (250
+    batches): real 2-square hurls 60x (top 87%; convK83 53x, 81%), 3-square 3.0x (2.5x);
+    4-7 squares still below blind; shoves lower than convK83's (real 2.8-4.0x against
+    4.1-5.4x — the overfitting, likely). **Reading: the long hurls are now a matter of
+    examples.** Each direction and distance has its own input plane and its own output
+    plane in the head, and a weight learns only from examples: in 200 of run K's
+    self-play games there are 122 hurls of 3 squares and 4 of 4. The symmetries share
+    examples across directions, not distances. If long hurls come to matter, the remedy
+    is examples — built positions with long captures mixed into training, the teacher
+    giving their targets — not another input design. **Deferred** (the user,
+    2026-10-12: not a major problem yet — stronger dwarfs will form longer lines, so the
+    examples should come with strength). The caveat: self-play can also keep them rare
+    (dwarfs that do not see long hurls do not set them up, trolls do not learn to avoid
+    them — the co-adaptation of the dwarfs' blunders again), leaving a blind spot an
+    outside opponent could use. **Monitor:** the hurls by length in each run's
+    self-play (the actors' logs) and in the games against hexparrot and alpha-beta,
+    above all theirs against us; and **the long-capture probe**
+    (`thud/experiments/az_long_capture_probe.cc`: built minimal pairs at every distance
+    and direction, and every capture in the run's own last self-play games; ~3 minutes a
+    network on 4 threads) on each run's final network and on every network promoted to
+    an anchor, with the previous main line beside it (so far G'64, H83, I83, K83,
+    convK83 and the offline B — `~/thud-runs/probe_2026-10-10/`, `probe_2026-10-11/`;
+    next L102 and M102, once run M is evaluated); it tells whether the prior
+    picks up long hurls as they become more common. **M102 and L102** (2026-10-12, on run
+    M's last games): real 3-square hurls M102 13.9x (top 50%) against L102 4.8x (14%) —
+    14 cases; built 7.4x against 2.4x — the planes help where examples exist (their
+    weights for distance 3 grew most); 4-7 still below blind for both; built shoves of
+    5-7 squares now 4.6-5.4x (top 77-94%) for both (K83 ~1x); real 2-square hurls
+    ~140-150x, the top move 95% of the time. **Revisit if** long hurls (4+
+    squares) grow common in self-play while the probe still finds them ignored by the
+    prior (below a blind prior's probability, built or real), or show up in our losses
+    to outside opponents. The dwarfs' training signal stays the larger problem (they lose every
+    dwarf in self-play and to alpha-beta's trolls in training; *the dwarfs' training
+    signal*, below).
+  - **Run M** (2026-10-12 03:25-12:43, steps 84-102, no pause; its evaluation to
+    16:37): **a tie with run L — M102 against L102 +0.65 a pair (−1.63 to +2.93), 14
+    won, 9 drawn, 17 lost**; ladder M88 +87.8, M92 +82.0, M96 +98.8, M100 +114.2 ± 74
+    (L88-L100 +86 to +94; the ladder saturating at the top: L and M beat its anchors
+    almost always); against players without a network M102 / L102 hexparrot −22.1 /
+    −21.4, alpha-beta depth 1 +14.8 / +19.3, depth 2 −18.1 / −20.6, depth 3 −29.6 /
+    −37.9 — pair by pair on the same seeds M − L +8.3 (+0.3 to +16.2) at depth 3, all
+    of it the trolls, −4.6 (−9.3 to +0.2) at depth 1 through the dwarfs, the others
+    within noise (one of four comparisons barely clearing zero: suggestive only).
+    **Decided** (the user, 2026-10-12): **M is the main line** — the planes kept, as
+    they may help later (longer dwarf lines, long hurls) and the network uses them.
+    **The weights over run M's 19 checkpoints** (`thud/experiments/az_input_plane_trace.cc`,
+    new; the user's check of learning over many steps): from zero they grow every step
+    (median 0.026 at step 84 → 0.170 at 102, the largest 0.04 → 0.62, still rising), by
+    distance as captures occur in the games (distances 1-3 0.28 / 0.34 / 0.50, 4 0.09, 5
+    ~0.005, 6-7 exactly 0 — no such capture in run M's games, so no gradient), the maps
+    0.13 and 0.13; the filters grow apart (spread 0.0006 → 0.009); and the network leans
+    on the planes more and more (zeroing them moves 1.4% → 16.5% of the policy's mass,
+    the value by 0.03 → 0.3-0.5). No collapse. As M is no stronger than L, the network
+    seems to route facts it already computed through the planes rather than to gain new
+    ones.
   - **Re-evaluate the destination risk** (the user, 2026-10-11): a move's risk lies at
     its destination — for a dwarf, which moves like a queen, up to 14 squares from the
     origin where the move is scored (13 already in the opening, (0,5)-(13,5)) — and only
@@ -2650,7 +2750,105 @@ keep for the rest of the project):
     risks are missed more than the short ones'. **Then:** risk planes at the origin
     ("this move lands in danger", per direction and distance — 8 x 14 for dwarfs), or a
     head scoring each move from both its ends (Leela Chess Zero's attention policy reads
-    the origin and the destination squares).
+    the origin and the destination squares). **First reading** (2026-10-12, after run
+    M; `~/thud-runs/probe_2026-10-12/`): the blunder diagnosis on the games against
+    hexparrot — blunders M102 25.4% of the dwarfs' moves (647 of 2,544), L102 25.6%
+    (K83 35.9%, I83 50.2%, G'64 82.2%); the dwarfs' prior on unsafe moves 0.256 / 0.254
+    against their 18.8% / 17.9% of the legal moves (K83 0.337); the trolls' prior on
+    the capture inside the dwarfs' search 0.117 / 0.121 (K83 0.069), the capture
+    visited in 95% / 96% of those searches; the value's change when the blunder's dwarf
+    is taken −0.002 / −0.007 (its worth 0.031; K83 −0.011), a troll removed +0.045 /
+    +0.059 (0.125) — **corrected 2026-10-13** (`thud/DESIGN_dwarf_signal.md` §1.4): each
+    network had been measured on its own games; on the same 150 positions every line
+    registers a lost dwarf at about −0.01 (I83, K83) or −0.006 (K102, L102, M100), only
+    M102 at −0.002 ± 0.003, and L102 and M102 blunder alike — at this size the value
+    does not drive the blunders. **Two of the three conditions hold** (blunders above
+    20%, the prior still favouring unsafe moves); the third — long moves' risks missed
+    more than short ones' — needs the probe of risks by distance. The dwarfs' larger
+    problem is their training signal (*the dwarfs' training signal*, below). **The probe
+    of risks by distance** (`thud/experiments/az_risk_probe.cc`, new; 600 dwarf positions
+    of run M's last self-play games, 181,937 non-capturing dwarf moves): per distance,
+    in each position, the prior's mean probability on the "bad" moves of that distance
+    over that on the good ones, the geometric mean over positions (below 1: avoided; an
+    untrained network gives 1.00 at every distance). Judged first by "a troll can take
+    the moved dwarf next move" — too blunt: 56% of the moves, and a dwarf stepping next
+    to a troll may be the better move, threatening a hurl worth 4 (M102 then 0.93 at 1
+    square and 1.49 at 4) — then by **the teacher (depth 2) scoring the move below the
+    best**: M102 0.68 at 1 square, **0.59 at 2-3, 0.58-0.69 at 5-9, 0.73-0.76 at 10-11,
+    0.87-0.91 at 12-14** (L102 a little weaker at every distance, 0.64-0.93; K83
+    0.85-1.02, and 1.19 at 1 square — it preferred them). **Long moves' risks are missed
+    more** (12-14 squares; few positions: 206, 94, 15) — the third condition, weakly
+    met. **Distance 4 is an anomaly for every network** (M102 1.00, L102 1.02, K83
+    1.42): the "losing" moves of 4 squares get as much as the best, likely a confound —
+    the teacher's 2-ply horizon counts as losing a dwarf the trolls can take even when
+    a hurl then wins a troll (a bait), and 4-square moves may often be such (unchecked:
+    to look at examples; baits proved rare since — after a blunder the dwarfs take a
+    troll next move 0.7% of the time, against 3.6% for any dwarf move,
+    `thud/DESIGN_dwarf_signal.md` §1.3 — so likely another cause). Reading: the prior
+    learnt destination risk well at short and middle distances (M102 better than L102,
+    perhaps the danger map), less at the longest — modest, compared with the dwarfs'
+    training signal.
+- **The dwarfs' training signal** (the user, 2026-10-12, asked for a design comparing
+  approaches — upsides, downsides, costs of development, training and running, validation
+  — reviewed adversarially by a reviewer agent: **`thud/DESIGN_dwarf_signal.md`**; revised
+  2026-10-13 with the results of its checks). **Findings:** outcome saturation — 98-100% of
+  self-play games since run K's step ~77 end with every dwarf gone (M102: 162 of 162) —
+  came with training against alpha-beta (run I saturated without kickstarting, 80-95% at
+  steps 70-83; run H, without alpha-beta, 41-67%). **Losing every dwarf is not forced by
+  the game; it is how our network plays the dwarfs**: alpha-beta at depth 2 playing the
+  dwarfs keeps dwarfs alive against M102's trolls in 20 of 20 battles (−13.2) and in all
+  236 logged training games against our trolls (−16.2); our dwarfs lose every one
+  (self-play −25.2). **The checks** (the night of 2026-10-13, `~/thud-runs/night7_2026-10-13.py`,
+  results in `~/thud-runs/checks_2026-10-13/`; matches only):
+  - **Check 4, the value by side to move** (`az_dwarf_value_probe`, new): a far dwarf
+    removed costs the value clearly with the trolls to move (M102 +0.021, K83 +0.050; a
+    dwarf 0.031) but hardly with the dwarfs to move (M102 +0.002 to +0.011); H83 (the
+    clean control: run I's steps without its alpha-beta games) and G'64 have no such gap
+    — it came with those games, because the only positions from games in which dwarfs
+    survive are our trolls' against alpha-beta's dwarfs, all trolls to move.
+  - **Check 1, the value at the blunders** (`az_blunder_check`, extended): one ply down
+    (trolls to move) the value prefers the teacher's safe move by a third of a dwarf. (Its
+    comparison of the search's Q is biased by selection — the positions are moves the
+    search chose — and shows nothing; the third review.) In self-play's conditions two
+    thirds of the blunders come from the noise.
+  - **Check 2, the teacher in the dwarfs' search at play time** (`az_match
+    teacher_mix_a`, new; no noise): the dwarf side gains +7.6 / +10.6 / +15.9 points a
+    battle against L102's trolls at mixes 0.3 / 0.5 / 0.7, +5.5 / +9.8 / +12.8 against
+    K83's; 37-40 of 40 battles keep dwarfs; the dwarfs kill as many trolls or more; our
+    trolls unchanged within the noise. **But the dwarfs survive by stalling** (38 of 40
+    battles at 0.7 end at the no-capture limit, after 435 plies on average).
+  - **Check 3, self-play's root noise** (`az_match noise=… sample_plies=10`, new; the
+    noisy cell reproduces the trainer's self-play, 91 plies and −25.9): the dwarfs' own
+    noise costs them 6.3 dwarfs by ply 60 and ~1.8 points a battle (its rule for C3 met),
+    but without it outcomes stay saturated (1% of battles keep a dwarf); either side's
+    noise breaks the stalls in which dwarfs survive without noise (26% → 0-1%).
+  - **Check 5, older trolls under noise**: M102's dwarfs keep dwarfs in 9 of 40 battles
+    against K83's trolls, margin −9.4 — all nine by killing every troll.
+  - **Also found** (the third review, rerun): self-play slides within every run — run
+    M's blunders 8.6% → 14.9% → 23.2% of the dwarfs' moves by thirds of the run — so a
+    control run will slide too: test runs are compared with M102 as well.
+  **Decided** (the user, 2026-10-13; the decision log): test runs from M102, a control
+  and **D1** (the dwarfs' kickstarting weight 0.7, the trolls at 0.3); its taper slow
+  and gated; **regression gates** in the promotion rule (above). **Built 2026-10-13**:
+  `--player_kickstart_weight` (D1; `kickstart_check` extended, all pass) and
+  `--player_policy_epsilon` / `--player_policy_alpha` (C3, the root noise per player;
+  `search_settings_check` extended, all pass), both off unless set, in
+  `build-shared/az_trainer_d1` for both runs; the run folders from M102's state,
+  `~/thud-runs/runM_K83_conv_planes_cont` (the control, "M continued") and
+  `~/thud-runs/runN_M102_d1` (run N: D1), to step 121; the runner
+  `~/thud-runs/night8_2026-10-13.py control|d1`. D1's weight is capped at 0.7 (the user;
+  if it is not enough, the teacher stays on longer). **Open with the user**: the
+  endpoint's exact rule.
+  **Check 2b** (2026-10-13 18:22-20:12; the 0.7 mix in M102's dwarf prior against plain
+  M102 in self-play's conditions): under the trainer's noise no battle keeps a dwarf (0
+  of 40; the dwarfs lose dwarfs more slowly, −22.0 against −25.9), with the dwarfs' roots
+  noise-free 28 of 40 do (no mix: 1 of 80), mostly in stalls of ~620 plies — by its rule,
+  **the test run is D1 together with C3** (run N's config: `player_kickstart_weight`
+  "0.7", `player_policy_epsilon` "0,0.25"). **Running:** the control run, from
+  2026-10-13 20:13 (`night8_2026-10-13.py control`), run N chained after it (the user:
+  right after; ~05:30 to ~15:00). **Next:**
+  the gates set up (standard errors, positive controls); the evaluation against each
+  other and against M102.
 - **A tool to restructure a network** (the user, 2026-10-09: "I feel like we are going
   to need that repeatedly"; designed now, built when run K's results pick the first
   change of structure). **Uses:** the input features (more input channels); the

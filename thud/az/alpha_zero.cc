@@ -140,7 +140,8 @@ Trajectory PlayGame(Logger* logger, int game_num, const open_spiel::Game& game,
                     const AlphaBetaPlayer* opponent,
                     open_spiel::Player opponent_player,
                     const AlphaBetaPlayer* teacher, double teacher_weight,
-                    double teacher_temperature) {
+                    double teacher_temperature,
+                    const std::vector<double>& teacher_weights) {
   std::unique_ptr<open_spiel::State> state = game.NewInitialState();
   std::vector<std::string> history;
   Trajectory trajectory;
@@ -198,14 +199,18 @@ Trajectory PlayGame(Logger* logger, int game_num, const open_spiel::Game& game,
       double root_value = root->total_reward / root->explore_count;
       if (pruning_k <= 0) target = std::move(policy);
       // Our change (kickstarting): the teacher's share of the target; the move above
-      // was chosen from the search's visits alone.
-      if (teacher != nullptr && teacher_weight > 0) {
+      // was chosen from the search's visits alone. Per player to move, if
+      // teacher_weights has an entry for it (approach D1).
+      const double weight = player >= 0 && player < teacher_weights.size()
+                                ? teacher_weights[player]
+                                : teacher_weight;
+      if (teacher != nullptr && weight > 0) {
         std::unordered_map<open_spiel::Action, double> taught;
         for (const auto& [a, p] : TeacherPolicy(*state, *teacher, teacher_temperature)) {
           taught[a] = p;
         }
         for (auto& [a, p] : target) {
-          p = (1 - teacher_weight) * p + teacher_weight * taught[a];
+          p = (1 - weight) * p + weight * taught[a];
         }
       }
       trajectory.states.push_back(Trajectory::State{
@@ -301,6 +306,15 @@ open_spiel::ActionsAndProbs TeacherPolicy(const open_spiel::State& state,
   return policy;
 }
 
+std::vector<double> KickstartWeights(const AlphaZeroConfig& config) {
+  const std::vector<double> listed = PerPlayerValues(config.player_kickstart_weight);
+  SPIEL_CHECK_LE(listed.size(), 2);
+  std::vector<double> weights(2, config.kickstart_weight);
+  for (int p = 0; p < listed.size(); ++p) weights[p] = listed[p];
+  for (double w : weights) SPIEL_CHECK_TRUE(w >= 0 && w <= 1);
+  return weights;
+}
+
 int AlphaBetaDepth(const AlphaZeroConfig& config, open_spiel::Player player) {
   const std::vector<double> depths = PerPlayerValues(config.alphabeta_depth);
   SPIEL_CHECK_TRUE(depths.size() == 1 || depths.size() == 2);
@@ -319,14 +333,27 @@ std::unique_ptr<MCTSBot> InitAZBot(const AlphaZeroConfig& config,
   const int max_simulations = player >= 0 && player < simulations.size()
                                   ? static_cast<int>(simulations[player])
                                   : config.max_simulations;
+  // Our change (approach C3 of thud/DESIGN_dwarf_signal.md): the root noise per
+  // player in self-play; a player whose epsilon is 0 gets none.
+  const std::vector<double> alphas = PerPlayerValues(config.player_policy_alpha);
+  const std::vector<double> epsilons = PerPlayerValues(config.player_policy_epsilon);
+  SPIEL_CHECK_LE(alphas.size(), 2);
+  SPIEL_CHECK_LE(epsilons.size(), 2);
+  const bool listed = player >= 0 && player < epsilons.size();
+  const double epsilon = listed ? epsilons[player] : config.policy_epsilon;
+  SPIEL_CHECK_TRUE(epsilon >= 0 && epsilon <= 1);
+  // Without a list this is the expression as it was (evaluation ? 0 : policy_alpha).
+  const double alpha = evaluation || (listed && epsilon == 0)
+                           ? 0
+                           : player >= 0 && player < alphas.size() ? alphas[player]
+                                                                   : config.policy_alpha;
   auto bot = std::make_unique<MCTSBot>(
       game, std::move(evaluator), config.uct_c, max_simulations,
       /*max_memory_mb=*/10,
       /*solve=*/false,
       /*seed=*/0,
       /*verbose=*/false, ChildSelectionPolicy::PUCT,
-      evaluation ? 0 : config.policy_alpha,
-      evaluation ? 0 : config.policy_epsilon,
+      alpha, evaluation ? 0 : epsilon,
       /*dont_return_chance_node*/ true, /*max_wall_clock_time=*/-1,
       UntriedMoveValueFromString(config.untried_move_value),
       config.untried_move_reduction,
@@ -372,11 +399,12 @@ void actor(const open_spiel::Game& game, const AlphaZeroConfig& config, int num,
   int64_t positions = 0, alphabeta_positions = 0;
   // Our change (kickstarting): the teacher, if on.
   std::unique_ptr<AlphaBetaPlayer> teacher;
-  if (config.kickstart_weight > 0) {
+  const std::vector<double> kickstart_weights = KickstartWeights(config);
+  if (kickstart_weights[0] > 0 || kickstart_weights[1] > 0) {
     teacher = std::make_unique<AlphaBetaPlayer>(game, config.kickstart_depth);
-    logger->Print("Kickstarting: weight %g, depth %d, temperature %g",
-                  config.kickstart_weight, config.kickstart_depth,
-                  config.kickstart_temperature);
+    logger->Print("Kickstarting: weight %g (per player %g, %g), depth %d, temperature %g",
+                  config.kickstart_weight, kickstart_weights[0], kickstart_weights[1],
+                  config.kickstart_depth, config.kickstart_temperature);
   }
   for (int game_num = 1; !stop->StopRequested(); ++game_num) {
     double cutoff =
@@ -396,7 +424,7 @@ void actor(const open_spiel::Game& game, const AlphaZeroConfig& config, int num,
                  opponent == open_spiel::kInvalidPlayer ? nullptr
                                                         : alphabeta[opponent].get(),
                  opponent, teacher.get(), config.kickstart_weight,
-                 config.kickstart_temperature);
+                 config.kickstart_temperature, kickstart_weights);
     positions += trajectory.states.size();
     if (opponent != open_spiel::kInvalidPlayer) {
       alphabeta_positions += trajectory.states.size();

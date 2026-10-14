@@ -60,7 +60,8 @@ BIN = os.path.expanduser("~/thud-openspiel/build-shared/az_match")
 CACHE, MATCH_GB, RESERVE_GB = 32768, 1.0, 1.5
 # The ladder's anchors (thud/PLAN.md, How we evaluate networks), each as trained.
 ANCHORS = {
-    "K83": f"{RUNS}/runK_Gaug64_T15_AB30_ks:83",  # The top anchor since 2026-10-10.
+    "M102": f"{RUNS}/runM_K83_conv_planes:102",  # The top anchor since 2026-10-12.
+    "K83": f"{RUNS}/runK_Gaug64_T15_AB30_ks:83",  # The top anchor 2026-10-10 to 2026-10-12.
     "H83": f"{RUNS}/runH_Gaug64_T15:83",  # The top anchor 2026-10-07 to 2026-10-10.
     "G'64": f"{RUNS}/stage5b_Gaug_7x:64",  # The top anchor 2026-10-07, morning to evening.
     "G'44": f"{RUNS}/stage5b_Gaug_7x:44",

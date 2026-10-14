@@ -100,6 +100,13 @@ struct AlphaZeroConfig {
   // upstream's search).
   std::string player_simulations;
   std::string player_policy_temperature;
+  // Added (thud/DESIGN_dwarf_signal.md, approach C3; 2026-10-13): the root noise per
+  // player, comma-separated values indexed by the player to move at the root
+  // (PerPlayerValues; player_policy_epsilon "0,0.25": the dwarfs' self-play searches
+  // without root noise, the trolls' as before); empty or a missing second entry:
+  // policy_alpha / policy_epsilon. A player whose epsilon is 0 gets no noise at all.
+  std::string player_policy_alpha;
+  std::string player_policy_epsilon;
   // Added (thud/PLAN.md, How we evaluate networks: training against alpha-beta): the
   // share of each actor's recorded positions that come from games against OpenSpiel's
   // alpha-beta search to alphabeta_depth plies (AlphaBetaPlayer,
@@ -120,6 +127,12 @@ struct AlphaZeroConfig {
   double kickstart_weight;
   int kickstart_depth;
   double kickstart_temperature;
+  // Added (thud/DESIGN_dwarf_signal.md, approach D1; 2026-10-13): kickstart weights per
+  // player, comma-separated values indexed by the player to move (PerPlayerValues;
+  // "0.7,0.3": the dwarfs' positions 0.7, the trolls' 0.3); empty or a missing second
+  // entry: kickstart_weight (KickstartWeights below). Entries fill from the dwarfs on:
+  // to set the trolls' alone, write both.
+  std::string player_kickstart_weight;
   double temperature;
   double temperature_drop;
   double cutoff_probability;
@@ -162,9 +175,12 @@ struct AlphaZeroConfig {
         {"untried_move_reduction", untried_move_reduction},
         {"player_simulations", player_simulations},
         {"player_policy_temperature", player_policy_temperature},
+        {"player_policy_alpha", player_policy_alpha},
+        {"player_policy_epsilon", player_policy_epsilon},
         {"alphabeta_share", alphabeta_share},
         {"alphabeta_depth", alphabeta_depth},
         {"kickstart_weight", kickstart_weight},
+        {"player_kickstart_weight", player_kickstart_weight},
         {"kickstart_depth", kickstart_depth},
         {"kickstart_temperature", kickstart_temperature},
         {"temperature", temperature},
@@ -228,6 +244,14 @@ struct AlphaZeroConfig {
         config_json.count("player_policy_temperature")
             ? config_json.at("player_policy_temperature").GetString()
             : "";
+    // A run from before the per-player root noise used policy_alpha and
+    // policy_epsilon for both.
+    player_policy_alpha = config_json.count("player_policy_alpha")
+                              ? config_json.at("player_policy_alpha").GetString()
+                              : "";
+    player_policy_epsilon = config_json.count("player_policy_epsilon")
+                                ? config_json.at("player_policy_epsilon").GetString()
+                                : "";
     // A run from before the setting existed played only against itself.
     alphabeta_share = config_json.count("alphabeta_share")
                           ? config_json.at("alphabeta_share").GetDouble()
@@ -242,6 +266,10 @@ struct AlphaZeroConfig {
     kickstart_weight = config_json.count("kickstart_weight")
                            ? config_json.at("kickstart_weight").GetDouble()
                            : 0;
+    // A run from before the per-player weights used kickstart_weight for both.
+    player_kickstart_weight = config_json.count("player_kickstart_weight")
+                                  ? config_json.at("player_kickstart_weight").GetString()
+                                  : "";
     kickstart_depth = config_json.count("kickstart_depth")
                           ? config_json.at("kickstart_depth").GetInt()
                           : 2;
@@ -267,6 +295,12 @@ std::vector<double> PerPlayerValues(const std::string& list);
 // Added (training against alpha-beta): the depth alpha-beta searches when it plays
 // `player` — config.alphabeta_depth's entry for that player, or its one value for both.
 int AlphaBetaDepth(const AlphaZeroConfig& config, open_spiel::Player player);
+
+// Added (kickstarting per player): the teacher's weight in the policy targets of each
+// player's positions — config.player_kickstart_weight's entry for that player, or
+// config.kickstart_weight where it has none. Stops on a weight outside [0, 1] or more
+// than two entries.
+std::vector<double> KickstartWeights(const AlphaZeroConfig& config);
 
 // A game an actor played, as the learner receives it. Moved here from alpha_zero.cc
 // (our change), with PlayGame below, so that checks can play games as the actors do.
@@ -307,7 +341,8 @@ Trajectory PlayGame(open_spiel::Logger* logger, int game_num, const open_spiel::
                     const AlphaBetaPlayer* opponent = nullptr,
                     open_spiel::Player opponent_player = open_spiel::kInvalidPlayer,
                     const AlphaBetaPlayer* teacher = nullptr, double teacher_weight = 0,
-                    double teacher_temperature = 1);
+                    double teacher_temperature = 1,
+                    const std::vector<double>& teacher_weights = {});
 
 // Added (kickstarting): the teacher's policy over `state`'s legal moves — the softmax
 // of teacher.Scores(state) over `temperature` points.
