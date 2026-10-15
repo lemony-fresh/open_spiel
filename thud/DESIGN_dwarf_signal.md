@@ -78,8 +78,8 @@ against alpha-beta, the input planes, the destination risk; runs G' to M) and
   run N2** (a rerun of run N only, the user), meets it too: +6.10 (+3.09 to +9.11) against
   C121, +0.95 (−2.04 to +3.94) against N121. The control did not slide (C121 beat M102 by
   +7.20). The gain is the policy's: the value's side-to-move gap has not closed in 19
-  steps. Adopting D1 + C3, and what follows (a longer run, or B1′ or C7), is the user's
-  decision (§8 step 3).
+  steps. **Decided** (the user, 2026-10-15): a longer D1 + C3 run first — run N continued
+  from N121 for 40 steps, check 4 every 10 (§10).
 - **Decided by the user (2026-10-13):** test runs from M102 with D1; its slow, gated taper
   (§5); the regression gates, also in the promotion rule (§7; refined since by review 3).
   D1's weight capped at 0.7 (above it the dwarfs' policy target nears pure imitation of
@@ -951,6 +951,12 @@ games keeping dwarfs — both rising: patience; survival rising but the gap not:
 not learning what it sees (E1, E2); survival staying below ~5%: the data never come (B1′, or
 C7 with the user's word; C4, dropping the games that give the dwarfs' positions −1, as a
 cheap help either way). The gap's closing is a condition of the taper (§5).
+
+**Decided** (the user, 2026-10-15): the longer D1 + C3 run first — run N continued from
+N121, steps 122-161 (`~/thud-runs/runN_d1_cont`, from 14:30), in four segments of 10 steps,
+after each check 4 on the segment's own games (the newest network and N121 on the same
+positions) and the share of self-play games keeping dwarfs (run N's last 10 steps: 2.2%
+of 693 games, the dwarfs' margin −23.4), read by the rule above.
 
 ## Review log
 

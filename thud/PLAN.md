@@ -657,6 +657,7 @@ the search and trainer*, run C'.
 | 2026-10-15 | Before renting a GPU, every feature it needs built and tested here, every relevant setting exposed (the *GPU readiness checklist* in *Cloud GPU options*; when decided, of its 28 rows 9 done, 2 built but untested, 17 missing — among them Net2Net growth, a learning-rate schedule, a device option for our tools, profiling the batching path) | user | *Cloud GPU options* |
 | 2026-10-15 | The hybrid head (convolutional for the trolls, linear for the dwarfs; 2026-10-03) superseded: since runs L and M the convolutional head serves both sides, the dwarfs included (L102 against K102 +10.72; against hexparrot L102 −21.4, K102 −37.1) | user | the head table above; *the long-capture probe* |
 | 2026-10-15 | Tests kept complete and run by one command: every feature with a check (the new ones: `grow_check`, `teacher_mix_check`, `trainer_check.sh`, `az_match_check.sh`, the playthrough replay, the sanitized checks), all built without `-DNDEBUG` and run by `thud/run_checks.sh` (quick ~20 s, `--full` ~3 min); git hooks run them — pre-commit the quick ones when a commit changes code, pre-push all when the pushed commits do; the *Tests* list tracks each check, its control, and every gap | user | *Cloud GPU options*, *Tests* |
+| 2026-10-15 | After the replication: **a longer D1 + C3 run first** (run N continued from N121, 40 steps to 161, check 4 and the share of self-play games keeping dwarfs every 10 steps), not yet a value test run (B1′, or C7 reversing the rule of 2026-10-07) — the cheapest way to learn whether the value's gap closes as our own dwarfs survive more | user (Claude proposed) | *How we evaluate networks* (the dwarfs' training signal); the design's §10 |
 
 **Considered and set aside** (with the reason): the Python AlphaZero (a layout bug, and
 slow; fallback note below); a 32 x 2 network (its convolutions see 11 x 11 squares);
@@ -3000,10 +3001,10 @@ keep for the rest of the project):
   2026-10-15 01:56-10:13, evaluated 10:16-12:33; the design's §10): **it meets the rule
   too** — N2121 against C121 +6.10 (+3.09 to +9.11), the per-side measures as N121's
   (hexparrot +8.9 ± 2.4 against the control), blunders 13.1%; N2121 against N121 +0.95
-  (−2.04 to +3.94): the gain replicates. **Next:** the user's decision on adopting D1 + C3
-  (§8 step 3's second branch: the value's gap stays — a longer D1 + C3 run with check 4
-  every ~10 steps, or a value test run, B1′ or C7); the regression gates and the
-  promotion tests of N121 or N2121.
+  (−2.04 to +3.94): the gain replicates. **Decided** (the user, 2026-10-15): a longer
+  D1 + C3 run first — run N continued from N121, 40 steps (`~/thud-runs/runN_d1_cont`,
+  from 14:30), check 4 every 10 steps beside the survival share. **Next:** its segments
+  and evaluation; the regression gates and the promotion tests of N121 or N2121.
 - **A tool to restructure a network** (the user, 2026-10-09: "I feel like we are going
   to need that repeatedly"; designed now, built when run K's results pick the first
   change of structure). **Uses:** the input features (more input channels); the

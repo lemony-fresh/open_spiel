@@ -276,13 +276,17 @@ user's decision (the design's §8, step 3's second branch: the value's gap stays
 **Tests** (2026-10-15, the user): every feature has a check, all run by
 `thud/run_checks.sh` (quick ~20 s, `--full` 22 checks ~3 min, built without `-DNDEBUG`),
 and git hooks run them — pre-commit the quick ones for commits that change code, pre-push
-all of them (`PLAN.md`, *Tests*: each check, its control, every gap). Nothing running.
+all of them (`PLAN.md`, *Tests*: each check, its control, every gap); committed and pushed
+(`d75336f1`). **Running since 2026-10-15 14:30:** **the longer D1 + C3 run** (the user, 2026-10-15: the longer run first, 40 steps): run N continued from N121, steps 122-161, in `~/thud-runs/runN_d1_cont` (a copy of run N's state, so N121's own buffer stays for a later test run), by `~/thud-runs/night11_2026-10-15.py`: four segments of 10 steps, after each check 4 on the segment's own games (the newest network and N121 on the same positions) and the share of self-play games keeping dwarfs (run N's last 10 steps: 2.2% of 693, the dwarfs' margin −23.4); ~24 minutes a step,
+done ~07:00-08:00 on 2026-10-16. Progress in `stage1_matches/progress.log`.
 **Done** (2026-10-07 16:28 to 2026-10-08 05:34): the night of matches against players
 without a network, run I and its evaluation (`~/thud-runs/night2_2026-10-07.py`).
 Deferred: MCTS-10,000 and -100,000, alpha-beta depth 4 (informative once our networks
 beat the lower rungs).
-**Next:** the user's decision on D1 + C3 (adopt it; then a longer D1 + C3 run with check 4
-every ~10 steps, or a value test run, B1′ or C7 — the design's §8 and §10); the regression
+**Next:** the longer run's segments read as the design's §10 says — survival and the gap
+both rising: patience; survival rising but the gap not: E1, E2; survival below ~5%: B1′,
+or C7 with the user's word — then its evaluation (against N121 and the players without a
+network); the regression
 gates set up (standard errors, positive controls) and the promotion tests of N121 or
 N2121 (the ladder, the gates); the GPU readiness checklist's missing items (`PLAN.md`,
 *Cloud GPU options*: the user, 2026-10-15 — everything a GPU needs ready and tested here
@@ -3105,6 +3109,18 @@ instrumentation, and the pattern agreed for later, are in `PLAN.md` Phase 5).
   (probes' helpers, Python tools, some az_match options, the trainer's evaluators,
   sanitizers on LibTorch programs, CUDA, `-Wno-everything`).
 
-**Next step:** as recorded in `## Current status` — the user's decision on D1 + C3; the
-regression gates and the promotion tests; the GPU checklist's missing items (the
-batching path's profile, the Net2Net live test) in gaps between runs.
+- **2026-10-15, ~15:00-15:45: results summarised; commit and push; the longer run.** The
+  user asked for the day's results in one place (the replication, Net2Net on real
+  networks, the device options, the tests), and what the rule of 2026-10-07 is (only our
+  network's positions recorded in the games against alpha-beta; C7 would record
+  alpha-beta's dwarf positions as value data). Committed and pushed `d75336f1` (the new
+  hooks ran: the quick checks before the commit, all 22 before the push). **Decided**
+  (the user): **a longer D1 + C3 run first, 40 steps** — not yet a value test run.
+  Started 14:30: **the longer D1 + C3 run** (the user, 2026-10-15: the longer run first, 40 steps): run N continued from N121, steps 122-161, in `~/thud-runs/runN_d1_cont` (a copy of run N's state, so N121's own buffer stays for a later test run), by `~/thud-runs/night11_2026-10-15.py`: four segments of 10 steps, after each check 4 on the segment's own games (the newest network and N121 on the same positions) and the share of self-play games keeping dwarfs (run N's last 10 steps: 2.2% of 693, the dwarfs' margin −23.4). The script was dry-run first on run N's files (the
+  summary, the segment's log copy, check 4: ~15 s); the copied checkpoint checked equal to
+  step 121's by content (the files differ only in their archives' folder name).
+
+**Next step:** as recorded in `## Current status` — the longer run's four segments and
+their check 4, then its evaluation; the regression gates and the promotion tests; the
+GPU checklist's missing items (the batching path's profile, the Net2Net live test) in
+gaps between runs.
