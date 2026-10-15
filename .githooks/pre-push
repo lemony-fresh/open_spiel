@@ -3,8 +3,12 @@
 # Copyright 2026 The Thud-on-OpenSpiel authors.
 # Licensed under the Apache License, Version 2.0.
 #
-# Refuses any push to the UPSTREAM OpenSpiel repository that would carry our
-# project-private files. Pushes to our own fork are unaffected.
+# 1. Refuses any push to the UPSTREAM OpenSpiel repository that would carry our
+#    project-private files. Pushes to our own fork are unaffected by this part.
+# 2. Runs all our checks (thud/run_checks.sh --full, ~3 min) before any push whose
+#    commits change code (the game, our AlphaZero copy and tools, the checks, the
+#    hooks); a failing check stops the push. Added 2026-10-15 (the user: commit hooks
+#    for the unit tests); the checks run on the working tree.
 #
 # The file this primarily protects is thud/THUD_RULES.md, which quotes the
 # official Thud rules verbatim. Thud is commercially published, and while game
@@ -20,13 +24,38 @@
 
 remote_url="$2"
 zero='0000000000000000000000000000000000000000'
+refs=$(cat)  # git's lines: local_ref local_sha remote_ref remote_sha; read by both parts.
 
-# Only guard pushes aimed at upstream. Our own fork's URL also contains
+# 2. The checks, if the pushed commits change code.
+run_checks() {
+  code='^(open_spiel/games/thud/|thud/az/|thud/experiments/|thud/checks\.mk$|thud/run_checks\.sh$|\.githooks/)'
+  changed=''
+  while read -r _local_ref local_sha _remote_ref remote_sha; do
+    [ -z "$local_sha" ] || [ "$local_sha" = "$zero" ] && continue
+    if [ "$remote_sha" = "$zero" ]; then
+      # A new branch: what it changes against the remote's branches (all of it if none).
+      base=$(git merge-base "$local_sha" "$(git for-each-ref --format='%(objectname)' \
+        "refs/remotes/${1:-origin}" | head -1)" 2>/dev/null)
+      if [ -n "$base" ]; then files=$(git diff --name-only "$base" "$local_sha")
+      else files=$(git ls-tree -r --name-only "$local_sha"); fi
+    else
+      files=$(git diff --name-only "$remote_sha" "$local_sha")
+    fi
+    changed="$changed$(printf '%s\n' "$files" | grep -E "$code")"
+  done <<EOF
+$refs
+EOF
+  [ -z "$changed" ] && return 0
+  echo "pre-push: the pushed commits change code; running every check (thud/run_checks.sh --full)"
+  "$(git rev-parse --show-toplevel)/thud/run_checks.sh" --full
+}
+
+# 1. Only guard pushes aimed at upstream. Our own fork's URL also contains
 # "open_spiel", so match on the owner, not just the repo name.
 url_lc=$(printf '%s' "$remote_url" | tr '[:upper:]' '[:lower:]')
 case "$url_lc" in
   *deepmind/open_spiel*) ;;
-  *) exit 0 ;;
+  *) run_checks "$1"; exit ;;
 esac
 
 # Paths that must never leave our fork.
@@ -47,9 +76,11 @@ while read -r _local_ref local_sha _remote_ref remote_sha; do
   hits=$(printf '%s\n' "$files" | grep -E "$protected")
   [ -n "$hits" ] && blocked="$blocked$hits
 "
-done
+done <<REFS
+$refs
+REFS
 
-[ -z "$blocked" ] && exit 0
+[ -z "$blocked" ] && { run_checks "$1"; exit; }
 
 cat >&2 <<EOF
 

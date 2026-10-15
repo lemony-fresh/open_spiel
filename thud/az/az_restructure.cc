@@ -38,7 +38,7 @@
 // checkpoint-STEP (the best), which az_match and the probes read like any run's.
 //
 // Net surgery (mode 1, thud/PLAN.md, the input planes; 2026-10-11): input_planes=1 builds
-// the new network with the 58 input planes from the rules (thud/az/thud_features.h)
+// the new network with the 50 input planes from the rules (thud/az/thud_features.h)
 // besides the observation; copy=all copies the policy head too; the first convolution,
 // wider now, gets the source's channels and zeros for the new ones (CopyParametersFrom's
 // widen_inputs). The check then requires the values and the policies to equal the
@@ -54,7 +54,7 @@
 //   OMP_NUM_THREADS=8 build-shared/az_restructure from=RUN_DIR:STEP to=NEW_DIR \
 //     buffer=RUN_DIR/replay_buffer.data [buffer_size=458752 nn_model=resnet_conv_policy \
 //     freeze=copied learning_rate=0.001 batch_size=1024 eval_every=250 patience=4 \
-//     max_batches=20000 step=STEP seed=1 input_planes=0 copy=not_policy]
+//     max_batches=20000 step=STEP seed=1 input_planes=0 copy=not_policy device=/cpu:0]
 //   build-shared/az_restructure from=RUN_DIR:STEP to=NEW_DIR input_planes=1 copy=all \
 //     freeze=none max_batches=0 learning_rate=0.0001   # net surgery alone
 
@@ -225,6 +225,9 @@ int main(int argc, char** argv) {
   const int step = std::stoi(get("step", std::to_string(from_step)));
   const bool input_planes = get("input_planes", "0") == "1";
   const bool copy_all = get("copy", "not_policy") == "all";
+  // Added 2026-10-15 (thud/PLAN.md, the GPU readiness checklist): where the networks run
+  // and train (cpu, cuda:0, ...).
+  const std::string device = get("device", "/cpu:0");
   std::mt19937 rng(std::stoull(get("seed", "1")));
   if (std::filesystem::exists(to)) open_spiel::SpielFatalError(to + " exists already");
 
@@ -236,7 +239,7 @@ int main(int argc, char** argv) {
   }
   const int nn_width = std::stoi(get("nn_width", std::to_string(source_config.nn_width)));
   const int nn_depth = std::stoi(get("nn_depth", std::to_string(source_config.nn_depth)));
-  VPNetModel source(*game, from_dir, "vpnet.pb", "/cpu:0");
+  VPNetModel source(*game, from_dir, "vpnet.pb", device);
   source.LoadCheckpoint(from_step);
 
   std::filesystem::create_directories(to);
@@ -244,7 +247,7 @@ int main(int argc, char** argv) {
       *game, learning_rate, source_config.weight_decay, to, "vpnet.pb", nn_model, nn_width,
       nn_depth, /*verbose=*/false,
       input_planes ? open_spiel::thud_az::kNumFeaturePlanes : 0));
-  VPNetModel model(*game, to, "vpnet.pb", "/cpu:0");
+  VPNetModel model(*game, to, "vpnet.pb", device);
   auto not_policy = [](const std::string& name) {
     return name.find("policy") == std::string::npos;
   };
@@ -355,7 +358,7 @@ int main(int argc, char** argv) {
   }
 
   // The best network, and the freeze's check.
-  VPNetModel saved(*game, to, "vpnet.pb", "/cpu:0");
+  VPNetModel saved(*game, to, "vpnet.pb", device);
   saved.LoadCheckpoint(step);
   const double freeze_difference = Differences(saved, source, check).first;
   std::cerr << absl::StrFormat(

@@ -28,6 +28,7 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "thud/az/model.h"
@@ -183,6 +184,10 @@ class VPNetModel {
   // Our change (the same): a parameter by name, sharing its storage (writing to it,
   // under torch::NoGradGuard, changes the network) — for checks and diagnostics.
   torch::Tensor Parameter(const std::string& name);
+  // Our change (thud/PLAN.md, the GPU readiness checklist: az_grow, 2026-10-15): every
+  // parameter and buffer by name (the batch norms' running statistics included), sharing
+  // their storage — writing to them, under torch::NoGradGuard, changes the network.
+  std::vector<std::pair<std::string, torch::Tensor>> NamedTensors();
   // Our change (the same): whether the network takes the input planes from the rules.
   bool TakesInputPlanes() const { return input_planes_; }
   // Our change (the same): parameters whose names pass `which` get no gradient, and

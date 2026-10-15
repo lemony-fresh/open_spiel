@@ -83,7 +83,8 @@ start (KataGo's formula with c = 65,536) remains a candidate for the dwarfs' sta
 policy rather than for strength.
 **The E44 check** (2026-10-03): the convolutional head's trolls are much better (against
 E44's dwarfs +9.8, C16's −8.6), its dwarfs much worse — a hybrid head (convolutional for
-the trolls) is a candidate, **after the dwarfs learn** (the user).
+the trolls) was a candidate, **superseded 2026-10-15** (the user): since runs L and M the
+convolutional head serves both sides, the dwarfs included.
 
 **Stage 5c** (2026-10-03/04): the trainer logs per-side losses, self-play margins and
 endings, and search statistics per side (built and checked); **the ladder**
@@ -246,31 +247,56 @@ rule (`PLAN.md`). **Built**: `--player_kickstart_weight` (D1) and the root noise
 player (C3), both checked, in `az_trainer_d1`; the run folders
 `runM_K83_conv_planes_cont` (the control) and `runN_M102_d1` (run N: D1) from M102's
 state; the runner `~/thud-runs/night8_2026-10-13.py control|d1`.
-D1's weight capped at 0.7 (the user). **Open with the user**: the endpoint's rule.
+D1's weight capped at 0.7 (the user); the win rule settled (the user, 2026-10-14: the
+design's §7, the head-to-head one-sided at 2.5%, before any evaluation result).
 **Check 2b** (18:22-20:12): under the trainer's noise the teacher-guided dwarfs keep
 no dwarf (0 of 40); with the dwarfs' roots noise-free, 28 of 40 battles keep dwarfs — so
-run N is **D1 together with C3** (its config set; the user may still veto). **Running:**
-the control run ("M continued", `runM_K83_conv_planes_cont`), since 20:13, to step 121
-(~05:30; `~/thud-runs/night8_2026-10-13.py control`, detached); **run N (D1 + C3)
-chained after it** (the user: right after; `night8_2026-10-13.py d1`, waiting for the
-control's trainer to end; ~05:30 to ~15:00).
+run N is **D1 together with C3** (its config set; the user may still veto). **Both test runs are done** (2026-10-14): the control (M continued) at 05:29, flat (every
+dwarf gone in 99-100% of self-play games, ~92 plies, margin ~−25.3); **run N (D1 + C3)**
+at 16:55 (cut off at ~07:35 by a Windows update's restart, resumed at 11:00 from step
+107): its self-play improving steadily — games 150 → 246-270 plies, the dwarfs' margin
+−24.4 → −21.9 to −22.9 (the control's −25.3 to −25.8 at the same steps), 3-5% of games
+ending with dwarfs left at the end (0-1% early), the dwarfs' prior concentrating (~200 →
+~110 effective moves) — our trolls against alpha-beta's dwarfs unchanged (15-22).
+**The evaluation** (2026-10-14 17:26-21:09, `~/thud-runs/eval_2026-10-14/`): **run N wins by
+the rule** — N121 against C121 +5.50 a pair (+1.91 to +9.09), 30 of 40; the dwarf side
+against hexparrot −10.2 against the control's −19.6 (M102 −23.4), against alpha-beta 1
+−9.5 against −13.2; the trolls against alpha-beta 2's dwarfs +15.9 against +14.8;
+blunders against hexparrot 9.8% (control 21.6%, M102 25.4%); N121 against M102 +12.62
+(+9.83 to +15.42), the control +7.20. The value's side-to-move gap has not closed (check
+4 on N121 as on C121 and M102): the gain is the policy's so far. **Run N2**, the replication — a rerun of run N only (the user), from M102's state with run
+N's config (`runN2_M102_d1`), 2026-10-15 01:56-10:13 — **meets the rule too: the gain
+replicates** (evaluation 10:16-12:33, `~/thud-runs/eval_2026-10-15/`): N2121 against C121
++6.10 a pair (+3.09 to +9.11), 30 of 40; the dwarf side against hexparrot +8.9 ± 2.4
+against the control, against alpha-beta 1 +2.6 ± 2.0; the trolls against alpha-beta 2's
+dwarfs −0.6 ± 1.3 (within 2 standard errors); blunders 13.1% (N121 9.8%). **N2121 against
+N121 +0.95 (−2.04 to +3.94)**, every per-side difference within 1 standard error: two
+runs of one recipe differ far less than the recipe's effect. Adopting D1 + C3 is the
+user's decision (the design's §8, step 3's second branch: the value's gap stays).
+**Tests** (2026-10-15, the user): every feature has a check, all run by
+`thud/run_checks.sh` (quick ~20 s, `--full` 22 checks ~3 min, built without `-DNDEBUG`),
+and git hooks run them — pre-commit the quick ones for commits that change code, pre-push
+all of them (`PLAN.md`, *Tests*: each check, its control, every gap). Nothing running.
 **Done** (2026-10-07 16:28 to 2026-10-08 05:34): the night of matches against players
 without a network, run I and its evaluation (`~/thud-runs/night2_2026-10-07.py`).
 Deferred: MCTS-10,000 and -100,000, alpha-beta depth 4 (informative once our networks
 beat the lower rungs).
-**Next:** the control run finishing (~05:30), run N following by itself (D1 + C3, ~15:00); meanwhile the regression gates set up (standard errors, positive controls);
-then the evaluation of both against each other and against M102 (the design's §7-8),
-with the stalls watched (game lengths, the share of positions after a battle's last
-capture); the distance-4 anomaly of the risk probe (examples; baits proved rare); kickstarting tapered in long runs; an
-alpha-beta of our own (captures first, a table of positions, iterative deepening) for
-equal-time matches (the user) and an affordable depth-3 teacher; the trainer's
-evaluator and the ladder with players without a network. The upstream PR
-for the buffer fix: [PR #1637](https://github.com/google-deepmind/open_spiel/pull/1637),
-opened 2026-10-06, the CLA check passed — waiting for upstream's CI and the maintainers'
-review (`PLAN.md`, *Upstreaming*); the hybrid head
-once the dwarfs learn; the GPU phase (a cheap machine first, a budget of tens of
-dollars first; `PLAN.md`, *Cloud GPU options*). Still open: playout caps (recommended: on
-the GPU).
+**Next:** the user's decision on D1 + C3 (adopt it; then a longer D1 + C3 run with check 4
+every ~10 steps, or a value test run, B1′ or C7 — the design's §8 and §10); the regression
+gates set up (standard errors, positive controls) and the promotion tests of N121 or
+N2121 (the ladder, the gates); the GPU readiness checklist's missing items (`PLAN.md`,
+*Cloud GPU options*: the user, 2026-10-15 — everything a GPU needs ready and tested here
+first; next among them the batching path's profile and the Net2Net live test, in gaps
+between runs) and the *Tests* list's gaps; the stalls watched (game lengths, the share of
+positions after a battle's last capture); the distance-4 anomaly of the risk probe
+(examples; baits proved rare); kickstarting tapered in long runs; an alpha-beta of our
+own (captures first, a table of positions, iterative deepening) for equal-time matches
+(the user) and an affordable depth-3 teacher; the trainer's evaluator and the ladder with
+players without a network. The upstream PR for the buffer fix: [PR
+#1637](https://github.com/google-deepmind/open_spiel/pull/1637), opened 2026-10-06, the
+CLA check passed — waiting for upstream's CI and the maintainers' review (`PLAN.md`,
+*Upstreaming*); the GPU phase (a cheap machine first, a budget of tens of dollars first;
+`PLAN.md`, *Cloud GPU options*). Still open: playout caps (recommended: on the GPU).
 
 **Where we stand:**
 
@@ -2972,7 +2998,113 @@ instrumentation, and the pattern agreed for later, are in `PLAN.md` Phase 5).
   C3** (config set: `player_kickstart_weight` "0.7", `player_policy_epsilon` "0,0.25").
   **The control run started at 20:13** (detached; the runner waited for check 2b).
   Nothing committed.
+- **2026-10-14, 11:00: the control run done; run N cut off by a Windows update, resumed.**
+  The control run (M continued) finished at 05:29, step 121, unpaused; run N (D1 + C3)
+  started at 05:30 as chained, reached step 106 at 07:20, and stopped at ~07:35 when
+  Windows restarted for an update (WSL restarted at 10:58; every process ended). Its
+  latest checkpoint is step 106, its buffer was last saved complete at 07:13, its pause
+  detector ran unpaused to 07:35. Resumed at 11:00 from step 107 with the same runner
+  (the trainer reloaded the latest checkpoint and logged the weights per player). First
+  signs, steps 103-106 against the control's: self-play games of 150-176 plies (control
+  89-95), every dwarf gone in 96-100% (control 99-100%), the dwarfs' margin −24.4 to
+  −24.9 (control −25.0 to −26.1) — mostly the per-side noise so far; the teacher's targets
+  reach the buffer only gradually.
+- **2026-10-14, 17:00 to 2026-10-15, 01:30: the evaluation — run N wins.** Run N finished at
+  16:55; the evaluation queue (`night9_2026-10-14.py`, 12 matches, three at once; on
+  battery 19:26-20:16 without pausing) from 17:26 to 21:09. **By the rule settled on
+  2026-10-14, run N (D1 + C3) wins**: N121 against C121 +5.50 a pair (+1.91 to +9.09), the
+  dwarf side against hexparrot +9.3 ± 2.2 and against alpha-beta 1 +3.7 ± 1.9 over the
+  control's, the trolls against alpha-beta 2's dwarfs +1.1 ± 1.2; against M102 N121
+  +12.62, the control +7.20 (no slide this time). Blunders against hexparrot: N121 9.8%,
+  C121 21.6%, M102 25.4%. The mechanism: check 4 on N121 shows the same side-to-move gap
+  as C121 and M102 — the gain is the policy's, the value has not caught up in 19 steps
+  (3-5% of run N's self-play keeping dwarfs); in check 3's "both" cell (noise at both
+  roots, not run N's C3) N121 keeps no dwarf either. The results in the design's new §10.
+  Nothing committed since `640e14b7`.
 
-**Next step:** as recorded in `## Current status` — the control run (until ~05:30), then
-run N (D1 + C3) by itself, until ~15:00; the regression gates set up; the evaluation against each other
-and M102; the user's word on the endpoint's rule.
+- **2026-10-15, 01:30-02:00: the replication started.** The user asked what M and N stand
+  for, how to read the margins (our network's points from the side it played: plus a won
+  battle, minus a lost one; as the dwarfs less minus is better) and what the side-to-move
+  gap is; on the replication I proposed rerunning run N only, not the control too (the
+  control proved strong: C121 beat M102 by +7.20; one night instead of two) — the user
+  agreed (decision log). **Run N2** started at 01:56 from a fresh copy of M102's state
+  (the buffer checked identical), its config run N's but for the path; the runner gained
+  `d1_rerun`.
+
+- **2026-10-15, ~02:10: the side-to-move gap.** The user asked whether the gap's staying
+  open is to be expected and whether our techniques will close it: expected (3-5% of run
+  N's self-play kept dwarfs, the buffer still mostly older games, and the policy's gain
+  needs no value — 70% of its target is the teacher); closing uncertain (for: survival,
+  lengths and margins still rising; against: the trolls adapting, the games against
+  alpha-beta's trolls still giving 11% of the dwarfs' positions −1, the surviving games
+  stalls). **Decided** (the user): the gap's closing is a condition of D1's taper; when
+  D1 + C3 continues, check 4 every ~10 steps beside the survival share (the design's §5
+  and §10).
+
+- **2026-10-15, morning: the hybrid head superseded; the bottleneck; the GPU readiness
+  checklist.** The user asked why the hybrid head (convolutional for the trolls only) was
+  made — the linear head kept the dwarfs better then (run C') — and marked it superseded:
+  since runs L and M the convolutional head serves both sides (decision log). **The
+  bottleneck**, asked by the user: the network's forward passes in self-play and, above
+  all, the batching path's overhead (~140 µs a simulation, ~40x the search's own ~3.3 µs:
+  queues, futures, the 19,800 actions of a position); move generation ~1 µs; learning 6.5
+  minutes of a ~29-minute step, beside self-play; the teacher ~4%. **The checklist**
+  (the user: time on a rented GPU is expensive, so every feature it needs ready and
+  tested here, every setting exposed; prioritise features that stay stable while the AI
+  changes; track implemented, tested and missing down to sub-features): `PLAN.md`,
+  *Cloud GPU options*. The user installed `perf` (7.0.14, `kernel.perf_event_paranoid=1`);
+  it records call graphs here.
+
+- **2026-10-15, 10:30-12:50: the device options and Net2Net growth.** `az_match
+  devices=LIST` (one copy of each network per device), `az_restructure device=` and
+  `az_grow device=`: the default reproduces the old `az_match` exactly (pairs and request
+  counts, one thread), two CPU copies play identical games, `cuda:0` reaches Torch and
+  fails as a CPU-only LibTorch must; `az_restructure`'s default writes byte-identical
+  checkpoints (the input-plane surgery on convK83 — on K83 both binaries failed alike, K83
+  having the linear head). **`az_grow`** (Net2Net: wider by copying random channels, the
+  same mapping everywhere, the readers divided by the copies; deeper by new blocks whose
+  last batch norm starts at 0), with `VPNetModel::NamedTensors()` in our copy: M102 64 → 96
+  keeps the function within 7.4e-7 (values) and 3.9e-6 (policies), the control without the
+  division differs by 1.9 and 1; 4 → 6 blocks exactly; 128 x 6 and K83's linear head 96 x 5
+  likewise; noise 0.01 moves the outputs by ≤ 0.005 / 0.012. **A bug of mine, found by
+  its control before any use**: the weights were divided by 1/copies, i.e. multiplied by
+  the copies (found by following the trunk's activations and the convolutions' sums;
+  fixed). The growth then moved into `thud/az/net2net.h` (the grown checkpoints
+  byte-identical before and after).
+  The replication's evaluation (night10) ran meanwhile, 10:16-12:33.
+
+- **2026-10-15, 12:50-~15:00: the replication's verdict; tests and hooks.** **Run N2 meets
+  the rule** (the design's §10): N2121 against C121 +6.10 (+3.09 to +9.11), the per-side
+  measures as N121's (hexparrot +8.9 ± 2.4 against the control, alpha-beta 1 +2.6 ± 2.0,
+  the trolls against alpha-beta 2's dwarfs −0.6 ± 1.3), blunders 13.1%; against N121
+  +0.95 (−2.04 to +3.94) — the recipe's gain replicates, run-to-run variation is small.
+  The paired differences recomputed by battle reproduce N121's published ones exactly.
+  Adopting D1 + C3 stays the user's call (§8 step 3's second branch). **The tests** (the
+  user: unit tests for the widening and deepening, more for the other features, "pretty
+  complete", and commit hooks): new `grow_check` (20 checks, three controls), `teacher_mix_check`
+  (`TeacherMixEvaluator` moved into `thud/experiments/teacher_mix.h`, games identical
+  before and after), `make_test_network` (small untrained networks, so no check needs a
+  run folder), `thud/az/trainer_check.sh` (the trainer end to end with every feature on,
+  resuming, training on from a grown network, `az_restructure`, `az_fresh_optimizer`),
+  `thud/experiments/az_match_check.sh` (reproducibility, the record, thread independence
+  as documented, devices, the teacher mix, players without a network), the playthrough
+  replay and the sanitized checks; `thud/checks.mk` (incremental, without `-DNDEBUG`) and
+  `thud/run_checks.sh` (quick ~20 s, full 22 checks ~3 min, longest first, one at a time
+  in the idle class beside an experiment); `.githooks/pre-commit` (quick, for commits that
+  change code) and the checks added to `.githooks/pre-push` after its unchanged upstream
+  guard (both tested on copies). **Findings:** `az_restructure` into another width or depth
+  stops by design (its copy check; the checklist corrected); CLAUDE.md's and Phase 4's
+  playthrough instruction (regenerate and diff) could never pass — a new playthrough plays
+  new random moves — corrected to upstream's replay of the recorded moves, with the
+  update command for a single file (checked on a copy); az_restructure's header said 58
+  planes (50). **No test needed a change in the game or the AI code**; the checks and
+  inputs that did change are listed in `PLAN.md`, *Tests* (the user asked for that note):
+  `pruning_check` and `untried_move_check` need a trained network's shape
+  (`make_test_network policy_scale=5 value_bias=-1`), and five fixes in the new checks
+  while writing them (one a flake: a 4% chance of no game against alpha-beta). The *Tests* list records every check, its control and every gap
+  (probes' helpers, Python tools, some az_match options, the trainer's evaluators,
+  sanitizers on LibTorch programs, CUDA, `-Wno-everything`).
+
+**Next step:** as recorded in `## Current status` — the user's decision on D1 + C3; the
+regression gates and the promotion tests; the GPU checklist's missing items (the
+batching path's profile, the Net2Net live test) in gaps between runs.

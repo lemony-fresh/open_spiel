@@ -78,7 +78,10 @@
 //     temperature_b=LIST progress=0 cache=262144 share=0 mcts_memory=1000 \
 //     hexparrot_player=PATH games=PATH capture_floor_a=LIST noise=LIST noise_alpha=0.1 \
 //     noise_epsilon=0.25 sample_plies=0 teacher_mix_a=LIST teacher_depth=2 \
-//     teacher_temperature=0.25]
+//     teacher_temperature=0.25 devices=/cpu:0]
+// `devices=LIST` (2026-10-15): where each network runs, comma-separated, one copy of it on
+// each (as the trainer's --devices: cpu, cuda:0, cuda:1, ...; cuda:0,cuda:0 puts two
+// copies on one GPU). Default /cpu:0, as before.
 //
 // STEP is a checkpoint step of that run (-1: its most recent checkpoint).
 
@@ -113,6 +116,7 @@
 #include "open_spiel/abseil-cpp/absl/strings/str_format.h"
 #include "open_spiel/abseil-cpp/absl/strings/str_join.h"
 #include "open_spiel/abseil-cpp/absl/strings/str_replace.h"
+#include "open_spiel/abseil-cpp/absl/strings/str_split.h"
 #include "open_spiel/algorithms/mcts.h"
 #include "open_spiel/games/thud/thud.h"
 #include "open_spiel/spiel.h"
@@ -123,11 +127,13 @@
 #include "thud/az/mcts.h"
 #include "thud/az/vpevaluator.h"
 #include "thud/az/vpnet.h"
+#include "thud/experiments/teacher_mix.h"
 
 namespace {
 
 using open_spiel::Action;
 using open_spiel::thud_az::MCTSBot;
+using open_spiel::thud_az::TeacherMixEvaluator;
 using open_spiel::thud_az::SearchNode;
 using open_spiel::thud_az::torch_az::DeviceManager;
 using open_spiel::thud_az::torch_az::VPNetEvaluator;
@@ -169,18 +175,23 @@ class Args {
   std::vector<std::string> used_;
 };
 
-// A network from a trainer's directory, "DIR:STEP" (STEP -1: the most recent).
+// A network from a trainer's directory, "DIR:STEP" (STEP -1: the most recent), one copy
+// of it on each of `device_names` (`devices=`: e.g. cuda:0, or cuda:0,cuda:0 for two copies
+// on one GPU; the evaluator spreads its batches over them).
 std::shared_ptr<VPNetEvaluator> LoadEvaluator(const open_spiel::Game& game,
                                               const std::string& spec,
                                               DeviceManager* devices, int batch,
-                                              int inference_threads, int cache_size) {
+                                              int inference_threads, int cache_size,
+                                              const std::vector<std::string>& device_names) {
   const size_t colon = spec.rfind(':');
   if (colon == std::string::npos) {
     open_spiel::SpielFatalError(absl::StrCat("Expected DIR:STEP, got ", spec));
   }
-  VPNetModel model(game, spec.substr(0, colon), "vpnet.pb", "/cpu:0");
-  model.LoadCheckpoint(std::stoi(spec.substr(colon + 1)));
-  devices->AddDevice(std::move(model));
+  for (const std::string& device : device_names) {
+    VPNetModel model(game, spec.substr(0, colon), "vpnet.pb", device);
+    model.LoadCheckpoint(std::stoi(spec.substr(colon + 1)));
+    devices->AddDevice(std::move(model));
+  }
   return std::make_shared<VPNetEvaluator>(devices, batch, inference_threads,
                                           cache_size, /*cache_shards=*/1);
 }
@@ -224,67 +235,6 @@ Chooser SelfPlayChooser(std::array<MCTSBot*, 2> bots, int sample_plies,
     return open_spiel::SampleAction(visits, *rng).first;
   };
 }
-
-// Network A's prior mixed with kickstarting's teacher at some players' nodes
-// (`teacher_mix_a`); its values are the network's. The teacher's policies are kept for
-// positions searched again (a search's tree is rebuilt every move), up to kCacheSize.
-class TeacherMixEvaluator : public open_spiel::thud_az::Evaluator {
- public:
-  TeacherMixEvaluator(const open_spiel::Game& game,
-                      std::shared_ptr<open_spiel::thud_az::Evaluator> network,
-                      std::vector<double> mix, int depth, double temperature)
-      : network_(std::move(network)),
-        mix_(std::move(mix)),
-        teacher_(game, depth),
-        temperature_(temperature) {}
-
-  std::vector<double> Evaluate(const open_spiel::State& state) override {
-    return network_->Evaluate(state);
-  }
-
-  open_spiel::ActionsAndProbs Prior(const open_spiel::State& state) override {
-    open_spiel::ActionsAndProbs prior = network_->Prior(state);
-    const open_spiel::Player player = state.CurrentPlayer();
-    const double w = player >= 0 && player < mix_.size() ? mix_[player] : 0;
-    if (w <= 0) return prior;
-    const std::map<Action, double> teacher = TeacherOf(state);
-    double sum = 0;
-    for (auto& [action, p] : prior) {
-      p = (1 - w) * p + w * teacher.at(action);
-      sum += p;
-    }
-    for (auto& [action, p] : prior) p /= sum;  // Only rounding: both sum to 1.
-    return prior;
-  }
-
- private:
-  static constexpr int kCacheSize = 20000;
-
-  std::map<Action, double> TeacherOf(const open_spiel::State& state) {
-    const std::string key = state.ToString();
-    {
-      std::lock_guard<std::mutex> lock(mutex_);
-      auto it = cache_.find(key);
-      if (it != cache_.end()) return it->second;
-    }
-    std::map<Action, double> policy;
-    for (const auto& [action, p] :
-         open_spiel::thud_az::torch_az::TeacherPolicy(state, teacher_, temperature_)) {
-      policy[action] = p;
-    }
-    std::lock_guard<std::mutex> lock(mutex_);
-    if (cache_.size() >= kCacheSize) cache_.clear();
-    cache_[key] = policy;
-    return policy;
-  }
-
-  std::shared_ptr<open_spiel::thud_az::Evaluator> network_;
-  const std::vector<double> mix_;
-  const open_spiel::thud_az::AlphaBetaPlayer teacher_;
-  const double temperature_;
-  std::mutex mutex_;
-  std::map<std::string, std::map<Action, double>> cache_;
-};
 
 // One battle from `opening`, network A playing `a_player`.
 Battle Play(const open_spiel::Game& game, const std::vector<Action>& opening,
@@ -490,6 +440,11 @@ int main(int argc, char** argv) {
   const bool share = args.GetInt("share", 0) != 0;
   const int mcts_memory = args.GetInt("mcts_memory", 1000);
   const std::string games_path = args.Get("games", "");
+  // Added 2026-10-15 (thud/PLAN.md, the GPU readiness checklist): where the networks run.
+  const std::string devices_list = args.Get("devices", "/cpu:0");
+  const std::vector<std::string> device_names =
+      absl::StrSplit(devices_list, ',', absl::SkipEmpty());
+  if (device_names.empty()) open_spiel::SpielFatalError("devices= lists no device");
   const std::string capture_floor_a = args.Get("capture_floor_a", "");
   const std::vector<double> capture_floors_a =
       open_spiel::thud_az::torch_az::PerPlayerValues(capture_floor_a);
@@ -533,12 +488,12 @@ int main(int argc, char** argv) {
     return 1;
   }
   DeviceManager devices_a, devices_b;
-  auto eval_a =
-      LoadEvaluator(*game, spec_a, &devices_a, batch, inference_threads, cache_size);
+  auto eval_a = LoadEvaluator(*game, spec_a, &devices_a, batch, inference_threads,
+                              cache_size, device_names);
   auto eval_b = share     ? eval_a
                 : outside ? nullptr
                           : LoadEvaluator(*game, spec_b, &devices_b, batch,
-                                          inference_threads, cache_size);
+                                          inference_threads, cache_size, device_names);
   // Network A's searches, with the teacher in its prior if `teacher_mix_a` asks for it.
   std::shared_ptr<open_spiel::thud_az::Evaluator> search_eval_a = eval_a;
   if (std::any_of(teacher_mix_a.begin(), teacher_mix_a.end(),
@@ -779,6 +734,9 @@ int main(int argc, char** argv) {
                                       noise_list, noise_alpha, noise_epsilon, sample_plies,
                                       opening_moves, seed)
                     : "")
+            << (devices_list == "/cpu:0"
+                    ? ""
+                    : absl::StrFormat(", \"devices\": \"%s\"", devices_list))
             << (teacher_mix_list.empty()
                     ? ""
                     : absl::StrFormat(", \"teacher_mix_a\": \"%s\", \"teacher_depth\": %d, "

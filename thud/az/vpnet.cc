@@ -179,6 +179,13 @@ void VPNetModel::ModelInput(const std::vector<float>& observation, float* out) c
   }
 }
 
+std::vector<std::pair<std::string, torch::Tensor>> VPNetModel::NamedTensors() {
+  std::vector<std::pair<std::string, torch::Tensor>> out;
+  for (const auto& p : model_->named_parameters()) out.push_back({p.key(), p.value()});
+  for (const auto& b : model_->named_buffers()) out.push_back({b.key(), b.value()});
+  return out;
+}
+
 torch::Tensor VPNetModel::Parameter(const std::string& name) {
   const torch::Tensor* p = model_->named_parameters().find(name);
   if (p == nullptr) SpielFatalError("No parameter " + name);

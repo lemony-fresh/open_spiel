@@ -2,7 +2,8 @@
 
 Final, 2026-10-13: revised with the results of its checks and after three adversarial
 reviews (each review's findings were checked at the source before they were taken over —
-*Review log* at the end). Written for the user to decide the next training runs. Context:
+*Review log* at the end); the test runs' results and the replication added 2026-10-14 and
+2026-10-15 (§10). Written for the user to decide the next training runs. Context:
 `PLAN.md` (*How we evaluate networks*: the blunder diagnosis, kickstarting, training
 against alpha-beta, the input planes, the destination risk; runs G' to M) and
 `PROGRESS.md`.
@@ -69,17 +70,21 @@ against alpha-beta, the input planes, the destination risk; runs G' to M) and
   and ~1.8 points a battle (its pre-set rule for C3 is met), but without it outcomes stay
   saturated (1% of battles keep a dwarf). Against K83's older trolls (check 5) M102's
   dwarfs keep dwarfs in 9 of 40 battles under noise — all nine by killing every troll.
-- **Recommended:** two nights from M102 — a **control run** (running since 2026-10-13
-  20:13) and a **D1 run** with the dwarfs' teacher weight at 0.7 (the trolls at 0.3) and
-  no root noise at the dwarfs' roots (C3), as check 2b's rule chose — evaluated by §7 against each other **and against M102** (the control
-  will slide), with the mechanism read off (self-play endings and lengths, check 4 on the
-  new network); C7 or B1′ if D1 leaves the side-to-move gap open. A winner is rerun with
-  its control before adoption.
+- **The test runs (§10).** From M102, 19 steps each: the control run (run M's recipe) and
+  **run N, D1 + C3** (the dwarfs' teacher weight 0.7, the trolls' 0.3; no root noise at
+  the dwarfs' roots), as check 2b's rule chose. **Run N wins by §7's rule** — N121 against
+  the control's C121 +5.50 a pair (+1.91 to +9.09); its dwarfs against hexparrot +9.3 ±
+  2.2 better, blunders 9.8% against 21.6%; its trolls not worse — and **the replication,
+  run N2** (a rerun of run N only, the user), meets it too: +6.10 (+3.09 to +9.11) against
+  C121, +0.95 (−2.04 to +3.94) against N121. The control did not slide (C121 beat M102 by
+  +7.20). The gain is the policy's: the value's side-to-move gap has not closed in 19
+  steps. Adopting D1 + C3, and what follows (a longer run, or B1′ or C7), is the user's
+  decision (§8 step 3).
 - **Decided by the user (2026-10-13):** test runs from M102 with D1; its slow, gated taper
   (§5); the regression gates, also in the promotion rule (§7; refined since by review 3).
   D1's weight capped at 0.7 (above it the dwarfs' policy target nears pure imitation of
   alpha-beta, ruled out on 2026-10-07; if 0.7 is not enough, the teacher stays on longer).
-  **For the user to decide:** the endpoint's exact rule (§7); later, only if needed,
+  The win rule of §7 (2026-10-14). **For the user to decide** later, only if needed:
   whether C7 may reverse the rule of 2026-10-07 (only our network's positions recorded).
 
 ## 1. The problem, as measured
@@ -699,8 +704,13 @@ missing. (This revised, on 2026-10-12, the earlier assessment "treats the sympto
   is under root noise, so that comparison alone might never open), (b) the regression
   gates of §7 hold at that step, and (c) **the search no longer amplifies unsafe moves**:
   the visits' mass on unsafe dwarf moves is no higher than the prior's (from the recorded
-  targets; §2's loop — at a lower weight the loop's gain rises again). 0.7 → 0.3 (the
-  trolls' weight) thus takes ≥ 80 steps (~4-5 nights here); later both sides together
+  targets; §2's loop — at a lower weight the loop's gain rises again), and (d) **the
+  value's side-to-move gap has closed** (check 4 on the current network: a far dwarf
+  counts about as much with the dwarfs to move as with the trolls to move — the user,
+  2026-10-15; while the teacher carries the dwarfs' policy the gap costs little, but
+  once it is tapered the policy targets come from the search, which relies on that
+  value, and an open gap would bring the trap back). 0.7 → 0.3 (the trolls' weight) thus
+  takes ≥ 80 steps (~4-5 nights here); later both sides together
   toward a floor of ~0.1, as planned for the alpha-beta share. Never raised again
   automatically. (Kickstarting's paper adapted the weight by population-based training,
   the teacher's influence falling as training went on, Schmitt et al. 2018; we cannot
@@ -775,8 +785,9 @@ that starts from M102 with the same number of steps. **Both final networks are a
 compared with M102**: self-play has been sliding within every run (§1.3), so the control
 may get worse, and a test run that merely slides less would "win" against it.
 
-**Fixed before any test run starts** — proposed here, for the user to settle (the
-precisions are review 3's estimates from M102 and L102 on the same openings):
+**The rule, settled by the user on 2026-10-14** — before any of the evaluation's results
+had come in (the precisions are review 3's estimates from M102 and L102 on the same
+openings):
 
 | Measure | Battles or pairs | 95% half-width | Use |
 |---|---|---|---|
@@ -787,12 +798,15 @@ precisions are review 3's estimates from M102 and L102 on the same openings):
 | The trolls against alpha-beta depth 3's dwarfs; against hexparrot | 20; 40 battles | 7.9; 6.5 | for the record: too imprecise to decide |
 | The dwarf side against alpha-beta depth 2 | | | not used: at the floor (−31.2) |
 
-- **A test run wins if** the head-to-head's 95% interval lies above 0, **and** on each
+- **A test run wins if** the head-to-head's 95% interval lies above 0 — a one-sided test
+  at 2.5%, as the promotion rule's (the user kept it so: power is not the problem, and a
+  win is rerun anyway) — **and** on each
   dwarf-side measure it is not worse than the control's by more than 2 standard errors,
   **and** on the trolls' measure it is not worse than the control's by more than 2
   standard errors; and it is not worse than M102 on the dwarf-side measures.
-- **Replication**: before adopting a winner, rerun both it and the control (no seed: a
-  rerun; one control cannot carry the replication alone).
+- **Replication**: before adopting a winner, rerun it (no seed: a rerun), and the control
+  too unless the control proved strong. (For run N the user chose a rerun of run N only,
+  2026-10-15: C121 beat M102 by +7.20, so the main risk is a lucky run N.)
 - **Secondary, for the record**: the ladder; alpha-beta depth 2 as trolls; the
   head-to-head per side.
 
@@ -870,6 +884,73 @@ reproduce the old targets exactly (D1: `kickstart_check`).
 - The gates' standard errors and positive controls, once measured (§7).
 - Whether run M's late value drop (§1.4) matters for runs that start from M102 — the
   control will show whether it persists.
+
+## 10. Results of the test runs (2026-10-14)
+
+Both from M102's state, steps 103-121, `az_trainer_d1`: the control run (run M's recipe;
+done 2026-10-14 05:29) and **run N, D1 + C3** (the dwarfs' teacher weight 0.7, their
+roots without noise; 05:30-16:55, cut off at ~07:35 by a Windows update's restart and
+resumed from step 107 at 11:00). In training, run N's self-play changed steadily: games
+150 → 246-270 plies, the dwarfs' margin −24.4 → −22.9 (the control's −25.3 to −25.8),
+3-5% of games ending with dwarfs left (0-1% at the start), the dwarfs' prior
+concentrating (~200 → ~110 effective moves); our trolls against alpha-beta's dwarfs
+unchanged. **The evaluation** (`~/thud-runs/night9_2026-10-14.py`, results in
+`~/thud-runs/eval_2026-10-14/`; 40 pairs each, as trained, no noise):
+
+| Measure | N121 | C121 (control) | M102 | N121 − C121 (paired) | The rule (§7) |
+|---|---|---|---|---|---|
+| Head-to-head N121 against C121 | | | | **+5.50 a pair (+1.91 to +9.09)**, 30 won, 1 drawn, 9 lost | interval above 0 ✓ |
+| The dwarf side against hexparrot | −10.2 | −19.6 | −23.4 | **+9.3 ± 2.2** | not worse ✓ |
+| The dwarf side against alpha-beta 1 | −9.5 | −13.2 | −14.7 | +3.7 ± 1.9 | not worse ✓ |
+| The trolls against alpha-beta 2's dwarfs | +15.9 | +14.8 | +13.0 | +1.1 ± 1.2 | not worse ✓ |
+| Against M102, the dwarf side (hexparrot / alpha-beta 1) | | | | N121 − M102: +13.1 ± 2.0 / +5.2 ± 2.4 | not worse ✓ |
+
+**By the rule, run N wins.** Head-to-head against M102: N121 +12.62 a pair (+9.83 to
++15.42, 36 of 40), C121 +7.20 (+3.95 to +10.45) — the control did not slide this time.
+For the record: the trolls against hexparrot +6.5 / +5.2 / +1.3, against alpha-beta 1
++30.3 / +30.7 / +30.2; the dwarfs against alpha-beta 2 at the floor (−30.6 / −30.8 /
+−30.9). **Blunders against hexparrot** (`az_blunder_check`): N121 **9.8%** of its dwarf
+moves (429 of 4,385 — longer battles), C121 21.6% (598 of 2,772), M102 25.4%.
+
+**The mechanism:** the gain is the policy's, not yet the value's. Check 4 on N121 (run N's
+positions): a far dwarf still counts with the trolls to move (+0.019) but hardly with the
+dwarfs to move (+0.003 in the games against alpha-beta's dwarfs, +0.010 in self-play) —
+as C121 and M102 on the same positions; the gap has not closed in 19 steps, with only
+3-5% of run N's self-play keeping dwarfs. In self-play's conditions with noise at *both*
+roots (check 3's "both" cell, not run N's own C3 setting) N121 still keeps no dwarf (0 of
+80; 22.1 dwarfs lost by ply 60 against M102's 23.6).
+
+**The replication** (2026-10-15; the user: rerun run N only): **run N2**, run N's recipe
+again from M102 (steps 103-121, 01:56-10:13), evaluated as run N was (10:16-12:33)
+(`~/thud-runs/night10_2026-10-15.py`, results in `~/thud-runs/eval_2026-10-15/`; 40
+pairs, the same seeds; differences paired by battle, as in the table above):
+
+| Measure | N2121 | N121 | N2121 − C121 (paired) | N2121 − N121 (paired) | The rule (§7) |
+|---|---|---|---|---|---|
+| Head-to-head against C121 | **+6.10 a pair (+3.09 to +9.11)**, 30 won, 10 lost | +5.50 (+1.91 to +9.09) | | | interval above 0 ✓ |
+| The dwarf side against hexparrot | −10.7 | −10.2 | **+8.9 ± 2.4** | −0.4 ± 2.8 | not worse ✓ |
+| The dwarf side against alpha-beta 1 | −10.5 | −9.5 | +2.6 ± 2.0 | −1.1 ± 1.8 | not worse ✓ |
+| The trolls against alpha-beta 2's dwarfs | +14.2 | +15.9 | −0.6 ± 1.3 | −1.7 ± 1.7 | not worse ✓ (−0.6 > −2.6) |
+| Against M102, the dwarf side (hexparrot / alpha-beta 1) | | | N2121 − M102: +12.7 ± 2.1 / +4.2 ± 2.3 | | not worse ✓ |
+
+**Run N2 meets the rule too: the recipe's gain replicates.** The two runs of one recipe
+against each other: N2121 against N121 **+0.95 a pair (−2.04 to +3.94)**, 20 won, 2
+drawn, 18 lost, and every per-side difference within 1 standard error — run-to-run
+variation at 19 steps is small against the recipe's effect (+5.5 and +6.1 against the
+control). Blunders against hexparrot: N2121 13.1% of its dwarf moves (462 of 3,532),
+N121 9.8%, C121 21.6%, M102 25.4%. Check 4 has not been run on N2121.
+
+**Next, by §8:** D1 + C3 is replicated; adopting it for the main line is the user's
+decision. It falls under step 3's second branch — it wins, but the dwarf-to-move gap stays
+after 19 steps — whose next step is a test run for the value (B1′, or C7 with the user's
+word), unless a longer D1 + C3 run comes first (below). Meanwhile the regression gates set
+up and the promotion tests (the ladder; the gates) for N121 or N2121; whether to continue D1
++ C3 for longer, so that self-play's surviving games grow and the value's gap can close, is
+the next question. If it continues: check 4 every ~10 steps beside the share of self-play
+games keeping dwarfs — both rising: patience; survival rising but the gap not: the value is
+not learning what it sees (E1, E2); survival staying below ~5%: the data never come (B1′, or
+C7 with the user's word; C4, dropping the games that give the dwarfs' positions −1, as a
+cheap help either way). The gap's closing is a condition of the taper (§5).
 
 ## Review log
 

@@ -305,8 +305,11 @@ The full OpenSpiel suite passes 285 of 285.
 - The playthrough baseline, `open_spiel/integration_tests/playthroughs/thud.txt` (890 KB),
   from `./open_spiel/scripts/generate_new_playthrough.sh thud`: one seeded random game of
   308 turns, which the trolls win by taking the last dwarf (returns -0.75 / +0.75).
-  **Regenerate it and read the diff after any change to the rules, the encoding, the text
-  formats or the observation**; an unexpected diff means behaviour changed.
+  **Replay it after any change to the rules, the encoding, the text formats or the
+  observation** (`thud/run_checks.sh playthrough`: its recorded moves replayed, every line
+  compared, as upstream's `playthrough_test.py` does); a difference means behaviour
+  changed. Generating a new one is not the check: it plays new random moves (corrected
+  2026-10-15; CLAUDE.md has the update command for an intended change).
 - `TestOpenSpielGenericTests` in `thud_test.cc`: `LoadGameTest`, `NoChanceOutcomesTest`,
   and `RandomSimTest` with 10 games from the opening and 10 from a position read from text
   (`RandomSimTestWithSpecificInitialState`), as chess's test runs them. Not
@@ -511,7 +514,9 @@ equal machine time. Never stack changes that have not been shown to work.
   decisions*).
 - **Gumbel AlphaZero** — only if few-simulation search remains the bottleneck after 3b
   and 3c; a large change.
-- **Convolutional policy heads, again** (the user, 2026-10-03) — for both sides, or for
+- **Convolutional policy heads, again** (the user, 2026-10-03) — **done: since runs L and M
+  (2026-10-11/12) the convolutional head serves both sides; the hybrid (the trolls only)
+  is superseded** (the user, 2026-10-15). The original note: for both sides, or for
   the trolls only (the hybrid), once our networks are much stronger: run C' compared
   them at step 16 of a 64 x 4 network, where the dwarfs' policy had barely begun to
   learn; with a stronger, larger network, a warm start or a higher learning rate for
@@ -536,7 +541,7 @@ below):
 | Matches with each network on its own rule, read per side | Showed the dwarfs' drift that mixed results hid | **Keep** |
 | Overfitting check in the trainer | Works (control 7.12 against 3.76); none in run C' | **Keep** (a log only) |
 | Symmetry augmentation (5b) | Harness: linear head 75% → 87%, overfitting gone; self-play: G'16 beats G16 by +10.2, its dwarfs better at every step | **Keep**, in every run |
-| Convolutional policy head (5) | Harness: 99% against 75-78%; self-play: run C' −8.5 against C — its dwarf policy barely learnt, but its trolls are much better (+18.4 against E44's dwarfs) | **Revisit as a troll-only head** (hybrid with the linear head for the dwarfs); **re-evaluate both variants once our networks are much stronger** |
+| Convolutional policy head (5) | Harness: 99% against 75-78%; self-play: run C' −8.5 against C — its dwarf policy barely learnt, but its trolls are much better (+18.4 against E44's dwarfs) | ~~Revisit as a troll-only head~~ — **superseded** (2026-10-15): the convolutional head for both sides since runs L and M (L102 beat K102 by +10.72 a pair, its dwarfs included) |
 | Convolutional policy head on a trained trunk (2026-10-10) | The long-capture probe: K83's linear head ignores multi-square hurls; the same frozen trunk with a convolutional head trained on run K's buffer (convK83) makes 2-square hurls its top move 81% of the time and shoves visible at every distance; convK83 beat K83 by +16.8 a pair (39 of 40) | **Testing** in training (run L against run K continued) |
 | Playout caps (3b) | Not built; 7x fewer training positions an hour for moderately better targets | **Revisit** on the GPU |
 | Tree reuse (3c) | Not built; ~15-30% more simulations a search, weakens root noise | **Revisit** after 3b, or if the reusable share passes 30% |
@@ -646,6 +651,12 @@ the search and trainer*, run C'.
 | 2026-10-13 | The dwarfs' training signal: test runs from M102 — a control and **D1** (a higher kickstarting weight for the dwarfs, 0.7 by check 2's rule, the trolls at 0.3); check 2b first (teacher-guided dwarfs under the trainer's noise: D1 alone, or with per-side noise C3); B1′ or C7 only if D1 leaves the side-to-move gap open. **0.7 is the cap** (the user: "That needs to be enough. If it's not enough then we need to taper … later than anticipated") — at 0.85-1.0 the dwarfs' target would be (nearly) the imitation ruled out on 2026-10-07; check 2 at those mixes is not run | user (Claude recommended, after the checks of the night and the third review) | *the dwarfs' training signal*; `thud/DESIGN_dwarf_signal.md` §8 |
 | 2026-10-13 | D1's taper slow and gated: −0.1 at most once per buffer length (~20 steps), only once our dwarfs match the teacher against the same trolls and the regression gates hold ("I'd rather be safe than sorry"); after the third review also only once the search no longer amplifies unsafe dwarf moves (the visits' mass on them no higher than the prior's) | user; the last condition Claude's, from the review | the design, §5 D1 |
 | 2026-10-13 | Regression gates added to the promotion rule (test 3): alpha-beta per side, blunders, troll kills, short hurls, the trolls' captures; long hurls monitored; each at 2 standard errors against the top anchor, each with a positive control (the set refined after the design's third review: troll kills added, the trolls measured against alpha-beta 2's dwarfs, standard errors by bootstrap) | user (asked for them and approved the first set; Claude proposed and refined it) | *How we evaluate networks*, promotion rule; the design, §7 |
+| 2026-10-14 | The test runs' win rule (the design's §7): the head-to-head's 95% interval above 0 (one-sided at 2.5%, as the promotion rule; 5% considered and declined — a win is rerun anyway, and power is not the problem), the dwarf side against hexparrot and alpha-beta 1 and the trolls against alpha-beta 2's dwarfs not worse than the control's by more than 2 standard errors, not worse than M102 on the dwarf side; settled before the evaluation's results | user | the design, §7 |
+| 2026-10-15 | The replication of run N (D1 + C3): a rerun of run N only (run N2, from M102's state, the same config), compared with C121 as run N was — not of the control too: the control proved no weak straw man (C121 beat M102 by +7.20), so one night covers the main risk, a lucky run | user (Claude proposed it instead of the design's rerun of both) | the design, §7 and §10 |
+| 2026-10-15 | D1's taper gets a further condition: the value's side-to-move gap closed (check 4) — once the teacher is tapered the dwarfs' policy targets come from the search, which relies on that value | user (Claude proposed) | the design, §5 D1 and §10 |
+| 2026-10-15 | Before renting a GPU, every feature it needs built and tested here, every relevant setting exposed (the *GPU readiness checklist* in *Cloud GPU options*; when decided, of its 28 rows 9 done, 2 built but untested, 17 missing — among them Net2Net growth, a learning-rate schedule, a device option for our tools, profiling the batching path) | user | *Cloud GPU options* |
+| 2026-10-15 | The hybrid head (convolutional for the trolls, linear for the dwarfs; 2026-10-03) superseded: since runs L and M the convolutional head serves both sides, the dwarfs included (L102 against K102 +10.72; against hexparrot L102 −21.4, K102 −37.1) | user | the head table above; *the long-capture probe* |
+| 2026-10-15 | Tests kept complete and run by one command: every feature with a check (the new ones: `grow_check`, `teacher_mix_check`, `trainer_check.sh`, `az_match_check.sh`, the playthrough replay, the sanitized checks), all built without `-DNDEBUG` and run by `thud/run_checks.sh` (quick ~20 s, `--full` ~3 min); git hooks run them — pre-commit the quick ones when a commit changes code, pre-push all when the pushed commits do; the *Tests* list tracks each check, its control, and every gap | user | *Cloud GPU options*, *Tests* |
 
 **Considered and set aside** (with the reason): the Python AlphaZero (a layout bug, and
 slow; fallback note below); a 32 x 2 network (its convolutions see 11 x 11 squares);
@@ -1510,6 +1521,141 @@ first session, with no patch at all.**
   are still used. **Rule**: what is defined per step (the
   cadence, the buffer in positions, equal-steps comparisons) carries over between
   machines; what is defined per hour (time limits, equal-time comparisons) does not.
+
+  **GPU readiness checklist** (the user, 2026-10-15: time on a rented GPU is expensive
+  even when used badly, so every feature it needs is to be ready and tested here first,
+  and every relevant setting exposed). State: **done** = built and checked (a check
+  program, or real runs); **built, untested** = built but never run where it matters;
+  **missing** = not built. *Before renting* = to do here first.
+
+  | Feature | Why on the GPU | State | To do |
+  |---|---|---|---|
+  | *Setup* | | | |
+  | A build on the rented machine: LibTorch with CUDA (the pip wheel, as here), `build-torch/`, `build-shared/`, our programs | nothing runs without it | **missing** — our scripts build for this aarch64 CPU; a CUDA build never tried | *before renting*: a setup script (packages, clone, LibTorch wheel, the builds, then `thud/run_checks.sh --full`), dry-run on a cheap x86 CPU box |
+  | The checks on the new machine (`thud/run_checks.sh --full`: every check, *Tests* below; the tic-tac-toe control) | correctness before any spending | **done** (here, 2026-10-15: 22 checks, ~3 min, none needs a run folder — the networks they read are made by `make_test_network`) | run them there first (the order above) |
+  | The trainer on a GPU (`--devices=cuda:0`; several copies, `cuda:0,cuda:0`) | the network on the GPU | **built, untested** (upstream's device handling; no GPU here) | on the machine: a 2-step smoke run |
+  | Our tools on a GPU: `az_match devices=LIST` (one copy of each network per entry, e.g. `cuda:0,cuda:0`) | matches at GPU speed | **built, untested on a GPU** (2026-10-15): the default reproduces the old binary exactly (pairs and request counts, one thread); two CPU copies play identical games (since 2026-10-15 a permanent check, `az_match_check.sh` 4, with the control that the summary records the copies); `cuda:0` here reaches Torch and fails as this CPU-only LibTorch must ("no CUDA backend") | on the machine: one short match |
+  | — `az_restructure device=` | distillation at GPU speed | **built, untested on a GPU** (2026-10-15): the default writes byte-identical checkpoints (the input-plane surgery on convK83) | on the machine |
+  | — `az_grow device=` | growth on the GPU | **built, untested on a GPU** | on the machine |
+  | — the probes (`az_dwarf_value_probe`, `az_blunder_check`, `az_risk_probe`, `az_long_capture_probe`, `az_input_plane_trace`, `az_feature_probe`, …) | — | **missing**: they hard-code `/cpu:0` — cheap enough on the CPU | only if one proves slow |
+  | *Throughput* | | | |
+  | `az_search_cost`: the search's CPU cost, the batching cap | how many cores a GPU needs | **done** (here: the search ~3.3 µs a simulation; the batching path caps at ~25,000-40,000 simulations/s) | rerun there |
+  | The batching path's overhead (~140 µs a simulation, ~40x the search: queues, futures, the 19,800 actions a position) | likely the GPU phase's real limit | **missing** — not profiled; the profiler is ready (`perf` 7.0.14, installed by the user 2026-10-15, `kernel.perf_event_paranoid=1` until WSL restarts; records call graphs) | *before renting*: profile in a gap between experiments (beside them the timings are wrong), then fix; the largest single gain |
+  | A throughput sweep (actors x inference threads x batch with the real network) | the machine settings, group 1 | **missing** — by hand so far | *before renting*: a script |
+  | *Training: settings exposed* | | | |
+  | The trainer's settings: `uct_c`, the untried-move rule and reduction, simulations (per player), policy temperatures (per player), root noise α and ε (per player), temperature and its drop, the learning rate, weight decay, batch size, batches per step, the buffer (size, reuse, growing start), symmetry augmentation, policy target pruning, alpha-beta's share and depth (per player), kickstarting's weight (per player), depth and temperature, network size and model, actors, inference threads, batch and cache | the tuning groups 1-5 | **done** — each with a check (`untried_move_check`, `conv_policy_check`, `augmentation_check`, `pruning_check`, `growing_buffer_check`, `search_settings_check`, `alphabeta_training_check`, `kickstart_check`), used in runs, and since 2026-10-15 all on at once end to end (`trainer_check.sh`) | — |
+  | A learning-rate schedule (warm-up, decay) | long runs, bigger batches | **missing** — a constant rate; `az_fresh_optimizer` changes it between runs | *before renting* (small) |
+  | A value-loss weight (E1 of the design) | the value learns small effects poorly | **missing** | *before renting* (small) |
+  | Playout cap randomisation (3b) | recommended for the GPU | **missing** | *before renting* (moderate) |
+  | Tapers by results (kickstarting per side, the alpha-beta share), gated | long unattended runs | **missing** — by hand, run to run | *before renting* (moderate; with the gates) |
+  | The alpha-beta share per side; kickstarting's temperature per side | finer scaffolds | **missing** | if needed (small) |
+  | A faster alpha-beta of our own (captures first, a table of positions, iterative deepening) | a depth-3 teacher; alpha-beta then sets the pace on the CPU beside the GPU | **missing** | before deeper teachers |
+  | The value-target options B1′, C7, E2 (the design) | if D1 leaves the side-to-move gap open | **missing** — designed only | when needed |
+  | Mixed precision | speed on large networks | **missing** | later, if the network grows a lot |
+  | *Network growth* | | | |
+  | Net2Net widening (more filters), function-preserving: `thud/az/az_grow.cc` (2026-10-15) | grow the network without starting over | **done** — every new trunk channel copies a random old one, the same choice in every layer (the input block, every residual block, the policy head's first convolution and batch norm, the value head's hidden layer), the weights reading them divided by the copies; checked on real networks: M102 (convolutional head, input planes) 64 → 96 and 64 → 128, K83 (linear head) 64 → 96, the outputs equal within 7e-7 (values) and 5e-6 (policies) on 200 positions of random games; **the control** (the same growth without the division) differs by 0.7-1.9, as it must; the saved network reloads with identical outputs. **Unit tests** (`grow_check`, 2026-10-15; the growth in `thud/az/net2net.h`): on small networks with random batch norms, the mapping's properties, the function kept (1e-7) for wider, deeper, both, the linear head, no growth; three controls (no division; a batch norm's statistics left uncopied; the new blocks not the identity), every tensor accounted for | — |
+  | — symmetry breaking (`noise=`) | copies would stay copies under training | **done** — noise of that many times each tensor's standard deviation on the new channels' incoming weights; at 0.01 the outputs move by ≤ 0.005 (values) and ≤ 0.035 (policies); `grow_check` 5: without noise the copies stay equal through 30 learning steps, with 0.01 they part | the value to use: by the live test |
+  | — the value head's hidden layer grown apart from the trunk; other models (`mlp`) | — | **missing** (the hidden layer follows the trunk's width; `az_grow` refuses other models) | if ever needed |
+  | Net2Net deepening (extra residual blocks starting as the identity) | the same, in depth | **done** (`az_grow nn_depth=`, 2026-10-15): the new blocks after the old ones, their last batch norm's scale and shift at 0 (Goyal et al. 2017); the outputs equal the source's exactly (0) for M102 4 → 6 blocks, and with widening (128 x 6; K83 96 x 5) as above | — |
+  | — a live test: training on from a grown network | that it learns, not just computes | **partly**: in miniature (`trainer_check.sh` 3, 2026-10-15: the trainer takes a grown 12 x 2 network, its buffer and log, and learns a step with finite losses); the real test still **missing** | a trainer segment from a grown M102 (e.g. 96 x 6, `noise=0.01`) in a gap between runs: no loss spike, the losses falling below the source's |
+  | — the access it needs: `VPNetModel::NamedTensors()` (every parameter and buffer by name, sharing storage) | — | **done** (our copy, `thud/az/vpnet.h`) | — |
+  | Distillation into a new structure from a buffer (`az_restructure nn_width= nn_depth= nn_model= freeze=none`) | a bigger network warm-started from a buffer | **built for a new head only** — tested for a new head (convK83; since 2026-10-15 `trainer_check.sh` 4: a new head on the frozen trunk) and new input planes; **into another width or depth it stops by design** (found 2026-10-15): its copy check requires the copied trunk to give the source's values, and at a new size almost nothing is copied | only if distillation is wanted beside `az_grow`: the check limited to what was copied (small) |
+  | Input-plane surgery (`az_restructure input_planes=1 copy=all`) | new inputs | **done** (`input_planes_check`; run M) | — |
+  | A fresh optimizer, a new learning rate (`az_fresh_optimizer`) | after surgery or growth | **done** | — |
+  | *Evaluation and monitoring* | | | |
+  | `az_match` (networks, alpha-beta, MCTS, hexparrot; self-play's conditions; the teacher in a prior) | matches | **done** | the device option (above) |
+  | The ladder (`ladder.py`), the watcher (`watch_run.py`), the probes, the evaluation queues (`night9`-style) | evaluation | **done** | — |
+  | The regression gates (standard errors, positive controls) | safe promotions and tapers | **missing** — being set up (2026-10-15) | *before renting* |
+  | *Robustness and logistics* | | | |
+  | Resuming a run after an interruption | preemption, crashes | **done** (run C; run N after a Windows restart, 2026-10-14; since 2026-10-15 `trainer_check.sh` 2: the step follows on, the logs appended) | — |
+  | Restarting a run by itself after a crash or a preemption (a watchdog) | spot instances | **missing** | *before renting* (small) |
+  | Moving runs to and from the machine (buffers ~4.5 GB, checkpoints, logs) | start from our networks, bring results home | **missing** — never done | *before renting*: a script (rsync), tried with a run folder |
+  | A time and cost budget per run (timeouts) | money | **done** (the runners' timeouts) | — |
+
+  **Tests** (the user, 2026-10-15: unit tests for the growth, "pretty complete" tests of
+  the other features, commit hooks for them, and "carefully keep track of what's
+  implemented and what's tested and what's missing, even if small subfeatures are
+  missing"). `thud/run_checks.sh` builds what is out of date (`thud/checks.mk`, into
+  `build-checks/`, **without `-DNDEBUG`**) and runs the quick checks (~20 s, four at once)
+  or with `--full` all 22 (~3 min; times alone on an idle machine); none needs a run folder — the networks the checks read
+  are small untrained ones from `thud/az/make_test_network.cc`. **The hooks**:
+  `.githooks/pre-commit` runs the quick checks when a commit changes code (the game, `thud/az/`,
+  `thud/experiments/`, the checks, the hooks; docs alone go through), `.githooks/pre-push`
+  all of them when the pushed commits change code, after its upstream guard (both tested
+  2026-10-15 on copies with the checks replaced by a marker: docs-only and deletions skip,
+  code runs, a failing check stops the push, the guard still refuses `thud/` upstream).
+  Beside a running experiment the checks run one at a time in the idle class. Every
+  check, with what it covers (and its control, the evidence that it can fail):
+
+  | Check | Set, time | What it covers | Its control |
+  |---|---|---|---|
+  | `thud_test` (`open_spiel/games/thud/thud_test.cc`) | quick, 2 s | the rules: every move kind, captures, endings, the encoding, text formats, symmetries; OpenSpiel's generic tests | hand-worked expectations |
+  | `crosscheck_tests.py` | quick, 0.2 s | `thud_test`'s expectations recomputed by hexparrot's engine (needs hexparrot set up) | 2 known differences listed apart |
+  | `playthrough` (in `run_checks.sh`) | full, 3.5 s | the baseline's recorded moves replayed, every line compared (as upstream's `playthrough_test.py`) | a copy with one board line changed must not replay equal |
+  | `features_check` | quick, 3 s | the 50 input planes: hand-built positions, the planes against the move generator | — (exact expectations) |
+  | `input_planes_check` | full, 65 s | the planes inside the network: net surgery keeps the outputs, each plane reaches exactly its positions, learning reaches exactly the planes present | judged against the next plane's positions it must fail |
+  | `conv_policy_check` | full, 148 s | the convolutional policy head: each logit at its own plane and square, the masking, learning, checkpoints | rows and columns swapped must fail; a fresh network's outputs must differ from a reloaded one's |
+  | `augmentation_check` | quick, 0.2 s | the 8 symmetries of observations, moves and policy targets | positions mirrored independently, as text |
+  | `identity_check` | full, 88 s | our AlphaZero copy computes as upstream's: outputs, a learning step, searches with and without noise, rollouts | another network, seed, step must differ |
+  | `untried_move_check` | full, 107 s | the untried-move rules: the formula, and their effect on searches | upstream's rule must spread the dwarfs' searches |
+  | `pruning_check` | quick, 13 s | forced playouts and policy target pruning | k 0 must leave 3x more children short |
+  | `search_settings_check` | quick, 0.3 s | per-player simulations, policy temperatures, root noise α and ε (InitAZBot) | temperatures {1, 1} must change nothing, {2, 1} must spread a sharp prior; with no list both sides noised |
+  | `growing_buffer_check`, `replay_buffer_check`, `az_buffer_truncate self_test` | quick, < 1 s | the growing buffer's size; our replay buffer against upstream's (contents, samples, saved bytes, memory); truncating a buffer | upstream's ratchet must show |
+  | `instrumentation_check` | quick, 0.2 s | how a game's end is classified, every ending | a position one move short |
+  | `alphabeta_training_check` | quick, 0.2 s | games against alpha-beta: only our network's positions recorded, its moves AlphaBetaPlayer's, per-side depths, the log line, the configuration's round trip | another seed must change a move; self-play must record both sides |
+  | `kickstart_check` | full, 131 s | the teacher's scores and policy, the mixed targets, the weight per player | depth 1 must score the position's moves alike; the mixed target must differ from the unmixed |
+  | `teacher_mix_check` (new) | quick, 0.3 s | `az_match teacher_mix_a`: the mix per player, exactly; the values unchanged; the cache | the teacher must differ from the prior at both nodes |
+  | `grow_check` (new) | quick, 2.4 s | Net2Net (`net2net.h`): the mapping; the function kept for wider, deeper, both, the linear head, no growth; every tensor accounted for; copies stay equal under training without noise, part with it; a grown network reloads | three: no division; a batch norm's statistics left uncopied; new blocks not the identity — each must exceed 10x the tolerance |
+  | `trainer_check.sh` (new) | quick, 26 s | the trainer end to end with every feature of ours on (two device copies, batching, augmentation, pruning, 2 learner batches, alpha-beta games, kickstarting and noise per player): checkpoints, buffer, logs, config; resuming (the step follows on, logs appended); training on from an `az_grow` network; `az_restructure` (a new head, frozen trunk); `az_fresh_optimizer` | the tools' own fatal checks (az_grow's control among them) |
+  | `az_match_check.sh` (new) | full, 97 s | `az_match`: reproducible; the record (openings, sides, the summary's arithmetic); `noise=`, `sample_plies=` and players without a network (alpha-beta, MCTS, hexparrot) the same whichever thread; `devices=`; `teacher_mix_a=` | each option must change the games; another seed too; the summary must record the devices |
+  | `sanitized` (in `run_checks.sh`) | full, 10 s | `replay_buffer_check`, `features_check`, `az_buffer_truncate` under AddressSanitizer and UBSan | the binaries must carry ASan's instrumentation (and ASan was seen catching a heap overflow here) |
+
+  **Not covered by any check** (the gaps, to be kept current):
+
+  - *The probes and analysis programs* (`az_blunder_check`, `az_dwarf_value_probe`,
+    `az_risk_probe`, `az_long_capture_probe`, `az_feature_probe`, `az_input_plane_trace`,
+    `az_capture_targets`, `az_teacher_stats`, `az_search_cost`, `az_target_quality`,
+    `az_head_check`, `az_noise_check`, `az_forgetting`, `az_merge_buffers`): measurements
+    with their own placebos or controls where they have one, but no unit test of their
+    helpers (e.g. the blunder check's safe-move rule, the value probe's shifted dwarf).
+  - *The Python tools*: `ladder.py`, `watch_run.py`, `analyse_games.py`, the night queues —
+    checked by hand once each (the ladder against the matches), no tests.
+  - *`az_match` options outside `az_match_check`*: `capture_floor_a`, `share=1`,
+    `progress`, `cache`, `inference_threads`, `untried_a`/`untried_b`,
+    `temperature_a`/`temperature_b`, `sims_a`/`sims_b`; `SelfPlayChooser`'s sampling only
+    end to end. Its default path to `hexparrot_player.py` is found from the binary's folder
+    and is right only for `build-shared/` (the check passes it explicitly).
+  - *The trainer*: its evaluators (`trainer_check` runs none), `explicit_learning`,
+    resignation (`cutoff_probability`, off in our runs), `inference_cache` sizes, the
+    learner's statistics' numbers (checked once by hand, 2026-10-03).
+  - *Sanitizers on the LibTorch programs*: only the three checks without LibTorch run
+    sanitized; ThreadSanitizer was never run on the trainer's or az_match's threads.
+  - *CUDA*: nothing here (no GPU); the device code runs with CPU copies only.
+  - *The warnings*: `-Wno-everything` remains in `build.sh` and `checks.mk` (to be narrowed,
+    CLAUDE.md); without it the game's header warns once — `ThudState`'s defaulted copy
+    assignment is deleted, as in 25 upstream games: harmless, left as upstream writes it.
+  - `az_restructure` into another width or depth stops by design (the checklist above).
+  - *Stage-1 programs on upstream's AlphaZero* (`az_layout_check`, `az_throughput`,
+    `az_reuse`, `az_buffer_stats`) are not in the suite.
+
+  **Where a check, not the code, had to change** (the user asked that this be noted): no
+  test needed a change in the game or in our AlphaZero code. `pruning_check` and
+  `untried_move_check` were written for trained networks: on untrained ones their
+  controls fail (a near-uniform prior binds no forced playouts; values near 0 spread no
+  search), so `make_test_network` gives the networks a trained one's shape
+  (`policy_scale=5`, `value_bias=-1`) — the checks themselves unchanged, `untried_move_check`
+  run on 1 game instead of 6 (a whole game of 800 plies at 100 simulations each). Fixed in
+  the new checks while writing them: `az_match_check` compared the games files byte for
+  byte, but battles are written as they finish (sorted now); `trainer_check` tested
+  `az_restructure` into 12 x 2 (now a new head, after the finding above); `grow_check`
+  left LibTorch unseeded (its controls then varied from 5e-4 to 7e-3 between runs; seeded,
+  each control must exceed 10x the tolerance); the sanitized check's control tripped over
+  `pipefail`; `trainer_check` required a game against alpha-beta in 2 steps at a share of
+  0.3, which fails 4% of the time (0.7^9; now 0.5 over 3 steps, 1 in 2,000). Refactored for the checks, each shown to change nothing: the growth into
+  `net2net.h` (byte-identical checkpoints), `TeacherMixEvaluator` into
+  `thud/experiments/teacher_mix.h` (identical games and summary). Found on the way: the
+  playthrough instruction in CLAUDE.md and Phase 4 (regenerate and diff) could never pass —
+  a new playthrough plays new random moves; corrected to upstream's replay.
 
   **How we tune the algorithm settings** (group 3; decided with the user, 2026-10-05: on
   the GPU, not here): (1) a cheap filter first, search only — a fixed strong network
@@ -2837,18 +2983,27 @@ keep for the rest of the project):
   `~/thud-runs/runM_K83_conv_planes_cont` (the control, "M continued") and
   `~/thud-runs/runN_M102_d1` (run N: D1), to step 121; the runner
   `~/thud-runs/night8_2026-10-13.py control|d1`. D1's weight is capped at 0.7 (the user;
-  if it is not enough, the teacher stays on longer). **Open with the user**: the
-  endpoint's exact rule.
+  if it is not enough, the teacher stays on longer). The win rule settled (the user,
+  2026-10-14).
   **Check 2b** (2026-10-13 18:22-20:12; the 0.7 mix in M102's dwarf prior against plain
   M102 in self-play's conditions): under the trainer's noise no battle keeps a dwarf (0
   of 40; the dwarfs lose dwarfs more slowly, −22.0 against −25.9), with the dwarfs' roots
   noise-free 28 of 40 do (no mix: 1 of 80), mostly in stalls of ~620 plies — by its rule,
   **the test run is D1 together with C3** (run N's config: `player_kickstart_weight`
-  "0.7", `player_policy_epsilon` "0,0.25"). **Running:** the control run, from
-  2026-10-13 20:13 (`night8_2026-10-13.py control`), run N chained after it (the user:
-  right after; ~05:30 to ~15:00). **Next:**
-  the gates set up (standard errors, positive controls); the evaluation against each
-  other and against M102.
+  "0.7", `player_policy_epsilon` "0,0.25"). **The test runs** (the control 2026-10-13
+  20:13 to 10-14 05:29; run N 05:30 to 16:55, cut off by a Windows update and resumed;
+  the design's §10): **run N wins by the rule** — N121 against C121 +5.50 a pair (+1.91
+  to +9.09); the dwarf side against hexparrot −10.2 against −19.6, against alpha-beta 1
+  −9.5 against −13.2; the trolls not worse; blunders against hexparrot 9.8% against
+  21.6%; N121 against M102 +12.62. The value's side-to-move gap not yet closed (the gain
+  is the policy's). **The replication** (run N2, a rerun of run N only — the user —
+  2026-10-15 01:56-10:13, evaluated 10:16-12:33; the design's §10): **it meets the rule
+  too** — N2121 against C121 +6.10 (+3.09 to +9.11), the per-side measures as N121's
+  (hexparrot +8.9 ± 2.4 against the control), blunders 13.1%; N2121 against N121 +0.95
+  (−2.04 to +3.94): the gain replicates. **Next:** the user's decision on adopting D1 + C3
+  (§8 step 3's second branch: the value's gap stays — a longer D1 + C3 run with check 4
+  every ~10 steps, or a value test run, B1′ or C7); the regression gates and the
+  promotion tests of N121 or N2121.
 - **A tool to restructure a network** (the user, 2026-10-09: "I feel like we are going
   to need that repeatedly"; designed now, built when run K's results pick the first
   change of structure). **Uses:** the input features (more input channels); the
