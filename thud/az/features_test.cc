@@ -51,12 +51,8 @@
 // Positions: the hand-built ones, the patterns of part 5, random games (every 7th ply)
 // and, with LOG_DIR, run self-play (every 5th ply of each actor's last game).
 //
-//   clang++ -std=gnu++20 -O2 -I. -Iopen_spiel -Iopen_spiel/abseil-cpp \
-//     -Iopen_spiel/json/include thud/az/features_test.cc -Lbuild-shared -lopen_spiel \
-//     -Wl,-rpath,$PWD/build-shared -Wl,--start-group \
-//     build-shared/abseil-cpp/absl/*/libabsl_*.a -Wl,--end-group \
-//     -o build-shared/features_test
-//   build-shared/features_test [LOG_DIR]
+//   thud/run_tests.sh features_test   # builds and runs it
+//   build-tests/bin/features_test [LOG_DIR]
 
 #include <algorithm>
 #include <cmath>

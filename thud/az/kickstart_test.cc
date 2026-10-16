@@ -35,10 +35,11 @@
 //   4. The configuration: the settings round-trip; an older config.json loads with
 //      weight 0 and no per-player weights; KickstartWeights fills missing entries
 //      from the single weight.
-//   5. Cost (printed): Scores at depths 2 and 3 on self-play-like positions.
+//   5. Cost, with `cost=1` only (a measurement, not a test, and the slowest part):
+//      Scores at depths 2 and 3 on self-play-like positions, printed.
 //
-//   thud/az/build.sh thud/az/kickstart_test.cc
-//   build-shared/kickstart_test
+//   thud/run_tests.sh kickstart_test   # builds and runs it
+//   build-tests/bin/kickstart_test
 
 #include <chrono>
 #include <cmath>
@@ -116,7 +117,8 @@ std::string Position(const std::string& row6, const std::string& to_move) {
 
 }  // namespace
 
-int main() {
+int main(int argc, char** argv) {
+  const bool cost = argc > 1 && std::string(argv[1]) == "cost=1";
   std::shared_ptr<const open_spiel::Game> game = open_spiel::LoadGame("thud");
   AlphaBetaPlayer depth1(*game, 1), depth2(*game, 2), depth3(*game, 3);
 
@@ -295,8 +297,8 @@ int main() {
           "weight; empty gives both the single weight; \"0.3,0.6\" sets both");
   }
 
-  // 5. Cost.
-  {
+  // 5. Cost, if asked for.
+  if (cost) {
     std::mt19937 rng(5);
     std::vector<std::unique_ptr<State>> positions;
     for (int g = 0; positions.size() < 40; ++g) {

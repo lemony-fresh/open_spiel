@@ -31,8 +31,8 @@
 //      binds for few children; first measured 2026-10-04: 2 of 214 against 18 of
 //      232 in 12 searches.
 //
-//   thud/az/build.sh thud/az/pruning_test.cc
-//   build-shared/pruning_test RUN_DIR STEP
+//   thud/run_tests.sh pruning_test   # builds and runs it
+//   build-tests/bin/pruning_test RUN_DIR STEP
 //
 // Exits non-zero on any failure.
 

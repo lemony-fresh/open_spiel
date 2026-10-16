@@ -24,8 +24,8 @@
 //   Control: without the transformation, the observations of mirrored positions
 //   differ (for symmetries 1-7), so the comparisons above can fail.
 //
-//   thud/az/build.sh thud/az/augmentation_test.cc
-//   build-shared/augmentation_test
+//   thud/run_tests.sh augmentation_test   # builds and runs it
+//   build-tests/bin/augmentation_test
 //
 // Exits non-zero on any failure.
 

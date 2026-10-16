@@ -25,8 +25,8 @@
 //      Control: CircularBuffer::Sample (upstream's, the whole buffer) draws older
 //      elements too.
 //
-//   thud/az/build.sh thud/az/growing_buffer_test.cc
-//   build-shared/growing_buffer_test
+//   thud/run_tests.sh growing_buffer_test   # builds and runs it
+//   build-tests/bin/growing_buffer_test
 //
 // Exits non-zero on any failure.
 

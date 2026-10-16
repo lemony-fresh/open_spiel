@@ -37,8 +37,8 @@
 //   8. The depth per side (AlphaBetaDepth): "2,1" is 2 as the dwarfs, 1 as the
 //      trolls; one value is both.
 //
-//   thud/az/build.sh thud/az/alphabeta_training_test.cc
-//   build-shared/alphabeta_training_test
+//   thud/run_tests.sh alphabeta_training_test   # builds and runs it
+//   build-tests/bin/alphabeta_training_test
 
 #include <iostream>
 #include <memory>

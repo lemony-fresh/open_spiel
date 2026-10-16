@@ -25,8 +25,8 @@
 //      searches over nearly every move (thud/PLAN.md: 99 of 100); the other rules should
 //      not.
 //
-//   thud/az/build.sh thud/az/untried_move_test.cc
-//   OMP_NUM_THREADS=1 build-shared/untried_move_test RUN_DIR STEP [games=6]
+//   thud/run_tests.sh untried_move_test   # builds and runs it
+//   OMP_NUM_THREADS=1 build-tests/bin/untried_move_test RUN_DIR STEP [games=6]
 
 #include <algorithm>
 #include <cmath>

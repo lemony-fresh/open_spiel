@@ -44,8 +44,8 @@
 //      inside a search, some dwarf searches change (their trolls' replies now weigh
 //      captures).
 //
-//   thud/az/build.sh thud/az/search_settings_test.cc
-//   build-shared/search_settings_test
+//   thud/run_tests.sh search_settings_test   # builds and runs it
+//   build-tests/bin/search_settings_test
 
 #include <algorithm>
 #include <cmath>

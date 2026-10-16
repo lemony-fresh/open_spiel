@@ -25,12 +25,12 @@
 //   3. Size: the weights of both heads at our runs' width 64 and depth 4.
 //   4. Learning: one step gives every weight of the new model a gradient, and both
 //      heads fit a fixed batch of positions with random targets: the policy loss falls
-//      below half its start.
+//      below half its start within 150 steps (stopping as soon as it does).
 //   5. Checkpoints: a reloaded checkpoint gives the saved network's outputs. Control:
 //      a fresh network's differ.
 //
-//   thud/az/build.sh thud/az/conv_policy_test.cc
-//   OMP_NUM_THREADS=4 build-shared/conv_policy_test
+//   thud/run_tests.sh conv_policy_test   # builds and runs it
+//   OMP_NUM_THREADS=4 build-tests/bin/conv_policy_test
 //
 // Exits non-zero on any failure. Writes its networks to a temporary folder (TMPDIR)
 // and removes it.
@@ -258,11 +258,12 @@ void CheckLearning(const Game& game, const std::string& dir,
       Targets(Positions(game, 64, /*seed=*/5), /*seed=*/6);
   const double start = model.Learn(batch).Policy();
   double end = start;
-  for (int step = 1; step < steps; ++step) end = model.Learn(batch).Policy();
+  int step = 1;
+  for (; step < steps && end >= start / 2; ++step) end = model.Learn(batch).Policy();
   Expect(end < start / 2,
          absl::StrFormat("%s fits a fixed batch of 64: policy loss %.3f -> "
-                         "%.3f in %d steps",
-                         nn_model, start, end, steps));
+                         "%.3f in %d steps (at most %d)",
+                         nn_model, start, end, step, steps));
 }
 
 double LargestDifference(const std::vector<az::VPNetModel::InferenceOutputs>& a,

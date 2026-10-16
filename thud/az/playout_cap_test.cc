@@ -29,6 +29,7 @@
 //   3. FastBots: none when the cap is off; when on, two bots that search 4 simulations
 //      and add no root noise (the same position searched twice gives the same visits).
 //
+//   thud/run_tests.sh playout_cap_test   # builds and runs it
 //   build-tests/bin/playout_cap_test
 
 #include <cmath>

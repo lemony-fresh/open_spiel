@@ -40,6 +40,7 @@
 //      no ".tmp" file, and what they wrote loads (the network's outputs, the buffer's
 //      contents equal).
 //
+//   thud/run_tests.sh learning_settings_test   # builds and runs it
 //   build-tests/bin/learning_settings_test
 
 #include <cmath>

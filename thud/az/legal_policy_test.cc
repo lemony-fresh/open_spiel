@@ -31,6 +31,7 @@
 //      positions the most visited move, and every root child's visits, agree (a prior
 //      ~1e-7 apart can tip a near tie).
 //
+//   thud/run_tests.sh legal_policy_test   # builds and runs it
 //   build-tests/bin/legal_policy_test
 
 #include <cmath>

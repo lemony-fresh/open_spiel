@@ -287,12 +287,17 @@ done ~07:00-08:00 on 2026-10-16 (slower while work runs beside it). Progress in
 self-play games kept dwarfs (2.2% before), the dwarfs' margin −20.4; measurement 4: a far
 dwarf with the dwarfs to move worth 65% of its worth with the trolls to move in
 self-play positions (N121 46%), 18% in the games against alpha-beta's trolls (10%) —
-both rising, below the taper's 80% (the design's §10).
+both rising, below the taper's 80% (the design's §10). **Also running** (detached): the
+setup script's dry run on a fresh clone, `~/setup-test` (log `~/setup-test.log`; at
+its step 7, the tests, since 19:33). **Committed, not pushed:** `0dc07a2f` (the rename to
+tests, measurements, probes; two new tests) and the two faster tests (below).
 **Done** (2026-10-07 16:28 to 2026-10-08 05:34): the night of matches against players
 without a network, run I and its evaluation (`~/thud-runs/night2_2026-10-07.py`).
 Deferred: MCTS-10,000 and -100,000, alpha-beta depth 4 (informative once our networks
 beat the lower rungs).
-**Next:** the longer run's segments read as the design's §10 says — survival and the gap
+**Next (2026-10-16):** the three test trims recorded in `PLAN.md`, *Tests* (then
+measure the full set), and the push; the dry run's outcome (`~/setup-test.log`); the user
+to confirm the stricter taper condition (c), then its probe; the longer run's segments read as the design's §10 says — survival and the gap
 both rising: patience; survival rising but the gap not: E1, E2; survival below ~5%: B1′,
 or C7 with the user's word — then its evaluation (against N121 and the players without a
 network); the regression
@@ -3194,6 +3199,17 @@ loop's gain after a step, (1 − w′) R ≤ 0.8 at R's upper 95% bound. Pushed 
 hook ran all 28 tests: passed). The setup dry run (`~/setup-test`) paused by SIGSTOP while
 the push's and the rename's tests ran (memory beside the trainer), to resume.
 
-**Next step:** as recorded in `## Current status` — the longer run's four segments and
-their measurement 4, then its evaluation; the setup script's dry run on a fresh clone; the
-promotion tests with the gates; the Net2Net live test after the run.
+- **2026-10-15, ~19:30-20:00: faster tests; the day ends.** The user asked which slow
+  tests could be made faster at little cost. Done, no weaker: `kickstart_test` (its
+  printed cost timing, at depth 3 the slowest part, now behind `cost=1`: 189 s → 37 s
+  beside the trainer) and `conv_policy_test` (its learning part stops once the loss
+  halves — in 4-5 steps of the 150 allowed: 247 s → 8 s). Agreed for tomorrow, as safe:
+  `untried_move_test`'s position-supplying game at 25 simulations, `legal_policy_test`'s
+  reported searches on 20 positions, `az_match_test` at 4 simulations; `identity_test`
+  stays (the user). The test headers' usage lines now name `thud/run_tests.sh` and
+  `build-tests/bin/` (they still said `build.sh` and `build-shared/`). A mistake of
+  mine, ~20 minutes: editing `run_tests.sh` while it ran broke that run (bash reads a
+  script as it goes); rerun, all 30 passed.
+
+**Next step:** as recorded in `## Current status` — tomorrow, after the user's token
+limit resets: the three test trims and the push; the dry run's outcome; the longer run.

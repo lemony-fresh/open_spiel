@@ -20,8 +20,8 @@
 // another game's end give "cutoff" and "terminal". Control: a position one move
 // before an ending is not terminal.
 //
-//   thud/az/build.sh thud/az/instrumentation_test.cc
-//   build-shared/instrumentation_test
+//   thud/run_tests.sh instrumentation_test   # builds and runs it
+//   build-tests/bin/instrumentation_test
 //
 // Exits non-zero on any failure.
 

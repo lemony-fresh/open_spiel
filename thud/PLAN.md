@@ -1600,7 +1600,7 @@ first session, with no patch at all.**
   | `playthrough` (in `run_tests.sh`) | full, 3.5 s | the baseline's recorded moves replayed, every line compared (as upstream's `playthrough_test.py`) | a copy with one board line changed must not replay equal |
   | `features_test` | quick, 3 s | the 50 input planes: hand-built positions, the planes against the move generator | — (exact expectations) |
   | `input_planes_test` | full, 65 s | the planes inside the network: net surgery keeps the outputs, each plane reaches exactly its positions, learning reaches exactly the planes present | judged against the next plane's positions it must fail |
-  | `conv_policy_test` | full, 148 s | the convolutional policy head: each logit at its own plane and square, the masking, learning, checkpoints | rows and columns swapped must fail; a fresh network's outputs must differ from a reloaded one's |
+  | `conv_policy_test` | full, ~6 s (247 s → 8 s beside a trainer, 2026-10-15: the learning part stops once the loss halves, in 4-5 steps of the 150 allowed) | the convolutional policy head: each logit at its own plane and square, the masking, learning, checkpoints | rows and columns swapped must fail; a fresh network's outputs must differ from a reloaded one's |
   | `augmentation_test` | quick, 0.2 s | the 8 symmetries of observations, moves and policy targets | positions mirrored independently, as text |
   | `identity_test` | full, 88 s | our AlphaZero copy computes as upstream's, bit for bit: outputs (ours with the legal policy off, `SetLegalPolicy(false)`), a learning step, searches with and without noise, rollouts | another network, seed, step must differ |
   | `legal_policy_test` (new) | full, 44 s | the legal policy, our default, against upstream's computation, for the three models, batches of 1 and 32: the values bit for bit, the priors within 1e-6 (measured ~1e-7) summing to 1; reported: searches with it on and off (all 120 identical) | another network's priors must differ |
@@ -1617,12 +1617,21 @@ first session, with no patch at all.**
   | `growing_buffer_test`, `replay_buffer_test`, `az_buffer_truncate self_test` | quick, < 1 s | the growing buffer's size; our replay buffer against upstream's (contents, samples, saved bytes, memory; since 2026-10-15 a file cut short: ours refuses it); truncating a buffer | upstream's ratchet must show; upstream's must load the cut file without an error (its bug) |
   | `instrumentation_test` | quick, 0.2 s | how a game's end is classified, every ending | a position one move short |
   | `alphabeta_training_test` | quick, 0.2 s | games against alpha-beta: only our network's positions recorded, its moves AlphaBetaPlayer's, per-side depths, the log line, the configuration's round trip | another seed must change a move; self-play must record both sides |
-  | `kickstart_test` | full, 131 s | the teacher's scores and policy, the mixed targets, the weight per player | depth 1 must score the position's moves alike; the mixed target must differ from the unmixed |
+  | `kickstart_test` | full, ~25 s (189 s → 37 s beside a trainer, 2026-10-15: the printed cost timing now behind `cost=1`) | the teacher's scores and policy, the mixed targets, the weight per player | depth 1 must score the position's moves alike; the mixed target must differ from the unmixed |
   | `teacher_mix_test` (new) | quick, 0.3 s | `az_match teacher_mix_a`: the mix per player, exactly; the values unchanged; the cache | the teacher must differ from the prior at both nodes |
   | `grow_test` (new) | quick, 2.4 s | Net2Net (`net2net.h`): the mapping; the function kept for wider, deeper, both, the linear head, no growth; every tensor accounted for; copies stay equal under training without noise, part with it; a grown network reloads | three: no division; a batch norm's statistics left uncopied; new blocks not the identity — each must exceed 10x the tolerance |
   | `trainer_test.sh` (new) | quick, 26 s | the trainer end to end with every feature of ours on (two device copies, batching, augmentation, pruning, 2 learner batches, alpha-beta games, kickstarting and noise per player, a learning-rate warm-up and schedule, a value-loss weight): checkpoints, buffer, logs, config; resuming (the step follows on, the rates the schedule's, logs appended); training on from an `az_grow` network; `az_restructure` (a new head, frozen trunk); `az_fresh_optimizer` | the tools' own fatal tests (az_grow's control among them) |
   | `az_match_test.sh` (new) | full, 97 s | `az_match`: reproducible; the record (openings, sides, the summary's arithmetic); `noise=`, `sample_plies=` and players without a network (alpha-beta, MCTS, hexparrot) the same whichever thread; `devices=`; `teacher_mix_a=` | each option must change the games; another seed too; the summary must record the devices |
   | `sanitized` (in `run_tests.sh`) | full, 10 s | `replay_buffer_test`, `features_test`, `az_buffer_truncate` under AddressSanitizer and UBSan | the binaries must carry ASan's instrumentation (and ASan was seen catching a heap overflow here) |
+
+  **Faster tests, to do 2026-10-16** (the user, 2026-10-15): three trims that lose
+  essentially nothing — `untried_move_test` plays the game that supplies its positions at
+  25 simulations instead of 100 (the searches under test stay at 100; the network is an
+  untrained test network, so the game's quality was never part of the test);
+  `legal_policy_test` reports its search comparison on 20 positions instead of 40 (its
+  required parts unchanged); `az_match_test` at 4 simulations instead of 8 (it tests
+  reproducibility and wiring, not strength). `identity_test` stays at 50 positions (the
+  user: it is the copy's proof of identity). Then measure the full set's time again.
 
   **Not covered by any test** (the gaps, to be kept current):
 

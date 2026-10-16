@@ -30,6 +30,7 @@
 //   Control: an edit applied to the wrong square (Without at another piece) must differ,
 //   so 2 can fail.
 //
+//   thud/run_tests.sh position_edits_test   # builds and runs it
 //   build-tests/bin/position_edits_test
 
 #include <algorithm>

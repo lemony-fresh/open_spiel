@@ -37,8 +37,8 @@
 //      little before learning (< 0.05).
 //   6. A grown network saves and reloads with identical outputs.
 //
-//   thud/az/build.sh thud/az/grow_test.cc
-//   build-shared/grow_test
+//   thud/run_tests.sh grow_test   # builds and runs it
+//   build-tests/bin/grow_test
 
 #include <cmath>
 #include <filesystem>

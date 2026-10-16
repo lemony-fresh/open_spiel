@@ -28,6 +28,7 @@
 //   Control: at both nodes the teacher differs from the network's prior by more than 0.05
 //   in some move, so 1 and 2 can tell a mixed prior from an unmixed one.
 //
+//   thud/run_tests.sh teacher_mix_test   # builds and runs it
 //   build-tests/bin/teacher_mix_test
 
 #include <cmath>

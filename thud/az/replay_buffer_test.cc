@@ -35,11 +35,9 @@
 //      before the cut, its count of positions added still the file's. The file whole
 //      loads in a child too (the control that the child can succeed).
 //
-// Needs only headers and libopen_spiel.so (no LibTorch), so it builds small:
-//   clang++ -std=gnu++20 -O2 -I. -Iopen_spiel -Iopen_spiel/abseil-cpp \
-//     -Iopen_spiel/json/include -Iopen_spiel/libnop/libnop/include -DOPEN_SPIEL_BUILD_WITH_LIBNOP \
-//     thud/az/replay_buffer_test.cc -Lbuild-shared -lopen_spiel \
-//     -Wl,-rpath,$PWD/build-shared -o build-shared/replay_buffer_test
+// Needs only headers and libopen_spiel.so (no LibTorch):
+//   thud/run_tests.sh replay_buffer_test   # builds and runs it
+//   build-tests/bin/replay_buffer_test [DIR]   # DIR for its files (default /tmp)
 
 #include <sys/wait.h>
 #include <unistd.h>

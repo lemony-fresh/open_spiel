@@ -35,9 +35,8 @@
 // search with another noise seed, the outputs of another network, the outputs before and
 // after the learning step, and the rollout search with another seed.
 //
-//   thud/az/build.sh thud/az/identity_test.cc \
-//     open_spiel/algorithms/alpha_zero_torch/{model,vpnet,vpevaluator}.cc
-//   OMP_NUM_THREADS=1 build-shared/identity_test RUN_DIR STEP OTHER_STEP [positions=50]
+//   thud/run_tests.sh identity_test   # builds and runs it
+//   OMP_NUM_THREADS=1 build-tests/bin/identity_test RUN_DIR STEP OTHER_STEP [positions=50]
 //
 // RUN_DIR is a trainer run with checkpoints STEP and OTHER_STEP. Exits non-zero on any
 // difference in 1-5, or if a control shows none.

@@ -35,8 +35,8 @@
 // probed, the planes never lit being exactly those without room), random games, the
 // opening and, with LOG_DIR, run self-play (all positions of each actor's last game).
 //
-//   thud/az/build.sh thud/az/input_planes_test.cc
-//   build-shared/input_planes_test SCRATCH_DIR [LOG_DIR]
+//   thud/run_tests.sh input_planes_test   # builds and runs it
+//   build-tests/bin/input_planes_test SCRATCH_DIR [LOG_DIR]
 
 #include <cmath>
 #include <filesystem>
