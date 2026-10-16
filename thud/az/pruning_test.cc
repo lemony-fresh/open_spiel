@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Checks KataGo's forced playouts and policy target pruning in our copy of
+// Tests KataGo's forced playouts and policy target pruning in our copy of
 // OpenSpiel's MCTS (thud/az/mcts.h: MCTSBot's forced_playouts_k, PrunedRootVisits;
 // arXiv 1902.10565, section 3.2; thud/PLAN.md, policy target pruning):
 //
@@ -31,8 +31,8 @@
 //      binds for few children; first measured 2026-10-04: 2 of 214 against 18 of
 //      232 in 12 searches.
 //
-//   thud/az/build.sh thud/az/pruning_check.cc
-//   build-shared/pruning_check RUN_DIR STEP
+//   thud/az/build.sh thud/az/pruning_test.cc
+//   build-shared/pruning_test RUN_DIR STEP
 //
 // Exits non-zero on any failure.
 
@@ -146,6 +146,6 @@ int main(int argc, char** argv) {
                       " with forced playouts, ", short_on[0], " of ", visited_on[0],
                       " without (at most one a search with them; control: at least 3x "
                       "more without)"));
-  std::cout << (failures ? "PRUNING CHECK FAILED" : "pruning check passed") << std::endl;
+  std::cout << (failures ? "PRUNING TEST FAILED" : "pruning test passed") << std::endl;
   return failures ? 1 : 0;
 }

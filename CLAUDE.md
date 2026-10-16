@@ -160,7 +160,7 @@ options*).
   SCRIPT > LOG 2>&1 < /dev/null &`; watch it through its files (e.g.
   `~/thud-runs/stage1_matches/progress.log`) or a separate waiter whose death is harmless.
   Keep long runs as scripts in `~/thud-runs/` calling programs in `build-shared/`, so
-  that the session-start check (above) finds them. A waiter must not match itself:
+  that the session-start listing (above) finds them. A waiter must not match itself:
   `pgrep -f NAME` also matches a shell whose command line contains NAME — write the
   pattern with brackets (`pgrep -f 'step2_buffer4x_resum[e].sh'`). Brackets do not
   stop it matching *another* shell that merely mentions the name, and the Claude Code
@@ -222,7 +222,7 @@ ctest -R thud              # just ours
 ./examples/example --game=thud
 ```
 
-`build/` is OpenSpiel's default build type, "Testing" (`-O2`, all runtime checks on). **For
+`build/` is OpenSpiel's default build type, "Testing" (`-O2`, all runtime assertions on). **For
 speed measurements use a Release build** (`-O3`, `SPIEL_DCHECK` off) in its own folder, which
 git ignores:
 
@@ -258,7 +258,7 @@ shared library, as `docs/library.md` describes, in `build-shared/`, so no upstre
 file changes: `build-torch/`'s configure plus `BUILD_SHARED_LIB=ON`, then `make -j10
 open_spiel` (~2.5 min). The commands, and the compiler flags copied from CMake, are in
 `thud/experiments/build_az_program.sh`, which builds the programs on upstream's
-AlphaZero (`az_layout_check`, `az_throughput`, `az_reuse`, `az_buffer_stats`). Programs on
+AlphaZero (`az_layout_probe`, `az_throughput`, `az_reuse`, `az_buffer_stats`). Programs on
 **our copy** (`thud/az/`: the trainer `az_trainer` — upstream's example plus
 `--untried_move_value`, `--untried_move_reduction`, `--learner_batches`,
 `--nn_model=resnet_conv_policy`, `--symmetry_augmentation`, `--policy_target_pruning`
@@ -283,28 +283,27 @@ actions to ~1e-7; `SetLegalPolicy(false)` is upstream's, bit for bit); since 202
 positions into their slots and compacts itself after loading (`thud/az/replay_buffer.h`)
 and actor and evaluator logs that append; and since 2026-10-03
 logging per-side losses, self-play margins and endings and search statistics —
-`identity_check` (built with upstream's `model`, `vpnet` and `vpevaluator` sources as
-extra arguments, as its header says), `untried_move_check`, `conv_policy_check`,
-`augmentation_check`, `instrumentation_check`, `pruning_check`, `growing_buffer_check`,
-`search_settings_check`, `alphabeta_training_check`, `kickstart_check`, `input_planes_check`
-(the 50 input planes inside the network; `features_check` checks the planes themselves),
-`grow_check` (Net2Net, on small networks), `make_test_network` (small untrained networks
-for the checks), and from
+`identity_test` (built with upstream's `model`, `vpnet` and `vpevaluator` sources as
+extra arguments, as its header says), `untried_move_test`, `conv_policy_test`,
+`augmentation_test`, `instrumentation_test`, `pruning_test`, `growing_buffer_test`,
+`search_settings_test`, `alphabeta_training_test`, `kickstart_test`, `input_planes_test`
+(the 50 input planes inside the network; `features_test` tests the planes themselves),
+`grow_test` (Net2Net, on small networks), `make_test_network` (small untrained networks for the tests), and from
 `thud/experiments/`
 `az_match` (since 2026-10-07 also against players without a network:
 `b=hexparrot:N`, through `hexparrot_player.py`, `b=alphabeta:N`, `b=mcts:N`; since
 2026-10-13 self-play's root noise per side and sampled plies, `noise=`, `sample_plies=`,
-and the teacher in one network's prior, `teacher_mix_a=`), `az_forgetting`, `az_merge_buffers`, `az_target_quality`, `az_head_check`,
-`az_reference_pilot`, `az_noise_check`, `az_search_cost`, `az_blunder_check`,
+and the teacher in one network's prior, `teacher_mix_a=`), `az_forgetting`, `az_merge_buffers`, `az_target_quality`, `az_head_probe`,
+`az_reference_pilot`, `az_noise_probe`, `az_search_cost`, `az_blunder_probe`,
 `az_capture_targets`, `az_teacher_stats`, `az_feature_probe`, `az_long_capture_probe`,
-`az_input_plane_trace`, `az_risk_probe`, `az_dwarf_value_probe` and `teacher_mix_check`;
+`az_input_plane_trace`, `az_risk_probe`, `az_dwarf_value_probe` and `teacher_mix_test`;
 `az_restructure`, which builds a network of a new structure from a trained one and
 its replay buffer, `az_grow`, which grows a network wider or deeper computing the same
 (Net2Net, 2026-10-15), and `az_fresh_optimizer`, a network's weights with a fresh optimizer;
 `az_match devices=`, `az_restructure device=` and `az_grow device=` choose where the
 networks run)
 are built by
-`thud/az/build.sh MAIN.cc` (`replay_buffer_check`, `az_buffer_truncate` and `features_check`, which need
+`thud/az/build.sh MAIN.cc` (`replay_buffer_test`, `az_buffer_truncate` and `features_test`, which need
 no LibTorch, by the command in their headers), which also links Abseil's static libraries (the flag parsing
 `libopen_spiel.so` does not re-export) and runs at `nice 19`.
 
@@ -316,15 +315,15 @@ unset, `open_spiel/python/CMakeLists.txt:172-190`; `build-torch/`'s configure di
 Playthrough regression baseline (our most valuable correctness tool — it catches accidental
 rule changes): `open_spiel/integration_tests/playthroughs/thud.txt`, one random game
 recorded by `./open_spiel/scripts/generate_new_playthrough.sh thud` (once, 2026-09-25).
-The check replays **the moves recorded in it** and compares every line, as upstream's
+The test replays **the moves recorded in it** and compares every line, as upstream's
 `playthrough_test.py` does (`docs/developer_guide.md`, step 11) — run it after any change
 to move generation, the action encoding, the text formats or the observation:
 
 ```bash
-thud/run_checks.sh playthrough       # ours alone; ctest's playthrough_test does every game's
+thud/run_tests.sh playthrough       # ours alone; ctest's playthrough_test does every game's
 ```
 
-Running `generate_new_playthrough.sh` again is not the check: it plays new random moves
+Running `generate_new_playthrough.sh` again is not the test: it plays new random moves
 (its seed is drawn afresh), so its diff is never empty (found 2026-10-15; this file said
 otherwise until then). A difference in the replay means behaviour changed; if the change
 was intended, update the baseline from its own moves and read the diff:
@@ -337,23 +336,23 @@ python3 open_spiel/python/examples/playthrough.py \
 (Upstream's `regenerate_playthroughs.sh` would rewrite every game's baseline: never run it
 here.)
 
-**Our checks, in one command** (2026-10-15): `thud/run_checks.sh` builds what is out of
-date — the game in `build/` and `build-shared/`, the checks and the programs the
-end-to-end checks run in `build-checks/` (`thud/checks.mk`: incremental, **without
-`-DNDEBUG`**, so these differ from `build.sh`'s binaries) — and runs the quick checks
-(~20 s), or with `--full` every check (~4 min: `thud_test`, the hexparrot cross-check,
+**Our tests, in one command** (2026-10-15): `thud/run_tests.sh` builds what is out of
+date — the game in `build/` and `build-shared/`, the tests and the programs the
+end-to-end tests run in `build-tests/` (`thud/tests.mk`: incremental, **without
+`-DNDEBUG`**, so these differ from `build.sh`'s binaries) — and runs the quick tests
+(~20 s), or with `--full` every test (~4 min: `thud_test`, the hexparrot cross-check,
 the playthrough diff — against a temporary file, never over the baseline — the
-sanitized checks, every check program, `thud/az/trainer_check.sh` and
-`thud/experiments/az_match_check.sh`); `--list` names them, `NAME ...` runs only those;
-each check's output is in `build-checks/last/NAME.log`. None needs a run folder. **The
-git hooks run them**: `.githooks/pre-commit` the quick checks when a commit changes code
-(docs alone go through at once), `.githooks/pre-push` every check when the pushed commits
+sanitized tests, every test program, `thud/az/trainer_test.sh` and
+`thud/experiments/az_match_test.sh`); `--list` names them, `NAME ...` runs only those;
+each test's output is in `build-tests/last/NAME.log`. None needs a run folder. **The
+git hooks run them**: `.githooks/pre-commit` the quick tests when a commit changes code
+(docs alone go through at once), `.githooks/pre-push` every test when the pushed commits
 change code, after its upstream guard (`core.hooksPath` is set in this clone). What each
-check covers, and what no check covers yet: `thud/PLAN.md`, *Tests*.
+test covers, and what no test covers yet: `thud/PLAN.md`, *Tests*.
 
 **For another machine** (2026-10-15; `thud/PLAN.md`, the GPU readiness checklist):
 `thud/setup_machine.sh` sets a fresh clone up — packages, the venv with torch, the
-builds, our programs, hexparrot, every check, and with a GPU a CUDA smoke test (rerun it
+builds, our programs, hexparrot, every test, and with a GPU a CUDA smoke test (rerun it
 after a failure: done steps are skipped); `thud/transfer_run.sh FROM TO [--state-only]`
 moves a run folder (rsync, checksums at both ends, the copy's `config.json` path set to
 its folder); `thud/az/watchdog.sh RUN_DIR -- TRAINER ARGS` keeps a run going through
@@ -389,13 +388,12 @@ fast yet readable — see `thud/PLAN.md` Phase 3.
 `-Wno-everything` for code we build. Suppress one named diagnostic, at the one place
 where we are certain it is safe — `#pragma clang diagnostic push` / `ignored "-W..."` /
 `pop` around the line or the `#include` that triggers it — with a comment saying why it
-is safe (example: `thud/az/replay_buffer_check.cc`, libnop's
+is safe (example: `thud/az/replay_buffer_test.cc`, libnop's
 `-Wmissing-template-arg-list-after-template-kw`). Upstream's CMake passes
 `-Wno-everything` (`open_spiel/CMakeLists.txt`), and our `thud/az/build.sh` and
 `thud/experiments/build_az_program.sh` copied it: to be narrowed the same way, after
 seeing what fires without it. More generally, **keep the safety flags** (user,
-2026-10-05: "I would like to keep the code safe"): never weaken a warning, check or
-sanitizer flag to make something build; tests and checks build without `-DNDEBUG` (so
+2026-10-05: "I would like to keep the code safe"): never weaken a warning, assertion or sanitizer flag to make something build; tests build without `-DNDEBUG` (so
 `assert` and `SPIEL_DCHECK` run), and changes to memory handling in our copies (moves,
 pointers, lifetimes) are also run under `-fsanitize=address,undefined`. Such a build
 needs `-DNDEBUG_SANITIZER` (2026-10-05): with AddressSanitizer on, abseil adds fields to

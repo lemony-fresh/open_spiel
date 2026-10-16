@@ -27,7 +27,7 @@
 #      GPU run uses;
 #   6. hexparrot/thudgame at the commit our references use (thud/experiments/
 #      perft_reference.py), for the cross-check and matches against it;
-#   7. every check: thud/run_checks.sh --full;
+#   7. every test: thud/run_tests.sh --full;
 #   8. with a GPU: a CUDA smoke test — LibTorch sees it; the trainer runs 2 steps on
 #      cuda:0 and on two copies, cuda:0,cuda:0; az_match plays a pair on cuda:0.
 #
@@ -36,20 +36,20 @@
 #
 #   git clone -b thud https://github.com/lemony-fresh/open_spiel.git ~/thud-openspiel
 #   ~/thud-openspiel/thud/setup_machine.sh 2>&1 | tee ~/setup.log
-#   [--skip-apt] (no sudo: the packages are there) [--skip-checks] [--gpu-smoke-only]
+#   [--skip-apt] (no sudo: the packages are there) [--skip-tests] [--gpu-smoke-only]
 #   [--no-bashrc] (leave ~/.bashrc alone: a test clone, or a shell set up by hand)
 #
-# SMOKE_DEVICE=cpu:0 runs step 8's steps on the CPU (without its CUDA check): the smoke
-# test's own check, on a machine without a GPU.
+# SMOKE_DEVICE=cpu:0 runs step 8's steps on the CPU (without its CUDA test): a test of the
+# smoke test itself, on a machine without a GPU.
 
 set -uo pipefail
 repo=$(cd "$(dirname "$0")/.." && pwd)
 cd "$repo"
-skip_apt=0 skip_checks=0 smoke_only=0 no_bashrc=0
+skip_apt=0 skip_tests=0 smoke_only=0 no_bashrc=0
 for a in "$@"; do
   case $a in
     --skip-apt) skip_apt=1 ;;
-    --skip-checks) skip_checks=1 ;;
+    --skip-tests) skip_tests=1 ;;
     --gpu-smoke-only) smoke_only=1 ;;
     --no-bashrc) no_bashrc=1 ;;
     *) echo "Unknown option $a" >&2; exit 2 ;;
@@ -82,7 +82,7 @@ print('torch', torch.__version__, 'CUDA', torch.version.cuda, torch.cuda.get_dev
   t=$(mktemp -d "${TMPDIR:-/tmp}/gpu_smoke.XXXXXX")
   for devices in "$dev" "$dev,$dev"; do
     local run=$t/run_${devices//[:,]/_}
-    build-checks/bin/make_test_network dir="$run" nn_model=resnet_conv_policy input_planes=1 \
+    build-tests/bin/make_test_network dir="$run" nn_model=resnet_conv_policy input_planes=1 \
       nn_width=32 nn_depth=2 checkpoints=1 > /dev/null 2>&1 || fail "make_test_network"
     OMP_NUM_THREADS=2 build-shared/az_trainer --flagfile=thud/experiments/az_thud.flags \
       --path="$run" --graph_def=vpnet.pb --nn_model=resnet_conv_policy --nn_width=32 \
@@ -170,7 +170,7 @@ nice -n 19 make -C build-shared -j"$(jobs)" open_spiel || fail "make build-share
 step "5. our programs into build-shared/"
 for main in thud/az/az_trainer.cc thud/az/az_grow.cc thud/az/az_restructure.cc \
     thud/az/az_fresh_optimizer.cc thud/experiments/az_match.cc \
-    thud/experiments/az_dwarf_value_probe.cc thud/experiments/az_blunder_check.cc \
+    thud/experiments/az_dwarf_value_probe.cc thud/experiments/az_blunder_probe.cc \
     thud/experiments/az_search_cost.cc; do
   name=$(basename "$main" .cc)
   # Rebuilt when it or any source of our AlphaZero copy is newer than the program.
@@ -189,9 +189,9 @@ if [ ! -d "$hex_dir/.git" ]; then
 fi
 git -C "$hex_dir" checkout -q "$hex_commit" || fail "hexparrot's commit $hex_commit"
 
-if [ "$skip_checks" -eq 0 ]; then
-  step "7. every check (thud/run_checks.sh --full)"
-  thud/run_checks.sh --full || fail "a check (build-checks/last/)"
+if [ "$skip_tests" -eq 0 ]; then
+  step "7. every test (thud/run_tests.sh --full)"
+  thud/run_tests.sh --full || fail "a test (build-tests/last/)"
 fi
 
 if [ "$gpu" -eq 1 ]; then

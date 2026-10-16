@@ -12,10 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Checks the input planes from the rules inside the network (thud/PLAN.md, the input
+// Tests the input planes from the rules inside the network (thud/PLAN.md, the input
 // planes, as decided; our copy's VPNetModel builds each input from the observation and,
 // if the model takes them, the 50 planes of thud/az/thud_features.h — the planes
-// themselves are checked by thud/az/features_check.cc):
+// themselves are checked by thud/az/features_test.cc):
 //
 //   1. net surgery: a network with the planes, its weights copied from one without
 //      (CopyParametersFrom with widen_inputs: the new input channels zero), gives exactly
@@ -31,12 +31,12 @@
 //      its weight decay is zero too).
 //
 // Positions: one capture of each kind, direction and distance the board has room for
-// (thud/az/capture_patterns.h; check 2 then requires every plane the board allows to be
+// (thud/az/capture_patterns.h; part 2 then requires every plane the board allows to be
 // probed, the planes never lit being exactly those without room), random games, the
 // opening and, with LOG_DIR, run self-play (all positions of each actor's last game).
 //
-//   thud/az/build.sh thud/az/input_planes_check.cc
-//   build-shared/input_planes_check SCRATCH_DIR [LOG_DIR]
+//   thud/az/build.sh thud/az/input_planes_test.cc
+//   build-shared/input_planes_test SCRATCH_DIR [LOG_DIR]
 
 #include <cmath>
 #include <filesystem>
@@ -114,7 +114,7 @@ std::vector<std::vector<bool>> PlanesPresent(const std::vector<VPNetModel::Infer
 
 int main(int argc, char** argv) {
   if (argc < 2) {
-    std::cerr << "Usage: input_planes_check SCRATCH_DIR [LOG_DIR]" << std::endl;
+    std::cerr << "Usage: input_planes_test SCRATCH_DIR [LOG_DIR]" << std::endl;
     return 1;
   }
   const std::string scratch = argv[1];

@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Checks the growing buffer of our copy's learner (thud/az/alpha_zero.h:
+// Tests the growing buffer of our copy's learner (thud/az/alpha_zero.h:
 // GrowingBufferSize, SampleNewest; thud/PLAN.md, runs G and G'):
 //
 //   1. GrowingBufferSize against values worked out by hand (start size 65,536): all positions
@@ -25,8 +25,8 @@
 //      Control: CircularBuffer::Sample (upstream's, the whole buffer) draws older
 //      elements too.
 //
-//   thud/az/build.sh thud/az/growing_buffer_check.cc
-//   build-shared/growing_buffer_check
+//   thud/az/build.sh thud/az/growing_buffer_test.cc
+//   build-shared/growing_buffer_test
 //
 // Exits non-zero on any failure.
 
@@ -105,7 +105,7 @@ int main() {
                        [&](int x) { return x < added - newest; }),
            absl::StrCat(added, " added: control, upstream's Sample draws older ones too"));
   }
-  std::cout << (failures ? "GROWING BUFFER CHECK FAILED" : "growing buffer check passed")
+  std::cout << (failures ? "GROWING BUFFER TEST FAILED" : "growing buffer test passed")
             << std::endl;
   return failures ? 1 : 0;
 }

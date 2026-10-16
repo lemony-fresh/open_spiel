@@ -25,11 +25,11 @@
 //               temperature is uniform over these and puts at least its best mass there;
 //   best_mass   the teacher's mass on them, at each T;
 //   trolls, at positions with a capture available (a capture step or a shove, written
-//   with an "x"; the capture check's sample, az_capture_targets.cc): the captures'
+//   with an "x"; the capture measurement's sample, az_capture_targets.cc): the captures'
 //   share of the legal moves, the share of them tied for the best score, and the
 //   teacher's mass on them;
-//   dwarfs, at positions with an unsafe move (the blunder check's: one that captures
-//   nothing and ends next to a troll, az_blunder_check.cc): the same for those.
+//   dwarfs, at positions with an unsafe move (the blunder probe's: one that captures
+//   nothing and ends next to a troll, az_blunder_probe.cc): the same for those.
 //
 //   thud/az/build.sh thud/experiments/az_teacher_stats.cc
 //   build-shared/az_teacher_stats logs=RUN_DIR [depth=2 temperatures=0.25,0.5,1,2 \
@@ -76,7 +76,7 @@ bool IsCapture(const State& state, Action a) {
   return absl::EndsWith(state.ActionToString(a), "x");
 }
 
-// A dwarf move that captures nothing and ends next to a troll (az_blunder_check.cc).
+// A dwarf move that captures nothing and ends next to a troll (az_blunder_probe.cc).
 bool Unsafe(const State& before, Action action) {
   if (IsCapture(before, action)) return false;
   const std::string move = before.ActionToString(action);

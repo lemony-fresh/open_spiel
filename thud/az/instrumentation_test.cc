@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Checks how the trainer of our copy of OpenSpiel's C++ AlphaZero classifies the
+// Tests how the trainer of our copy of OpenSpiel's C++ AlphaZero classifies the
 // end of a game (GameEnding in thud/az/alpha_zero.h; thud/PLAN.md, Instrumentation):
 // one hand-built Thud position per ending, played to its end, must give that
 // ending — every one of the five, so each branch is exercised (the trainer's
@@ -20,8 +20,8 @@
 // another game's end give "cutoff" and "terminal". Control: a position one move
 // before an ending is not terminal.
 //
-//   thud/az/build.sh thud/az/instrumentation_check.cc
-//   build-shared/instrumentation_check
+//   thud/az/build.sh thud/az/instrumentation_test.cc
+//   build-shared/instrumentation_test
 //
 // Exits non-zero on any failure.
 
@@ -121,8 +121,8 @@ int main(int argc, char** argv) {
   Expect(tic->IsTerminal() && GameEnding(*tic, false) == "terminal",
          "another game: terminal");
 
-  std::cout << (failures ? "INSTRUMENTATION CHECK FAILED"
-                         : "instrumentation check passed")
+  std::cout << (failures ? "INSTRUMENTATION TEST FAILED"
+                         : "instrumentation test passed")
             << std::endl;
   return failures ? 1 : 0;
 }

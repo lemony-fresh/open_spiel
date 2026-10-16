@@ -3,16 +3,16 @@
 # Copyright 2026 The Thud-on-OpenSpiel authors.
 # Licensed under the Apache License, Version 2.0.
 #
-# Runs our quick checks (thud/run_checks.sh, ~20 s) before a commit that changes code —
-# the game, our AlphaZero copy and tools, the scripts in thud/, the checks, the hooks; a
-# commit of docs alone goes through at once. A failing check stops the commit: fix the
-# code (or, if the check itself is wrong, the check, and say so in the commit message).
+# Runs our quick tests (thud/run_tests.sh, ~20 s) before a commit that changes code —
+# the game, our AlphaZero copy and tools, the scripts in thud/, the tests, the hooks; a
+# commit of docs alone goes through at once. A failing test stops the commit: fix the
+# code (or, if the test itself is wrong, the test, and say so in the commit message).
 #
 # Install (once per clone, shared with pre-push):
 #   git config core.hooksPath .githooks
 #
-# The checks run on the working tree, which is the commit unless files were left
-# unstaged: those are listed before the checks run.
+# The tests run on the working tree, which is the commit unless files were left
+# unstaged: those are listed before the tests run.
 
 code='^(open_spiel/games/thud/|thud/az/|thud/experiments/|thud/[^/]*\.(sh|mk|py)$|\.githooks/)'
 
@@ -21,8 +21,8 @@ staged=$(git diff --cached --name-only | grep -E "$code")
 
 unstaged=$(git diff --name-only | grep -E "$code")
 if [ -n "$unstaged" ]; then
-  echo "pre-commit: the checks run on the working tree, which also has these unstaged changes:"
+  echo "pre-commit: the tests run on the working tree, which also has these unstaged changes:"
   printf '  %s\n' $unstaged
 fi
-echo "pre-commit: the commit changes code; running the quick checks (thud/run_checks.sh)"
-exec "$(git rev-parse --show-toplevel)/thud/run_checks.sh" --quick
+echo "pre-commit: the commit changes code; running the quick tests (thud/run_tests.sh)"
+exec "$(git rev-parse --show-toplevel)/thud/run_tests.sh" --quick

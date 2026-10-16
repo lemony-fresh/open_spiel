@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Checks thud_test.cc's hand-written expectations against hexparrot/thudgame's engine.
+"""Tests thud_test.cc's hand-written expectations against hexparrot/thudgame's engine.
 
 The move expectations in open_spiel/games/thud/thud_test.cc were worked out by hand. This
 script reads every position and move check out of the test file and recomputes it with

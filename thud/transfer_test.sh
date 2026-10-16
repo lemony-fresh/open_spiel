@@ -13,10 +13,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Checks thud/transfer_run.sh between two local folders (the same commands as between
+# Tests thud/transfer_run.sh between two local folders (the same commands as between
 # machines, without ssh), on a small run of 2 steps (make_test_network's network):
 #
-#   1. A copy of the whole run: every file equal (the script's own SHA-256 check passes),
+#   1. A copy of the whole run: every file equal (the script's own SHA-256 comparison passes),
 #      config.json's path set to the copy's folder.
 #   2. The copy resumes where it is: the trainer on the copy's config.json trains step 3
 #      into the copy; the original is untouched (its learner.jsonl, its buffer). The
@@ -27,12 +27,12 @@
 #   5. An interrupted copy goes on: a copy with a file cut short is completed by
 #      running the same command again (rsync --partial), the checksums then equal.
 #
-#   thud/transfer_check.sh [BIN_DIR]    # default build-checks/bin
+#   thud/transfer_test.sh [BIN_DIR]    # default build-tests/bin
 
 set -uo pipefail
 repo=$(cd "$(dirname "$0")/.." && pwd)
-bin=${1:-$repo/build-checks/bin}
-tmp=$(mktemp -d "${TMPDIR:-/tmp}/transfer_check.XXXXXX")
+bin=${1:-$repo/build-tests/bin}
+tmp=$(mktemp -d "${TMPDIR:-/tmp}/transfer_test.XXXXXX")
 trap '[ -n "${KEEP:-}" ] || rm -rf "$tmp"' EXIT
 failures=0
 export OMP_NUM_THREADS=2

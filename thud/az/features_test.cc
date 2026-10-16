@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Checks the input planes from the rules (thud/az/thud_features.h; the planes decided with
+// Tests the input planes from the rules (thud/az/thud_features.h; the planes decided with
 // the user on 2026-10-11: 50 — 48 move planes and 2 maps) — written before the planes'
 // code, as the user asked:
 //
@@ -38,25 +38,25 @@
 //      the same as computing them and then turning them — the move planes' directions
 //      moved by SymmetricDirection, their distances kept — on all 7 symmetries other
 //      than the identity, the hand-built positions included;
-//   4. controls, each required to fail: a hand-built test with one entry wrong (check
-//      0), two distance planes swapped (check 1), and the planes turned without moving
-//      their directions (check 3);
+//   4. controls, each required to fail: a hand-built test with one entry wrong (part
+//      0), two distance planes swapped (part 1), and the planes turned without moving
+//      their directions (part 3);
 //   5. every plane the board allows: a position with one capture of each kind,
 //      direction and distance the board has room for (thud/az/capture_patterns.h) lights
-//      that move plane at that piece — and joins checks 1-3; and the board has room for
+//      that move plane at that piece — and joins parts 1-3; and the board has room for
 //      exactly the distances the planes keep (up to 7 straight, 5 diagonal) and none of
 //      those left out (6 and 7 on the diagonals), for hurls and troll moves alike — the
 //      reason the 8 planes are left out, checked.
 //
-// Positions: the hand-built ones, the patterns of check 5, random games (every 7th ply)
+// Positions: the hand-built ones, the patterns of part 5, random games (every 7th ply)
 // and, with LOG_DIR, run self-play (every 5th ply of each actor's last game).
 //
 //   clang++ -std=gnu++20 -O2 -I. -Iopen_spiel -Iopen_spiel/abseil-cpp \
-//     -Iopen_spiel/json/include thud/az/features_check.cc -Lbuild-shared -lopen_spiel \
+//     -Iopen_spiel/json/include thud/az/features_test.cc -Lbuild-shared -lopen_spiel \
 //     -Wl,-rpath,$PWD/build-shared -Wl,--start-group \
 //     build-shared/abseil-cpp/absl/*/libabsl_*.a -Wl,--end-group \
-//     -o build-shared/features_check
-//   build-shared/features_check [LOG_DIR]
+//     -o build-shared/features_test
+//   build-shared/features_test [LOG_DIR]
 
 #include <algorithm>
 #include <cmath>

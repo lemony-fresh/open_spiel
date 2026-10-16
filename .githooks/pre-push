@@ -5,10 +5,10 @@
 #
 # 1. Refuses any push to the UPSTREAM OpenSpiel repository that would carry our
 #    project-private files. Pushes to our own fork are unaffected by this part.
-# 2. Runs all our checks (thud/run_checks.sh --full, ~4 min) before any push whose
+# 2. Runs all our tests (thud/run_tests.sh --full, ~4 min) before any push whose
 #    commits change code (the game, our AlphaZero copy and tools, the scripts in thud/,
-#    the checks, the hooks); a failing check stops the push. Added 2026-10-15 (the user:
-#    commit hooks for the unit tests); the checks run on the working tree.
+#    the tests, the hooks); a failing test stops the push. Added 2026-10-15 (the user:
+#    commit hooks for the unit tests); the tests run on the working tree.
 #
 # The file this primarily protects is thud/THUD_RULES.md, which quotes the
 # official Thud rules verbatim. Thud is commercially published, and while game
@@ -26,8 +26,8 @@ remote_url="$2"
 zero='0000000000000000000000000000000000000000'
 refs=$(cat)  # git's lines: local_ref local_sha remote_ref remote_sha; read by both parts.
 
-# 2. The checks, if the pushed commits change code.
-run_checks() {
+# 2. The tests, if the pushed commits change code.
+run_tests() {
   code='^(open_spiel/games/thud/|thud/az/|thud/experiments/|thud/[^/]*\.(sh|mk|py)$|\.githooks/)'
   changed=''
   while read -r _local_ref local_sha _remote_ref remote_sha; do
@@ -46,8 +46,8 @@ run_checks() {
 $refs
 EOF
   [ -z "$changed" ] && return 0
-  echo "pre-push: the pushed commits change code; running every check (thud/run_checks.sh --full)"
-  "$(git rev-parse --show-toplevel)/thud/run_checks.sh" --full
+  echo "pre-push: the pushed commits change code; running every test (thud/run_tests.sh --full)"
+  "$(git rev-parse --show-toplevel)/thud/run_tests.sh" --full
 }
 
 # 1. Only guard pushes aimed at upstream. Our own fork's URL also contains
@@ -55,7 +55,7 @@ EOF
 url_lc=$(printf '%s' "$remote_url" | tr '[:upper:]' '[:lower:]')
 case "$url_lc" in
   *deepmind/open_spiel*) ;;
-  *) run_checks "$1"; exit ;;
+  *) run_tests "$1"; exit ;;
 esac
 
 # Paths that must never leave our fork.
@@ -80,7 +80,7 @@ done <<REFS
 $refs
 REFS
 
-[ -z "$blocked" ] && { run_checks "$1"; exit; }
+[ -z "$blocked" ] && { run_tests "$1"; exit; }
 
 cat >&2 <<EOF
 

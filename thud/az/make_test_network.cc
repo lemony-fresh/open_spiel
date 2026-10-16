@@ -12,22 +12,22 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// A small untrained network for the checks (thud/run_checks.sh), so that checks which read
-// a run folder (identity_check, pruning_check, untried_move_check, az_match_check.sh)
+// A small untrained network for the tests (thud/run_tests.sh), so that tests which read
+// a run folder (identity_test, pruning_test, untried_move_test, az_match_test.sh)
 // need no trained run: `dir` (must not exist) gets vpnet.pb and checkpoints 0 to
 // `checkpoints` - 1, each with its own random weights (LibTorch's initialisation, seeded
 // by `seed` + the step, so reruns write the same networks), and random batch-norm running
 // statistics and scales (fresh ones are trivial: mean 0, variance 1, scale 1, shift 0).
 // `policy_scale` multiplies the policy head's last layer (its logits), so that the prior
 // is peaked as a trained network's is, not almost uniform as a fresh one's: what
-// pruning_check's forced playouts need to bind (sqrt(2 P N) of at least 1 playout).
+// pruning_test's forced playouts need to bind (sqrt(2 P N) of at least 1 playout).
 // `value_bias` is added to the value head's last bias (player 0's value is the tanh of
 // it): -1 puts the dwarfs' values near tanh(-1) = -0.76, as a trained network has them
-// (the dwarfs lose), so that untried_move_check's control holds — upstream's rule, which
+// (the dwarfs lose), so that untried_move_test's control holds — upstream's rule, which
 // gives an untried move 0, spreads the dwarfs' searches only when their values are below
 // it.
 //
-//   build-checks/bin/make_test_network dir=DIR [nn_model=resnet nn_width=8 nn_depth=1 \
+//   build-tests/bin/make_test_network dir=DIR [nn_model=resnet nn_width=8 nn_depth=1 \
 //     input_planes=0 checkpoints=2 seed=1 policy_scale=1 value_bias=0]
 
 #include <filesystem>

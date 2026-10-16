@@ -21,8 +21,8 @@
 // optimizer as `to`'s checkpoint `step`. Prints the learning rate a full load of the
 // source checkpoint would leave (LibTorch restores an optimizer's options with its state:
 // not shown either way on 2026-10-11, the source's file and checkpoint having the same
-// rate; shown since by learning_settings_check, 2026-10-15 — which is why a new rate
-// needs a fresh optimizer). Checks, fatal on failure: the saved checkpoint, loaded in full into a new
+// rate; shown since by learning_settings_test, 2026-10-15 — which is why a new rate
+// needs a fresh optimizer). Tests, fatal on failure: the saved checkpoint, loaded in full into a new
 // network, gives exactly the source's outputs on positions of random games, and has
 // `to`'s learning rate.
 //
@@ -75,7 +75,7 @@ int main(int argc, char** argv) {
   fresh.LoadWeights(absl::StrCat(from_dir, "/checkpoint-", from_step));
   fresh.SaveCheckpoint(step);
 
-  // The checks: the saved checkpoint, loaded in full.
+  // The tests: the saved checkpoint, loaded in full.
   VPNetModel saved(*game, to, "vpnet.pb", "/cpu:0");
   saved.LoadCheckpoint(step);
   std::vector<VPNetModel::InferenceInputs> positions;
@@ -96,7 +96,7 @@ int main(int argc, char** argv) {
     }
   }
   std::cerr << absl::StrFormat(
-      "check: %d positions, outputs differ from the source's by %g at most; the saved "
+      "test: %d positions, outputs differ from the source's by %g at most; the saved "
       "checkpoint's learning rate %g (to's vpnet.pb: %g)\n",
       positions.size(), worst, saved.LearningRate(), rate);
   if (worst > 0) open_spiel::SpielFatalError("The weights changed");

@@ -16,7 +16,7 @@
 #define THUD_EXPERIMENTS_TEACHER_MIX_H_
 
 // az_match's teacher_mix_a (thud/experiments/az_match.cc), in a header so that
-// teacher_mix_check.cc can check it.
+// teacher_mix_test.cc can check it.
 
 #include <map>
 #include <memory>

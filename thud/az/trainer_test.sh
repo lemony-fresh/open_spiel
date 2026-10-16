@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Checks our trainer and the tools around it end to end (thud/az/; thud/PLAN.md, the GPU
+# Tests our trainer and the tools around it end to end (thud/az/; thud/PLAN.md, the GPU
 # readiness checklist), on a small network (the convolutional head with the input
 # planes, width 8, depth 1, from make_test_network) at 8 simulations, a buffer of 2,048:
 #
@@ -32,22 +32,22 @@
 #      them) were played and counted, each step's learning rate is the schedule's (the
 #      network's 0.001 x 0.5, 1, 0.5) and its value-loss weight 2, the actors' and the
 #      learner's logs are appended to, not overwritten.
-#   3. az_grow (8 x 1 -> 12 x 2, noise 0.01; its own checks of the function, the control
+#   3. az_grow (8 x 1 -> 12 x 2, noise 0.01; its own tests of the function, the control
 #      and the reload are fatal) on the latest network, then a run folder from it — the
 #      config's new size, the buffer, learner.jsonl and the grown checkpoint as the
 #      latest — resumed for a step: the trainer takes the grown network and learns on
 #      (step 4, losses finite).
 #   4. az_restructure as it was built for: a new policy head (the linear one, `resnet`)
 #      on the run's trunk and value head, copied and frozen (freeze=copied), trained 20
-#      batches on the run's buffer: exits 0 (its checks that the copy and the freeze keep
+#      batches on the run's buffer: exits 0 (its tests that the copy and the freeze keep
 #      the values are fatal), writes the checkpoint and finite held-out losses. Not into
-#      another width or depth: its copy check then fails by design, the trunk not copied
+#      another width or depth: its copy test then fails by design, the trunk not copied
 #      (2026-10-15; thud/PLAN.md, the checklist) — growth is az_grow's (3).
 #   5. az_fresh_optimizer: the latest network's weights with a fresh optimizer at a new
 #      learning rate (a folder from make_test_network, at 0.001, against the run's 0.0001;
-#      its own checks of the outputs and the rate are fatal) exits 0.
+#      its own tests of the outputs and the rate are fatal) exits 0.
 #
-#   thud/az/trainer_check.sh [BIN_DIR]    # default build-checks/bin
+#   thud/az/trainer_test.sh [BIN_DIR]    # default build-tests/bin
 #
 # KEEP=1 keeps its temporary folder (the runs and every program's log) for a look.
 #
@@ -55,8 +55,8 @@
 
 set -uo pipefail
 repo=$(cd "$(dirname "$0")/../.." && pwd)
-bin=${1:-$repo/build-checks/bin}
-tmp=$(mktemp -d "${TMPDIR:-/tmp}/trainer_check.XXXXXX")
+bin=${1:-$repo/build-tests/bin}
+tmp=$(mktemp -d "${TMPDIR:-/tmp}/trainer_test.XXXXXX")
 trap '[ -n "${KEEP:-}" ] || rm -rf "$tmp"' EXIT
 run=$tmp/run
 failures=0

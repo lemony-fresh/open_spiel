@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Does a network's value register a dwarf, and where? (thud/DESIGN_dwarf_signal.md, check
-// Q5.) A quarter of the replay buffer is our trolls' positions from the training games
+// Does a network's value register a dwarf, and where? (thud/DESIGN_dwarf_signal.md,
+// measurement 4.) A quarter of the replay buffer is our trolls' positions from the training games
 // against alpha-beta's dwarfs — games in which dwarfs survive — while our own dwarfs'
 // positions come from games in which every dwarf is lost. If the value has learnt a
 // dwarf's worth at the first kind (trolls to move) but not at dwarf-to-move positions, the
@@ -57,6 +57,7 @@
 #include "open_spiel/games/thud/thud.h"
 #include "open_spiel/spiel.h"
 #include "thud/az/vpnet.h"
+#include "thud/experiments/position_edits.h"
 
 namespace {
 
@@ -64,6 +65,9 @@ using open_spiel::Action;
 using open_spiel::State;
 using open_spiel::thud_az::torch_az::VPNetModel;
 namespace thud = open_spiel::thud;
+using open_spiel::thud_az::position_edits::FarPieces;
+using open_spiel::thud_az::position_edits::Shifted;
+using open_spiel::thud_az::position_edits::Without;
 
 Action Find(const State& state, const std::string& move) {
   for (Action a : state.LegalActions()) {
@@ -77,68 +81,6 @@ Action Find(const State& state, const std::string& move) {
 struct Probe {
   std::unique_ptr<State> position, no_dwarf, no_troll, shifted;
 };
-
-// The squares of `kind` at least `far` king's moves from every piece of `other`.
-std::vector<std::pair<int, int>> FarPieces(const thud::ThudState& state, thud::Cell kind,
-                                           thud::Cell other, int far) {
-  std::vector<std::pair<int, int>> mine, theirs, out;
-  for (int r = 0; r < thud::kBoardSize; ++r) {
-    for (int c = 0; c < thud::kBoardSize; ++c) {
-      if (!thud::IsOnBoard(r, c)) continue;
-      if (state.CellAt(r, c) == kind) mine.push_back({r, c});
-      if (state.CellAt(r, c) == other) theirs.push_back({r, c});
-    }
-  }
-  if (mine.size() < 2) return out;  // Never remove a side's last piece.
-  for (const auto& [r, c] : mine) {
-    bool ok = true;
-    for (const auto& [r2, c2] : theirs) {
-      if (std::max(std::abs(r - r2), std::abs(c - c2)) < far) ok = false;
-    }
-    if (ok) out.push_back({r, c});
-  }
-  return out;
-}
-
-// `state` with the piece at (row, col) removed, through the text format.
-std::unique_ptr<State> Without(const open_spiel::Game& game, const State& state, int row,
-                               int col) {
-  std::string text = state.ToString();
-  const size_t at = row * (thud::kBoardSize + 1) + col;  // Rows of 15 and a newline.
-  SPIEL_CHECK_TRUE(text[at] == 'd' || text[at] == 'T');
-  text[at] = '.';
-  return game.NewInitialState(text);
-}
-
-// `state` with the dwarf at (row, col) moved to an empty neighbouring square at least
-// `far` king's moves from every troll, or null if there is none.
-std::unique_ptr<State> Shifted(const open_spiel::Game& game, const thud::ThudState& state,
-                               int row, int col, int far) {
-  for (int dr = -1; dr <= 1; ++dr) {
-    for (int dc = -1; dc <= 1; ++dc) {
-      const int r = row + dr, c = col + dc;
-      if ((dr == 0 && dc == 0) || !thud::IsOnBoard(r, c) ||
-          state.CellAt(r, c) != thud::Cell::kEmpty) {
-        continue;
-      }
-      bool ok = true;
-      for (int r2 = 0; r2 < thud::kBoardSize && ok; ++r2) {
-        for (int c2 = 0; c2 < thud::kBoardSize && ok; ++c2) {
-          if (thud::IsOnBoard(r2, c2) && state.CellAt(r2, c2) == thud::Cell::kTroll &&
-              std::max(std::abs(r - r2), std::abs(c - c2)) < far) {
-            ok = false;
-          }
-        }
-      }
-      if (!ok) continue;
-      std::string text = state.ToString();
-      text[row * (thud::kBoardSize + 1) + col] = '.';
-      text[r * (thud::kBoardSize + 1) + c] = 'd';
-      return game.NewInitialState(text);
-    }
-  }
-  return nullptr;
-}
 
 }  // namespace
 

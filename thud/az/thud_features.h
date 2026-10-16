@@ -51,7 +51,7 @@
 // corners shorten every diagonal, and the Thudstone cuts the central ones), so k <= 5.
 // Other pieces only take squares away. So a diagonal capture of 6 or 7 squares is
 // impossible in every position, and its 8 planes (4 diagonals x 2 distances), which would
-// always be zero, are left out (the user, 2026-10-11; features_check, check 5, finds room
+// always be zero, are left out (the user, 2026-10-11; features_test, part 5, finds room
 // on the board for every other kind, direction and distance, and for none of these).
 //
 // 2 MAPS, at the AFFECTED squares:

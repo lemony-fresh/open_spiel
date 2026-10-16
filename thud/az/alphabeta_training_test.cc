@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Checks the games against alpha-beta in our copy of the trainer (thud/PLAN.md, How we
+// Tests the games against alpha-beta in our copy of the trainer (thud/PLAN.md, How we
 // evaluate networks: training against alpha-beta) — games played by PlayGame as the
 // actors play them, with a stand-in network (a uniform prior, every value 0) so that
 // no model is needed:
@@ -22,7 +22,7 @@
 //      opponent; the returns are the final position's.
 //   2. Every troll move is the one AlphaBetaPlayer chooses there with the game's seed
 //      (the game replayed from its logged moves). Control: with another seed some
-//      troll move differs, so the check can fail.
+//      troll move differs, so the test can fail.
 //   3. With alpha-beta as the dwarfs, only the trolls' positions are recorded.
 //   4. Control: self-play records both sides' positions and no opponent.
 //   5. The actor's log line names the opponent and its side (which
@@ -37,8 +37,8 @@
 //   8. The depth per side (AlphaBetaDepth): "2,1" is 2 as the dwarfs, 1 as the
 //      trolls; one value is both.
 //
-//   thud/az/build.sh thud/az/alphabeta_training_check.cc
-//   build-shared/alphabeta_training_check
+//   thud/az/build.sh thud/az/alphabeta_training_test.cc
+//   build-shared/alphabeta_training_test
 
 #include <iostream>
 #include <memory>

@@ -29,14 +29,14 @@ the side to move has a capture (+1) or not (-1); the policy target is uniform ov
 capturing moves if there are any, else over all legal moves. Positions come from random
 games, train and test from different games.
 
-  python3 az_layout_check.py --variant as_is --seed 1
-  python3 az_layout_check.py --variant fixed --seed 1
+  python3 az_layout_probe.py --variant as_is --seed 1
+  python3 az_layout_probe.py --variant fixed --seed 1
 
 Prints one JSON line per evaluation. Needs pyspiel and OpenSpiel's JAX dependencies.
 
-  python3 az_layout_check.py --export DIR
+  python3 az_layout_probe.py --export DIR
 
-writes what az_layout_check.cc, the C++ counterpart, needs to train OpenSpiel's C++
+writes what az_layout_probe.cc, the C++ counterpart, needs to train OpenSpiel's C++
 model on exactly these positions and batches (seeds 1-3); see that file.
 """
 
@@ -183,9 +183,9 @@ def main():
   parser.add_argument("--batch_size", type=int, default=128)
   parser.add_argument("--nn_width", type=int, default=32)
   parser.add_argument("--nn_depth", type=int, default=2)
-  parser.add_argument("--cache", default="/tmp/az_layout_check_positions.pkl")
+  parser.add_argument("--cache", default="/tmp/az_layout_probe_positions.pkl")
   parser.add_argument("--export", metavar="DIR",
-                      help="instead of training, write the data for az_layout_check.cc")
+                      help="instead of training, write the data for az_layout_probe.cc")
   args = parser.parse_args()
 
   game = pyspiel.load_game("thud")

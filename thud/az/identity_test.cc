@@ -19,11 +19,11 @@
 //   1. network outputs: upstream's VPNetModel and ours, loaded from the same checkpoint,
 //      on every position — values and priors must be equal (ours computing the priors
 //      as upstream does, SetLegalPolicy(false); our default, the priors from the legal
-//      moves' logits alone, equal to rounding: thud/az/legal_policy_check.cc);
+//      moves' logits alone, equal to rounding: thud/az/legal_policy_test.cc);
 //   2. searches: upstream's MCTSBot and ours (PUCT, the trainer's settings) on every
 //      position, without root noise and with it — every root child's visits and total
 //      value must be equal. Ours runs with UntriedMoveValue::kUpstream: its default
-//      values untried moves differently (thud/az/mcts.h), which a control checks;
+//      values untried moves differently (thud/az/mcts.h), which a control verifies;
 //   3. checkpoints: a checkpoint saved by our copy, loaded by upstream's code, must give
 //      the same outputs;
 //   4. training: one learning step on the same batch must leave both networks with the
@@ -31,13 +31,13 @@
 //   5. the evaluation games' search: UCT with random rollouts and the solver, as the
 //      trainer's evaluators play MCTS, with equal seeds.
 //
-// And controls that must differ, so that the check cannot pass by comparing nothing: the
+// And controls that must differ, so that the test cannot pass by comparing nothing: the
 // search with another noise seed, the outputs of another network, the outputs before and
 // after the learning step, and the rollout search with another seed.
 //
-//   thud/az/build.sh thud/az/identity_check.cc \
+//   thud/az/build.sh thud/az/identity_test.cc \
 //     open_spiel/algorithms/alpha_zero_torch/{model,vpnet,vpevaluator}.cc
-//   OMP_NUM_THREADS=1 build-shared/identity_check RUN_DIR STEP OTHER_STEP [positions=50]
+//   OMP_NUM_THREADS=1 build-shared/identity_test RUN_DIR STEP OTHER_STEP [positions=50]
 //
 // RUN_DIR is a trainer run with checkpoints STEP and OTHER_STEP. Exits non-zero on any
 // difference in 1-5, or if a control shows none.
@@ -155,7 +155,7 @@ int main(int argc, char** argv) {
 
   // 3. A checkpoint saved by our copy, loaded by upstream's code.
   const std::string tmp = absl::StrCat(std::filesystem::temp_directory_path().string(),
-                                       "/identity_check_", getpid());
+                                       "/identity_test_", getpid());
   std::filesystem::create_directories(tmp);
   std::filesystem::copy_file(dir + "/vpnet.pb", tmp + "/vpnet.pb");
   ours::torch_az::VPNetModel our_saver(*game, tmp, "vpnet.pb", "/cpu:0");
@@ -275,6 +275,6 @@ int main(int argc, char** argv) {
     Expect(differ > 0, absl::StrFormat("control: another rollout seed changes %d of %d",
                                        differ, count));
   }
-  std::cout << (failures ? "IDENTITY CHECK FAILED" : "identity check passed") << std::endl;
+  std::cout << (failures ? "IDENTITY TEST FAILED" : "identity test passed") << std::endl;
   return failures ? 1 : 0;
 }

@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Checks az_match's teacher_mix_a, TeacherMixEvaluator (thud/experiments/teacher_mix.h;
-// thud/DESIGN_dwarf_signal.md, check Q2): network A's prior at a player's nodes mixed with
+// Tests az_match's teacher_mix_a, TeacherMixEvaluator (thud/experiments/teacher_mix.h;
+// thud/DESIGN_dwarf_signal.md, measurement 2): network A's prior at a player's nodes mixed with
 // kickstarting's teacher, (1 - w) x the network's + w x TeacherPolicy — with a stand-in
 // network (an uneven prior, fixed values), so that no model is needed. At a dwarf and a
 // troll position of a random game, each with a capture to make (so the teacher is far
@@ -28,7 +28,7 @@
 //   Control: at both nodes the teacher differs from the network's prior by more than 0.05
 //   in some move, so 1 and 2 can tell a mixed prior from an unmixed one.
 //
-//   build-checks/bin/teacher_mix_check
+//   build-tests/bin/teacher_mix_test
 
 #include <cmath>
 #include <iostream>

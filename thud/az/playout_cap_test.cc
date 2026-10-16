@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Checks playout cap randomisation in our copy of the trainer (thud/az/alpha_zero.h:
+// Tests playout cap randomisation in our copy of the trainer (thud/az/alpha_zero.h:
 // playout_cap_full_share, playout_cap_fast_simulations, FastBots; KataGo, arXiv
 // 1902.10565, section 3.1), with games played by PlayGame as the actors play them and a
 // stand-in network (a uniform prior, every value 0):
@@ -29,7 +29,7 @@
 //   3. FastBots: none when the cap is off; when on, two bots that search 4 simulations
 //      and add no root noise (the same position searched twice gives the same visits).
 //
-//   build-checks/bin/playout_cap_check
+//   build-tests/bin/playout_cap_test
 
 #include <cmath>
 #include <iostream>

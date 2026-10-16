@@ -12,20 +12,20 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// The C++ counterpart of az_layout_check.py: does OpenSpiel's C++ AlphaZero model
+// The C++ counterpart of az_layout_probe.py: does OpenSpiel's C++ AlphaZero model
 // (LibTorch, planes first) learn Thud's board as well as the Python model does once its
 // input is transposed to planes last, and better than the Python model as it is?
 //
 // It trains upstream's VPNetModel, unmodified, on the Python runs' supervised task, with
-// their data and settings: az_layout_check.py --export writes the random games, the
+// their data and settings: az_layout_probe.py --export writes the random games, the
 // checksums of the positions taken from them, and each seed's batches. This program
 // replays the games with Thud's C++ code, stops unless its positions reproduce the
 // checksums, and then trains on the same batches in the same order: resnet 32 x 2,
 // learning rate 1e-3, weight decay 1e-4, evaluated on the same per-side measures.
 //
-//   thud/experiments/build_az_program.sh az_layout_check   # next to libopen_spiel.so
-//   python3 thud/experiments/az_layout_check.py --export DATA
-//   OMP_NUM_THREADS=3 build-shared/az_layout_check DATA SEED
+//   thud/experiments/build_az_program.sh az_layout_probe   # next to libopen_spiel.so
+//   python3 thud/experiments/az_layout_probe.py --export DATA
+//   OMP_NUM_THREADS=3 build-shared/az_layout_probe DATA SEED
 //
 // Prints one JSON line per evaluation, as the Python script does.
 
@@ -58,7 +58,7 @@ namespace {
 using open_spiel::Action;
 using open_spiel::algorithms::torch_az::VPNetModel;
 
-constexpr int kEvery = 7;  // As az_layout_check.py samples.
+constexpr int kEvery = 7;  // As az_layout_probe.py samples.
 constexpr int kPlanes = 6;
 constexpr int kTrollsToMovePlane = 3;
 constexpr int kNnWidth = 32;
@@ -103,7 +103,7 @@ std::vector<Position> Replay(const open_spiel::Game& game, const std::string& pa
   return positions;
 }
 
-// Stops unless the positions reproduce checksums() of az_layout_check.py, as exported:
+// Stops unless the positions reproduce checksums() of az_layout_probe.py, as exported:
 // the counts and sums of actions exactly, the plane sums (two planes hold fractions,
 // summed in another order) to within 0.01.
 void CheckAgainstExport(const std::vector<Position>& positions,
@@ -217,7 +217,7 @@ int main(int argc, char** argv) {
   CheckAgainstExport(test, summary.at("test").GetObject(), "test");
   const int batch_size = summary.at("batch_size").GetInt();
 
-  // The batches az_layout_check.py draws for this seed, in order.
+  // The batches az_layout_probe.py draws for this seed, in order.
   std::ifstream batches_file(absl::StrCat(data, "/batches_seed", seed, ".bin"),
                              std::ios::binary);
   if (!batches_file) open_spiel::SpielFatalError("No batches for this seed");

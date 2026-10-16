@@ -13,7 +13,7 @@
 // limitations under the License.
 
 // Has a network forgotten what it learned earlier in its run? (thud/PLAN.md Phase 6,
-// Step 2's quick check.) A trainer run keeps every self-play position in its archive
+// Step 2's quick measurement.) A trainer run keeps every self-play position in its archive
 // (archive/replay_buffer_stepN.data: the replay buffer after step N, the positions of
 // steps N-2 to N). From each archive this takes the same random sample of positions and
 // measures, for each network, per side to move, how well it predicts what was recorded

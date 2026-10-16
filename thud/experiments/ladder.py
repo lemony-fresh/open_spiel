@@ -27,7 +27,7 @@ per-side diagnostics.
 A player is a network as it searched: the same network with another rule for untried
 moves is another player; "as trained" is each run's own rule (upstream's for run A's
 family, sibling_mean_minus_reduction since run C). Standard errors come from the
-residual variance. The fit check compares each match's mean pair margin with the
+residual variance. The goodness of fit compares each match's mean pair margin with the
 difference of the two ratings — large misfits mean the margins do not add up
 (non-transitive results, or a ceiling: margins against a weak anchor saturate, which
 is why each network should play the anchors nearest its strength).
@@ -242,7 +242,7 @@ def main():
     a, b = options["--compare"].split(",")
     d, se = f.difference(a, b)
     print(f"\n{a} - {b}: {d:+.1f} (95% interval {d - 1.96 * se:+.1f} to {d + 1.96 * se:+.1f})")
-  print(f"\nFit check, the {misfits} largest misfits (observed mean pair margin against "
+  print(f"\nGoodness of fit, the {misfits} largest misfits (observed mean pair margin against "
         f"the ratings' difference):")
   checks = []
   for m in matches:

@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Checks az_match end to end (thud/experiments/az_match.cc; thud/PLAN.md, the GPU readiness
+# Tests az_match end to end (thud/experiments/az_match.cc; thud/PLAN.md, the GPU readiness
 # checklist), on two small untrained networks (make_test_network: the convolutional head
 # with the input planes, width 8, depth 1, a peaked prior), 2 pairs at 8 simulations:
 #
@@ -28,19 +28,19 @@
 #   4. devices=/cpu:0,/cpu:0 (two copies of each network) plays the default's battles;
 #      the control that the option was taken: the summary records the two copies.
 #   5. The teacher in A's prior (teacher_mix_a=0,0.5): reproducible, and (the control)
-#      different from the match without it. Its arithmetic: teacher_mix_check.
+#      different from the match without it. Its arithmetic: teacher_mix_test.
 #   6. Players without a network, as documented, the same battles whichever thread:
 #      b=alphabeta:1 and b=mcts:20 with 1 and 2 threads; b=hexparrot:1 too if hexparrot
 #      is set up (thud/experiments/perft_reference.py) — skipped, and said so, if not.
 #
-#   thud/experiments/az_match_check.sh [BIN_DIR]    # default build-checks/bin
+#   thud/experiments/az_match_test.sh [BIN_DIR]    # default build-tests/bin
 #
 # Exits non-zero on any failure.
 
 set -uo pipefail
 repo=$(cd "$(dirname "$0")/../.." && pwd)
-bin=${1:-$repo/build-checks/bin}
-tmp=$(mktemp -d "${TMPDIR:-/tmp}/az_match_check.XXXXXX")
+bin=${1:-$repo/build-tests/bin}
+tmp=$(mktemp -d "${TMPDIR:-/tmp}/az_match_test.XXXXXX")
 trap 'rm -rf "$tmp"' EXIT
 failures=0
 

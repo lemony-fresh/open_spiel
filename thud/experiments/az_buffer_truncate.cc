@@ -30,7 +30,7 @@
 //       mirror reads the trainer's format exactly)
 //   build-shared/az_buffer_truncate keep IN OUT K
 //
-// Built like replay_buffer_check (thud/az/replay_buffer_check.cc), without LibTorch:
+// Built like replay_buffer_test (thud/az/replay_buffer_test.cc), without LibTorch:
 //   clang++ -std=gnu++20 -O2 -I. -Iopen_spiel -Iopen_spiel/abseil-cpp \
 //     -Iopen_spiel/json/include -Iopen_spiel/libnop/libnop/include -DOPEN_SPIEL_BUILD_WITH_LIBNOP \
 //     thud/experiments/az_buffer_truncate.cc -Lbuild-shared -lopen_spiel \
@@ -45,7 +45,7 @@
 #include <vector>
 
 #include "nop/structure.h"
-// libnop's -Wmissing-template-arg-list-after-template-kw, as in replay_buffer_check.cc.
+// libnop's -Wmissing-template-arg-list-after-template-kw, as in replay_buffer_test.cc.
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wmissing-template-arg-list-after-template-kw"
 #include "open_spiel/utils/serializable_circular_buffer.h"

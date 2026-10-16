@@ -29,7 +29,7 @@
 // network by the held-out policy loss, stopping after `patience` reports without a
 // better one or at `max_batches`.
 //
-// Checks, printed and fatal if they fail: before training the new network's values
+// Tests, printed and fatal if they fail: before training the new network's values
 // equal the source's on held-out positions (the copy); after it, with freeze=copied,
 // again (the freeze, batch norms included). Reported for comparison: the source's own
 // held-out policy loss (its linear head on the same positions).
@@ -41,14 +41,14 @@
 // the new network with the 50 input planes from the rules (thud/az/thud_features.h)
 // besides the observation; copy=all copies the policy head too; the first convolution,
 // wider now, gets the source's channels and zeros for the new ones (CopyParametersFrom's
-// widen_inputs). The check then requires the values and the policies to equal the
-// source's exactly. With max_batches=0 nothing is trained (no buffer needed: the check
+// widen_inputs). The test then requires the values and the policies to equal the
+// source's exactly. With max_batches=0 nothing is trained (no buffer needed: the test
 // uses positions of random games) and the network is saved with a fresh optimizer at
 // `learning_rate`. When the new network takes the input planes and is trained, each
 // report adds how its new input weights grow: their size per plane (the median and the
 // largest over the planes), their spread across the filters, and how much the outputs
 // move when they are zeroed (the planes' effect: half the policies' L1 distance, and
-// the values' mean absolute difference, on the check positions).
+// the values' mean absolute difference, on the test positions).
 //
 //   thud/az/build.sh thud/az/az_restructure.cc
 //   OMP_NUM_THREADS=8 build-shared/az_restructure from=RUN_DIR:STEP to=NEW_DIR \
@@ -120,7 +120,7 @@ std::pair<double, double> Differences(VPNetModel& a, VPNetModel& b,
   return {value, policy};
 }
 
-// Positions of random games, for the checks when there is no buffer.
+// Positions of random games, for the tests when there is no buffer.
 std::vector<VPNetModel::TrainInputs> RandomPositions(const open_spiel::Game& game,
                                                      std::mt19937* rng, int count) {
   std::vector<VPNetModel::TrainInputs> out;
@@ -264,11 +264,11 @@ int main(int argc, char** argv) {
     std::cerr << absl::StrFormat("froze %d parameters\n", model.Freeze(include).size());
   }
 
-  if (max_batches == 0) {  // Net surgery alone: check and save.
+  if (max_batches == 0) {  // Net surgery alone: test and save.
     const auto check = RandomPositions(*game, &rng, 200);
     const auto [value, policy] = Differences(model, source, check);
     std::cerr << absl::StrFormat(
-        "check: on %d positions of random games the values differ from the source's by %g "
+        "test: on %d positions of random games the values differ from the source's by %g "
         "at most, the policies by %g%s\n",
         check.size(), value, policy, copy_all ? " (copy=all: both must be 0)" : "");
     if (value > 0 || (copy_all && policy > 0)) {
@@ -301,10 +301,10 @@ int main(int argc, char** argv) {
   const std::vector<VPNetModel::TrainInputs> check(
       held_out.begin(), held_out.begin() + std::min<size_t>(1024, held_out.size()));
 
-  // The copy's check: the same values as the source (and policies, with copy=all).
+  // The copy's test: the same values as the source (and policies, with copy=all).
   const auto [copy_value, copy_policy] = Differences(model, source, check);
   std::cerr << absl::StrFormat(
-      "check: values differ from the source's by %g at most, policies by %g\n", copy_value,
+      "test: values differ from the source's by %g at most, policies by %g\n", copy_value,
       copy_policy);
   if (copy_value > 1e-5 || (copy_all && copy_policy > 1e-5)) {
     open_spiel::SpielFatalError("The copy changed the network's outputs");
@@ -357,12 +357,12 @@ int main(int argc, char** argv) {
     }
   }
 
-  // The best network, and the freeze's check.
+  // The best network, and the freeze's test.
   VPNetModel saved(*game, to, "vpnet.pb", device);
   saved.LoadCheckpoint(step);
   const double freeze_difference = Differences(saved, source, check).first;
   std::cerr << absl::StrFormat(
-      "check: the saved network's values differ from the source's by %g at most%s\n",
+      "test: the saved network's values differ from the source's by %g at most%s\n",
       freeze_difference, freeze ? " (frozen: must be ~0)" : "");
   if (freeze && freeze_difference > 1e-5) {
     open_spiel::SpielFatalError("The frozen trunk or value head changed");

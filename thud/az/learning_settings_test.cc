@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Checks the learner's settings added for the GPU phase (thud/PLAN.md, the GPU readiness
+// Tests the learner's settings added for the GPU phase (thud/PLAN.md, the GPU readiness
 // checklist), on a small network built here (width 8, depth 1, no weight decay, so that a
 // parameter without a gradient stays exactly as it is):
 //
@@ -40,7 +40,7 @@
 //      no ".tmp" file, and what they wrote loads (the network's outputs, the buffer's
 //      contents equal).
 //
-//   build-checks/bin/learning_settings_check
+//   build-tests/bin/learning_settings_test
 
 #include <cmath>
 #include <filesystem>
@@ -142,7 +142,7 @@ int main() {
   torch::manual_seed(3);
   const std::string dir =
       (std::filesystem::temp_directory_path() /
-       ("learning_settings_check_" + std::to_string(getpid())))
+       ("learning_settings_test_" + std::to_string(getpid())))
           .string();
   std::filesystem::remove_all(dir);
   std::filesystem::create_directories(dir);

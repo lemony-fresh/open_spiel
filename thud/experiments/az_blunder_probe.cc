@@ -32,7 +32,7 @@
 //      return); as a control, its response to removing the troll the dwarf threatened
 //      from the position after the blunder (a hurl's worth, 4/32), which a working
 //      value head must register.
-//   4. the search's own comparison (2026-10-13; thud/DESIGN_dwarf_signal.md, check Q1):
+//   4. the search's own comparison (2026-10-13; thud/DESIGN_dwarf_signal.md, measurement 1):
 //      the blunder against the best safe move — the non-capturing move other than the
 //      blunder that kickstarting's teacher (AlphaBetaPlayer::Scores at depth 2) scores
 //      best, the network's prior breaking ties (`teacher_gap`: its score minus the
@@ -43,8 +43,8 @@
 //      network's prior breaking ties). A value that weighed a dwarf at its worth would
 //      put the safe move's line about 1/32 above the blunder's after the reply.
 //
-//   thud/az/build.sh thud/experiments/az_blunder_check.cc
-//   OMP_NUM_THREADS=4 build-shared/az_blunder_check a=RUN_DIR:STEP \
+//   thud/az/build.sh thud/experiments/az_blunder_probe.cc
+//   OMP_NUM_THREADS=4 build-shared/az_blunder_probe a=RUN_DIR:STEP \
 //     games=~/thud-runs/outside_2026-10-07/NAME_games.jsonl [untried=... \
 //     temperature=1.5,1 sims=100 deep_sims=800 max=150]
 //
@@ -179,7 +179,7 @@ int main(int argc, char** argv) {
   const int sims = std::stoi(get("sims", "100")), deep_sims = std::stoi(get("deep_sims", "800"));
   const int max_positions = std::stoi(get("max", "150"));
   if (spec.empty() || games_path.empty()) {
-    std::cerr << "Usage: az_blunder_check a=DIR:STEP games=PATH [...]" << std::endl;
+    std::cerr << "Usage: az_blunder_probe a=DIR:STEP games=PATH [...]" << std::endl;
     return 1;
   }
   std::shared_ptr<const open_spiel::Game> game = open_spiel::LoadGame("thud");

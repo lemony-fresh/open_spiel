@@ -20,7 +20,7 @@
 # (model.cc, vpnet.cc, vpevaluator.cc, unmodified) alongside, since that library leaves
 # them out. The compiler flags are those CMake uses for them in build-torch/.
 #
-#   thud/experiments/build_az_program.sh az_layout_check    # or az_throughput
+#   thud/experiments/build_az_program.sh az_layout_probe    # or az_throughput
 #
 # Needs build-shared/libopen_spiel.so, from the repo root:
 #

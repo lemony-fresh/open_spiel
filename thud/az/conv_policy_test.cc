@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Checks the convolutional policy head of our copy of OpenSpiel's C++ AlphaZero
+// Tests the convolutional policy head of our copy of OpenSpiel's C++ AlphaZero
 // (nn_model "resnet_conv_policy", thud/az/model.h; thud/PLAN.md Phase 6):
 //
 //   1. Layout: on random inputs and weights, each action's logit is the entry of its
@@ -29,8 +29,8 @@
 //   5. Checkpoints: a reloaded checkpoint gives the saved network's outputs. Control:
 //      a fresh network's differ.
 //
-//   thud/az/build.sh thud/az/conv_policy_check.cc
-//   OMP_NUM_THREADS=4 build-shared/conv_policy_check
+//   thud/az/build.sh thud/az/conv_policy_test.cc
+//   OMP_NUM_THREADS=4 build-shared/conv_policy_test
 //
 // Exits non-zero on any failure. Writes its networks to a temporary folder (TMPDIR)
 // and removes it.
@@ -305,7 +305,7 @@ void CheckCheckpoint(const Game& game, const std::string& dir) {
 
 int main(int argc, char** argv) {
   std::string pattern =
-      (std::filesystem::temp_directory_path() / "conv_policy_check_XXXXXX")
+      (std::filesystem::temp_directory_path() / "conv_policy_test_XXXXXX")
           .string();
   if (mkdtemp(pattern.data()) == nullptr) {
     std::cerr << "Cannot create a temporary folder." << std::endl;
@@ -322,8 +322,8 @@ int main(int argc, char** argv) {
   CheckLearning(*game, dir, "resnet_conv_policy", /*steps=*/150);
   CheckCheckpoint(*game, dir);
   std::filesystem::remove_all(dir);
-  std::cout << (failures ? "CONV POLICY CHECK FAILED"
-                         : "conv policy check passed")
+  std::cout << (failures ? "CONV POLICY TEST FAILED"
+                         : "conv policy test passed")
             << std::endl;
   return failures ? 1 : 0;
 }

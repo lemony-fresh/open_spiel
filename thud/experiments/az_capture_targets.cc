@@ -13,7 +13,7 @@
 // limitations under the License.
 
 // Do the trolls' training targets ask for captures that their prior does not learn?
-// (thud/PLAN.md, input features from the rules: the check that decides between input
+// (thud/PLAN.md, input features from the rules: the measurement that decides between input
 // features and kickstarting.)
 //
 // Takes self-play positions from a run's actor logs (games against alpha-beta left

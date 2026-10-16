@@ -23,7 +23,7 @@ untried moves at their visited siblings' mean minus a reduction (now our default
 dwarfs' searches narrow, stopped run A's collapse and made the dwarf play far stronger
 (run C, 2026-09-28) — through step 16; continued to step 29 and evaluated as trained, no
 collapse but a drift: it beats step 16, loses to A step 14, and its dwarfs' move
-probabilities narrowed (forgetting, by the quick check; Step 2 tests a longer memory).
+probabilities narrowed (forgetting, by the quick measurement; Step 2 tests a longer memory).
 **Step 2 is done** (2026-09-30): run D, run C branched at step 15 with a 4x memory, keeps
 its dwarfs' move probabilities from narrowing and beats C29 (+7.3) and C16 (+8.4), but
 still loses to A14 (−5.4) and its dwarfs still slip against the anchor — forgetting
@@ -44,13 +44,13 @@ playout caps on the GPU (`PLAN.md`). The 2,000-simulation reference is stable en
 switch, off by default, tested with controls; committed 2026-10-02 in three commits): the
 **convolutional policy head** (stage 5, `--nn_model=resnet_conv_policy`, 420,988 weights
 at 64 x 4 against 9,244,626), **symmetry augmentation** (5b, `--symmetry_augmentation`;
-the board has **8** symmetries, not 16) and the trainer's **overfitting check** (new
+the board has **8** symmetries, not 16) and the trainer's **overfitting measure** (new
 against trained positions' loss before each learning step). **Run E's evaluation**
 (00:45-03:27, `PLAN.md`, *First training runs*): **E44 beats D29 by +9.7** (33 of 40
 pairs) and the anchor by +37.7, the best yet; its dwarfs recovered against the anchor
 (+8.7, D29 +3.2, p = 0.03); no forgetting of the dwarfs' moves; **it still loses to A14,
 −3.5** (−5.7 to −1.3; D29 −5.4), what is left of A14's edge being on the dwarf side.
-**The head check** (04:02-05:16, `PLAN.md`, *Changes to the search and trainer*): the
+**The head probe** (04:02-05:16, `PLAN.md`, *Changes to the search and trainer*): the
 **new head learns the dwarfs' hurls on held-out positions — 98.8-99.4% of their policy
 mass against the linear head's 75-78%** (which reproduces the layout control exactly) —
 without overfitting (the linear head: 94-96% on its training positions), and is 3x
@@ -81,7 +81,7 @@ every run; stage 5c (instrumentation); run G' continued from step 16 — **it pa
 (below: G' beats C29, D29 and E44 at equal steps, and A14). A buffer grown from a small
 start (KataGo's formula with c = 65,536) remains a candidate for the dwarfs' stalled
 policy rather than for strength.
-**The E44 check** (2026-10-03): the convolutional head's trolls are much better (against
+**The E44 measurement** (2026-10-03): the convolutional head's trolls are much better (against
 E44's dwarfs +9.8, C16's −8.6), its dwarfs much worse — a hybrid head (convolutional for
 the trolls) was a candidate, **superseded 2026-10-15** (the user): since runs L and M the
 convolutional head serves both sides, the dwarfs included.
@@ -193,7 +193,7 @@ so the result taught only hurling; J83 against I83 −10.20 (−14.48 to −5.92
 the better branch; the dwarfs need a short-horizon signal (`PLAN.md`, training against
 alpha-beta). **The blunder diagnosis** (2026-10-08): the blunders come from the priors,
 above all the trolls' prior on the capture inside the dwarfs' search (median
-0.006-0.008), not from the value head; **the capture check**: the prior follows the
+0.006-0.008), not from the value head; **the capture measurement**: the prior follows the
 targets, which ask for captures too weakly — **kickstarting first**, the input features
 from the rules (the user's proposal; 20 planes built on 2026-10-08, replaced on
 2026-10-11 by the 50 planes run M now tests) as their own experiment later. **Kickstarting is built and checked** (`--kickstart_weight`,
@@ -227,20 +227,20 @@ games; the input planes' case); and convK83 beats K83 by +16.8 a pair (+14.1 to 
 L102 −21.4 (K102 −37.1), alpha-beta depth 1 +19.3 (+12.4); ladder L100 +95.3, K100
 +64.7. **Run M ties run L** (M102 against L102 +0.65 a pair, −1.63 to +2.93): **M is the
 main line, M102 the top anchor** (the user, 2026-10-12; M102 beat K83 by +11.97 a pair,
-38 of 40). The standing checks on M102 (`PLAN.md`): the planes help 3-square hurls, 4+
+38 of 40). The standing measurements on M102 (`PLAN.md`): the planes help 3-square hurls, 4+
 still missed; blunders 25% of the dwarfs' moves; destination risk avoided well at 2-9
 squares, less at 12-14. **The dwarfs' training signal** (`thud/DESIGN_dwarf_signal.md`,
-final 2026-10-13 after its checks and three reviews): losing every dwarf (every self-play
+final 2026-10-13 after its measurements and three reviews): losing every dwarf (every self-play
 game since run K's step ~77; and self-play's blunders rising within every run) is not
 forced by the game but how our network plays the dwarfs — alpha-beta at depth 2 as the
-dwarfs keeps dwarfs alive against M102's trolls in 20 of 20 battles. **The checks**
+dwarfs keeps dwarfs alive against M102's trolls in 20 of 20 battles. **The measurements**
 (night of 2026-10-13, matches only): the value counts a dwarf with the trolls to move but
-hardly with the dwarfs to move, a gap that came with the games against alpha-beta (check
+hardly with the dwarfs to move, a gap that came with the games against alpha-beta (measurement
 4; H83 the clean control); the teacher in M102's dwarf prior at play time gains the
 dwarfs +15.9 points a battle against L102 at a mix of 0.7 (+12.8 against K83), our trolls
-unchanged — but by stalls, in matches without noise (check 2); the dwarfs' own noise
+unchanged — but by stalls, in matches without noise (measurement 2); the dwarfs' own noise
 costs them ~1.8 points and 6 dwarfs by ply 60, and either side's noise breaks stalls
-(check 3); against K83's trolls dwarfs survive only by killing every troll (check 5).
+(measurement 3); against K83's trolls dwarfs survive only by killing every troll (measurement 5).
 **Decided** (the user, 2026-10-13): test runs from M102 — a control and D1 (the dwarfs'
 kickstarting weight 0.7); its taper slow and gated; regression gates in the promotion
 rule (`PLAN.md`). **Built**: `--player_kickstart_weight` (D1) and the root noise per
@@ -249,7 +249,7 @@ player (C3), both checked, in `az_trainer_d1`; the run folders
 state; the runner `~/thud-runs/night8_2026-10-13.py control|d1`.
 D1's weight capped at 0.7 (the user); the win rule settled (the user, 2026-10-14: the
 design's §7, the head-to-head one-sided at 2.5%, before any evaluation result).
-**Check 2b** (18:22-20:12): under the trainer's noise the teacher-guided dwarfs keep
+**Measurement 2b** (18:22-20:12): under the trainer's noise the teacher-guided dwarfs keep
 no dwarf (0 of 40); with the dwarfs' roots noise-free, 28 of 40 battles keep dwarfs — so
 run N is **D1 together with C3** (its config set; the user may still veto). **Both test runs are done** (2026-10-14): the control (M continued) at 05:29, flat (every
 dwarf gone in 99-100% of self-play games, ~92 plies, margin ~−25.3); **run N (D1 + C3)**
@@ -263,7 +263,7 @@ the rule** — N121 against C121 +5.50 a pair (+1.91 to +9.09), 30 of 40; the dw
 against hexparrot −10.2 against the control's −19.6 (M102 −23.4), against alpha-beta 1
 −9.5 against −13.2; the trolls against alpha-beta 2's dwarfs +15.9 against +14.8;
 blunders against hexparrot 9.8% (control 21.6%, M102 25.4%); N121 against M102 +12.62
-(+9.83 to +15.42), the control +7.20. The value's side-to-move gap has not closed (check
+(+9.83 to +15.42), the control +7.20. The value's side-to-move gap has not closed (measurement
 4 on N121 as on C121 and M102): the gain is the policy's so far. **Run N2**, the replication — a rerun of run N only (the user), from M102's state with run
 N's config (`runN2_M102_d1`), 2026-10-15 01:56-10:13 — **meets the rule too: the gain
 replicates** (evaluation 10:16-12:33, `~/thud-runs/eval_2026-10-15/`): N2121 against C121
@@ -273,16 +273,21 @@ dwarfs −0.6 ± 1.3 (within 2 standard errors); blunders 13.1% (N121 9.8%). **N
 N121 +0.95 (−2.04 to +3.94)**, every per-side difference within 1 standard error: two
 runs of one recipe differ far less than the recipe's effect. Adopting D1 + C3 is the
 user's decision (the design's §8, step 3's second branch: the value's gap stays).
-**Tests** (2026-10-15, the user): every feature has a check, all run by
-`thud/run_checks.sh` (quick ~20 s, `--full` 28 checks ~4 min, built without `-DNDEBUG`),
+**Tests** (2026-10-15, the user): every feature has a test, all run by
+`thud/run_tests.sh` (quick ~20 s, `--full` 30 tests ~4 min, built without `-DNDEBUG`),
 and git hooks run them — pre-commit the quick ones for commits that change code, pre-push
-all of them (`PLAN.md`, *Tests*: each check, its control, every gap); committed and pushed
+all of them (`PLAN.md`, *Tests*: each test, its control, every gap); committed and pushed
 (`d75336f1`). **The GPU checklist's features** (the same afternoon, beside the run): a
 learning-rate schedule, a value-loss weight, playout caps, crash-safe saving with a
 watchdog, transfer and setup scripts, the throughput sweep, the legal policy (on by
-default), the regression gates — each with its check (28 in all); still missing: the
-gated tapers, the Net2Net live test (after the run), the setup script's dry run. **Running since 2026-10-15 14:30:** **the longer D1 + C3 run** (the user, 2026-10-15: the longer run first, 40 steps): run N continued from N121, steps 122-161, in `~/thud-runs/runN_d1_cont` (a copy of run N's state, so N121's own buffer stays for a later test run), by `~/thud-runs/night11_2026-10-15.py`: four segments of 10 steps, after each check 4 on the segment's own games (the newest network and N121 on the same positions) and the share of self-play games keeping dwarfs (run N's last 10 steps: 2.2% of 693, the dwarfs' margin −23.4); ~24 minutes a step,
-done ~07:00-08:00 on 2026-10-16. Progress in `stage1_matches/progress.log`.
+default), the regression gates — each with its test (30 in all); still missing: the
+gated tapers, the Net2Net live test (after the run), the setup script's dry run. **Running since 2026-10-15 14:30:** **the longer D1 + C3 run** (the user, 2026-10-15: the longer run first, 40 steps): run N continued from N121, steps 122-161, in `~/thud-runs/runN_d1_cont` (a copy of run N's state, so N121's own buffer stays for a later test run), by `~/thud-runs/night11_2026-10-15.py`: four segments of 10 steps, after each measurement 4 on the segment's own games (the newest network and N121 on the same positions) and the share of self-play games keeping dwarfs (run N's last 10 steps: 2.2% of 693, the dwarfs' margin −23.4); ~24 minutes a step,
+done ~07:00-08:00 on 2026-10-16 (slower while work runs beside it). Progress in
+`stage1_matches/progress.log`. **The first segment** (to step 131): 12.7% of 472
+self-play games kept dwarfs (2.2% before), the dwarfs' margin −20.4; measurement 4: a far
+dwarf with the dwarfs to move worth 65% of its worth with the trolls to move in
+self-play positions (N121 46%), 18% in the games against alpha-beta's trolls (10%) —
+both rising, below the taper's 80% (the design's §10).
 **Done** (2026-10-07 16:28 to 2026-10-08 05:34): the night of matches against players
 without a network, run I and its evaluation (`~/thud-runs/night2_2026-10-07.py`).
 Deferred: MCTS-10,000 and -100,000, alpha-beta depth 4 (informative once our networks
@@ -331,25 +336,25 @@ CLA check passed — waiting for upstream's CI and the maintainers' review (`PLA
   changing is never just edited to pass — record it, and review each such change with the
   user. None was needed in session 5.
 - **After changing any test, run `thud/experiments/crosscheck_tests.py`**: it checks every
-  hand-written move expectation (110 checks) and every test diagram against hexparrot's
+  hand-written move expectation (110 assertions) and every test diagram against hexparrot's
   engine and the reading rules. Four scripts in `thud/experiments/` (`perft_reference.py`,
   `crosscheck_tests.py`, `move_kinds_sim.py`, `limits_sim.py`) run hexparrot/thudgame;
-  `random_endings.py` and `mcts_games.py` need only pyspiel; `az_layout_check.py` and
-  `az_speed.py` need pyspiel and the JAX set. The C++ programs — `az_layout_check.cc`
+  `random_endings.py` and `mcts_games.py` need only pyspiel; `az_layout_probe.py` and
+  `az_speed.py` need pyspiel and the JAX set. The C++ programs — `az_layout_probe.cc`
   (the layout control), `az_throughput.cc` (with `az_throughput.sh`), `az_reuse.cc` and
   `az_buffer_stats.cc` (search breadth from a saved replay buffer) — are built by
   `build_az_program.sh PROGRAM` against `build-shared/libopen_spiel.so`; `az_match.cc`
   (head-to-head matches, searching with our copy; `sims_a`/`sims_b` for uneven matches),
-  `az_head_check.cc` (the layout check on our copy, for the policy head and
+  `az_head_probe.cc` (the layout probe on our copy, for the policy head and
   augmentation) and `az_reference_pilot.cc` (searches of several references on the same
-  positions; `az_reference_pilot.py` compares them) and `az_noise_check.cc` (how much
+  positions; `az_reference_pilot.py` compares them) and `az_noise_probe.cc` (how much
   root noise decides a self-play search) and `az_search_cost.cc` (the CPU study: what
   the search and the batching evaluator cost a simulation) by `thud/az/build.sh`;
   `az_sims_gain.py` analyses an uneven match against its baseline, `ladder.py` fits
   the ladder's ratings to every match, `watch_run.py` is the evaluation watcher,
   `analyse_games.py` the game analyser, and `load_toggle.py` with `load_test_analysis.py`
-  the load test (does a job beside the trainer slow it?); `thud/az/replay_buffer_check.cc`
-  checks the trainer's replay buffer against upstream's; `az_thud.flags` holds our trainer defaults. Training
+  the load test (does a job beside the trainer slow it?); `thud/az/replay_buffer_test.cc`
+  tests the trainer's replay buffer against upstream's; `az_thud.flags` holds our trainer defaults. Training
   runs, their scripts and match results live outside the repo in `~/thud-runs/`.
   hexparrot runs from a clone
   outside the repo, by default
@@ -371,7 +376,7 @@ Phase 6, *Phase 6 roadmap and decision log*** — read it before choosing what t
    against C step 16 +1.1 (even); against A step 14 −11.5 (95 of 100 pairs lost; as
    dwarfs −20.0, step 16 −2.4); against the anchor +21.2 (step 16 +46.4; as dwarfs −4.5,
    step 16 +21.6). But under upstream's rule neither C network plays the dwarfs as
-   trained (`untried_move_check`: their searches spread over 99 and 76 moves, so the
+   trained (`untried_move_test`: their searches spread over 99 and 76 moves, so the
    move is picked by one evaluation each). Details: `PLAN.md`, *First training runs*.
 2. **Verify the untried-move rule and solve the dwarf collapse** (user, 2026-09-29).
    **Step 1 is done** (every network as trained, `~/thud-runs/step1_as_trained.sh`,
@@ -385,7 +390,7 @@ Phase 6, *Phase 6 roadmap and decision log*** — read it before choosing what t
    evaluation per move (+21.6 against the anchor at step 16) than with their policy's
    focused one (+9.5) — their move probabilities look like the weak point.
    **Step 2 is done** (2026-09-30; results in `PLAN.md`, *First training runs*). The quick
-   forgetting check (`thud/experiments/az_forgetting.cc`) had found C's dwarfs' move
+   forgetting measurement (`thud/experiments/az_forgetting.cc`) had found C's dwarfs' move
    probabilities drifting, so run D branched C at step 15 with option C (a buffer of
    262,144 pre-filled from C's archives by `az_merge_buffers`, C's cadence, C's 64
    batches per step with the new `learner_batches`), to step 29 (`~/thud-runs/
@@ -435,7 +440,7 @@ that searcher, so read its evaluation per side.
 builds natively on ARM64: clang 21.1.8, cmake 4.2.3, Python 3.14.4 venv; `make -j10` takes
 4m41s with 0 warnings; `ctest -j10` passes 285 of 285 in about 2 minutes;
 `./examples/example --game=tic_tac_toe` runs. The `manylinux` wheel fallback was not
-needed. `build/` is OpenSpiel's default "Testing" build (`-O2`, all checks on); speed
+needed. `build/` is OpenSpiel's default "Testing" build (`-O2`, all assertions on); speed
 measurements use a Release build in `build-release/` (`BUILD_TYPE=Release`, only
 `benchmark_game` and `mcts_example` built — commands in the session-5 log), and the C++
 AlphaZero a Release build with LibTorch in `build-torch/` (commands in `CLAUDE.md`). The
@@ -461,7 +466,7 @@ their Python tests**, and the 285 will grow.
 log and in `PLAN.md` Phase 3):**
 
 7. **Tests first, then a review of them, then a review of the design, then code.** The tests
-   include whole-position checks: the opening's complete legal set, perft against
+   include whole-position tests: the opening's complete legal set, perft against
    hexparrot, the board's 8 symmetries, and invariants in every position of random games.
 8. **Position text kept**; reading rejects malformed text and impossible positions, and
    `PositionFromText()` reports that by returning nullopt, as chess's `BoardFromFEN` does.
@@ -3167,6 +3172,28 @@ instrumentation, and the pattern agreed for later, are in `PLAN.md` Phase 5).
   Meanwhile run N continued: steps 124-126 kept dwarfs in 8-12% of self-play games
   (2.2% over run N's last 10 steps).
 
+- **2026-10-15, ~18:30-20:30: one word per concept; two more tests; the push.** The user:
+"check" had come to mean our test programs, the design's numbered measurements and doc
+consistency reviews at once — against the rule of one term per concept. Renamed (the
+user's go-ahead): the 23 test programs `*_check` → `*_test`, `run_checks.sh` →
+`run_tests.sh`, `checks.mk` → `tests.mk`, `build-checks/` → `build-tests/` (moved, nothing
+recompiled for it); the four analysis programs with "check" in their names →
+`az_blunder_probe`, `az_noise_probe`, `az_head_probe`, `az_layout_probe`; the design's
+"check 1-5" → "measurement 1-5"; runtime checks → assertions; the trainer's overfitting
+check → the overfitting measure. The session log keeps the old words (chronological);
+the running experiment's files keep theirs (`check4_N131.jsonl`). Found on the way: the
+test runner ran one test more at once than asked (bash's `wait -n` returns for a process
+substitution) — fixed. **Two tests added** where decisions rest on code (the user:
+important features covered, no more): `ladder_test.py` (known strengths recovered
+exactly, the intervals' coverage 77 of 80, the control) and `position_edits_test` (the
+value probe's edits, moved into `thud/experiments/position_edits.h`; the refactored probe
+prints the same lines as the old one). **Decided** (the user): the taper's condition (d),
+the gap closed when a far dwarf with the dwarfs to move is worth at least 80% of its worth
+with the trolls to move, twice in a row. **Proposed** (to confirm): condition (c) as the
+loop's gain after a step, (1 − w′) R ≤ 0.8 at R's upper 95% bound. Pushed `cf3d1a95` (the
+hook ran all 28 tests: passed). The setup dry run (`~/setup-test`) paused by SIGSTOP while
+the push's and the rename's tests ran (memory beside the trainer), to resume.
+
 **Next step:** as recorded in `## Current status` — the longer run's four segments and
-their check 4, then its evaluation; the setup script's dry run on a fresh clone; the
+their measurement 4, then its evaluation; the setup script's dry run on a fresh clone; the
 promotion tests with the gates; the Net2Net live test after the run.

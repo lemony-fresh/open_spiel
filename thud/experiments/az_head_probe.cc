@@ -16,14 +16,14 @@
 // learn Thud's board better than upstream's linear one, and does either overfit?
 // (thud/PLAN.md Phase 6.)
 //
-// az_layout_check.cc's supervised task, on our copy of the C++ AlphaZero (thud/az/):
+// az_layout_probe.cc's supervised task, on our copy of the C++ AlphaZero (thud/az/):
 // the value head learns whether the side to move has a capture, the policy target is
 // uniform over the capturing moves if there are any, else over all legal moves.
-// Positions of random games, exported by az_layout_check.py --export (training and
+// Positions of random games, exported by az_layout_probe.py --export (training and
 // test positions from different games), trained on the same batches in the same order
-// as az_layout_check.cc. With nn_model=resnet width=32 depth=2 it must reproduce that
+// as az_layout_probe.cc. With nn_model=resnet width=32 depth=2 it must reproduce that
 // program's results (thud/PLAN.md, "Thud layout control"), as our copy computes what
-// upstream's does (identity_check).
+// upstream's does (identity_test).
 //
 // It evaluates on the test positions and, for overfitting, on as many training
 // positions spread over all training games: value sign accuracy and policy mass on the
@@ -36,9 +36,9 @@
 // board's 8 symmetries (SymmetricTrainInputs, thud/az/vpnet.h), as the trainer's
 // --symmetry_augmentation does.
 //
-//   thud/az/build.sh thud/experiments/az_head_check.cc
-//   python3 thud/experiments/az_layout_check.py --export DATA
-//   OMP_NUM_THREADS=3 build-shared/az_head_check DATA SEED [nn_model=resnet]
+//   thud/az/build.sh thud/experiments/az_head_probe.cc
+//   python3 thud/experiments/az_layout_probe.py --export DATA
+//   OMP_NUM_THREADS=3 build-shared/az_head_probe DATA SEED [nn_model=resnet]
 //     [width=32] [depth=2] [steps=all] [augment=0]
 //
 // Prints one JSON line per evaluation, every 250 steps. With timing=1 it trains nothing and prints the
@@ -77,7 +77,7 @@ using open_spiel::Action;
 using open_spiel::thud_az::torch_az::SymmetricTrainInputs;
 using open_spiel::thud_az::torch_az::VPNetModel;
 
-constexpr int kEvery = 7;  // As az_layout_check.py samples.
+constexpr int kEvery = 7;  // As az_layout_probe.py samples.
 constexpr int kPlanes = 6;
 constexpr int kTrollsToMovePlane = 3;
 constexpr double kLearningRate = 1e-3;
@@ -120,7 +120,7 @@ std::vector<Position> Replay(const open_spiel::Game& game, const std::string& pa
   return positions;
 }
 
-// Stops unless the positions reproduce checksums() of az_layout_check.py, as exported:
+// Stops unless the positions reproduce checksums() of az_layout_probe.py, as exported:
 // the counts and sums of actions exactly, the plane sums (two planes hold fractions,
 // summed in another order) to within 0.01.
 void CheckAgainstExport(const std::vector<Position>& positions,
@@ -353,7 +353,7 @@ int main(int argc, char** argv) {
     train_sample.push_back(train[static_cast<int64_t>(i) * train.size() / test.size()]);
   }
 
-  // The batches az_layout_check.py draws for this seed, in order.
+  // The batches az_layout_probe.py draws for this seed, in order.
   std::ifstream batches_file(absl::StrCat(data, "/batches_seed", seed, ".bin"),
                              std::ios::binary);
   if (!batches_file) open_spiel::SpielFatalError("No batches for this seed");

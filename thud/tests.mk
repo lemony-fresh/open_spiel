@@ -12,21 +12,21 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Builds our checks, and the programs the end-to-end checks run, into build-checks/
+# Builds our tests, and the programs the end-to-end tests run, into build-tests/
 # (git ignores build*/), incrementally: each source is compiled once into an object, and
-# again only when it or a header it includes changed (-MMD). thud/run_checks.sh calls it;
+# again only when it or a header it includes changed (-MMD). thud/run_tests.sh calls it;
 # by hand, from the repo root:
 #
-#   make -f thud/checks.mk -j10 [TARGET ...]
+#   make -f thud/tests.mk -j10 [TARGET ...]
 #
 # The flags are thud/az/build.sh's (CMake's for the AlphaZero sources in build-torch/),
-# but without -DNDEBUG, so that assert and SPIEL_DCHECK run (CLAUDE.md: tests and checks
+# but without -DNDEBUG, so that assert and SPIEL_DCHECK run (CLAUDE.md: tests
 # build without it), and at -O2. -Wno-everything is build.sh's too, still to be narrowed
-# (CLAUDE.md, Conventions); the checks without LibTorch build with the default warnings,
-# as their headers say. The programs here are for the checks only: runs use build-shared/.
+# (CLAUDE.md, Conventions); the tests without LibTorch build with the default warnings,
+# as their headers say. The programs here are for the tests only: runs use build-shared/.
 
 REPO := $(abspath $(dir $(lastword $(MAKEFILE_LIST)))/..)
-OUT := $(REPO)/build-checks
+OUT := $(REPO)/build-tests
 SRC := $(REPO)/open_spiel
 LIB := $(REPO)/build-shared
 # Found without importing torch (an import takes ~0.7 s).
@@ -49,31 +49,31 @@ TORCH_LINK := $(LINK) -Wl,--no-as-needed $(TORCH)/lib/libtorch.so \
 
 # Our copy of the C++ AlphaZero, linked into every LibTorch program (as build.sh does).
 COPIES := $(addprefix $(OUT)/obj/az/,mcts.o alpha_zero.o model.o vpnet.o vpevaluator.o)
-# Upstream's, for identity_check only.
+# Upstream's, for identity_test only.
 UPSTREAM := $(addprefix $(OUT)/obj/upstream/,model.o vpnet.o vpevaluator.o)
 
-TORCH_CHECKS := alphabeta_training_check augmentation_check conv_policy_check grow_check \
-  learning_settings_check legal_policy_check playout_cap_check \
-  growing_buffer_check input_planes_check instrumentation_check kickstart_check \
-  pruning_check search_settings_check untried_move_check make_test_network
+TORCH_TESTS := alphabeta_training_test augmentation_test conv_policy_test grow_test \
+  learning_settings_test legal_policy_test playout_cap_test \
+  growing_buffer_test input_planes_test instrumentation_test kickstart_test \
+  pruning_test search_settings_test untried_move_test make_test_network
 TORCH_PROGRAMS := az_trainer az_grow az_restructure az_fresh_optimizer
-EXPERIMENT_PROGRAMS := az_match teacher_mix_check az_search_cost
-PLAIN_CHECKS := features_check replay_buffer_check
-PLAIN_EXPERIMENTS := az_buffer_truncate
+EXPERIMENT_PROGRAMS := az_match teacher_mix_test az_search_cost az_dwarf_value_probe
+PLAIN_TESTS := features_test replay_buffer_test
+PLAIN_EXPERIMENTS := az_buffer_truncate position_edits_test
 
-# The checks without LibTorch again under AddressSanitizer and UndefinedBehaviorSanitizer
+# The tests without LibTorch again under AddressSanitizer and UndefinedBehaviorSanitizer
 # (CLAUDE.md, Conventions: memory handling; -DNDEBUG_SANITIZER keeps abseil's hash tables
 # laid out as in the uninstrumented libopen_spiel.so).
 SANITIZE := -fsanitize=address,undefined -fno-omit-frame-pointer -fno-sanitize-recover=all \
   -DNDEBUG_SANITIZER -g
-SANITIZED := $(addprefix $(OUT)/bin/sanitized/,$(PLAIN_CHECKS) $(PLAIN_EXPERIMENTS))
+SANITIZED := $(addprefix $(OUT)/bin/sanitized/,$(PLAIN_TESTS) $(PLAIN_EXPERIMENTS))
 
-ALL := $(addprefix $(OUT)/bin/,$(TORCH_CHECKS) $(TORCH_PROGRAMS) $(EXPERIMENT_PROGRAMS) \
-  identity_check $(PLAIN_CHECKS) $(PLAIN_EXPERIMENTS)) $(SANITIZED)
+ALL := $(addprefix $(OUT)/bin/,$(TORCH_TESTS) $(TORCH_PROGRAMS) $(EXPERIMENT_PROGRAMS) \
+  identity_test $(PLAIN_TESTS) $(PLAIN_EXPERIMENTS)) $(SANITIZED)
 
 all: $(ALL)
 
-# Every target can also be named without its folder: make -f thud/checks.mk grow_check
+# Every target can also be named without its folder: make -f thud/tests.mk grow_test
 UNSANITIZED := $(filter-out $(SANITIZED),$(ALL))
 $(notdir $(UNSANITIZED)): %: $(OUT)/bin/%
 sanitized: $(SANITIZED)
@@ -107,7 +107,7 @@ $(OUT)/obj/sanitized/%.o: $(REPO)/thud/experiments/%.cc
 	@mkdir -p $(@D)
 	nice -n 19 $(CXX) $(COMMON) $(SANITIZE) -c $< -o $@
 
-$(addprefix $(OUT)/bin/,$(TORCH_CHECKS) $(TORCH_PROGRAMS)): $(OUT)/bin/%: $(OUT)/obj/az/%.o $(COPIES)
+$(addprefix $(OUT)/bin/,$(TORCH_TESTS) $(TORCH_PROGRAMS)): $(OUT)/bin/%: $(OUT)/obj/az/%.o $(COPIES)
 	@mkdir -p $(@D)
 	nice -n 19 $(CXX) -o $@ $^ $(TORCH_LINK)
 
@@ -115,11 +115,11 @@ $(addprefix $(OUT)/bin/,$(EXPERIMENT_PROGRAMS)): $(OUT)/bin/%: $(OUT)/obj/experi
 	@mkdir -p $(@D)
 	nice -n 19 $(CXX) -o $@ $^ $(TORCH_LINK)
 
-$(OUT)/bin/identity_check: $(OUT)/obj/az/identity_check.o $(COPIES) $(UPSTREAM)
+$(OUT)/bin/identity_test: $(OUT)/obj/az/identity_test.o $(COPIES) $(UPSTREAM)
 	@mkdir -p $(@D)
 	nice -n 19 $(CXX) -o $@ $^ $(TORCH_LINK)
 
-$(addprefix $(OUT)/bin/,$(PLAIN_CHECKS) $(PLAIN_EXPERIMENTS)): $(OUT)/bin/%: $(OUT)/obj/plain/%.o
+$(addprefix $(OUT)/bin/,$(PLAIN_TESTS) $(PLAIN_EXPERIMENTS)): $(OUT)/bin/%: $(OUT)/obj/plain/%.o
 	@mkdir -p $(@D)
 	nice -n 19 $(CXX) -o $@ $^ $(LINK)
 

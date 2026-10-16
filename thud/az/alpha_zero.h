@@ -355,7 +355,7 @@ double LearningRateFactor(const AlphaZeroConfig& config, int step);
 bool HasLearningRateSchedule(const AlphaZeroConfig& config);
 
 // A game an actor played, as the learner receives it. Moved here from alpha_zero.cc
-// (our change), with PlayGame below, so that checks can play games as the actors do.
+// (our change), with PlayGame below, so that tests can play games as the actors do.
 struct Trajectory {
   struct State {
     std::vector<float> observation;

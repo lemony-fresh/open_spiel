@@ -21,7 +21,7 @@ standard errors (the blunders at 4 percentage points):
   alpha-beta, dwarfs   our dwarfs' margin against alpha-beta depth 1     fails if lower by > 2 SE
   alpha-beta, trolls   our trolls' margin against depth 2's dwarfs       fails if lower by > 2 SE
   blunders             the share of our dwarf moves against hexparrot   fails if >= 4 points higher
-                       that blunder a dwarf (az_blunder_check's rule: a
+                       that blunder a dwarf (az_blunder_probe's rule: a
                        move capturing nothing, ending next to a troll,
                        whose dwarf the reply takes; after the 4 opening
                        plies), the SE clustered by battle (a bootstrap
@@ -55,7 +55,7 @@ import random
 import re
 import sys
 
-OPENING = 4  # az_match's default opening plies, which az_blunder_check skips.
+OPENING = 4  # az_match's default opening plies, which az_blunder_probe skips.
 DESTINATION = re.compile(r"\(\d+,\d+\)-\((\d+),(\d+)\)")
 
 

@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Checks the watchdog (thud/az/watchdog.sh) and the trainer's crash-safe saving on a
+# Tests the watchdog (thud/az/watchdog.sh) and the trainer's crash-safe saving on a
 # small run (make_test_network's network at 32 x 2, so that a checkpoint takes long enough
 # to write to be caught at it; 8 simulations, a buffer of 2,048, 8 steps):
 #
@@ -29,17 +29,17 @@
 #      with its buffer cut in half stops with "Cannot load the buffer") — what writing
 #      in place, as upstream does, would have left at the first kill, and what
 #      upstream's LoadBuffer would load without an error, half the positions lost
-#      (thud/az/replay_buffer_check.cc, part 5).
+#      (thud/az/replay_buffer_test.cc, part 5).
 #   3. A stop asked of the watchdog (SIGTERM) stops the trainer and the watchdog without
 #      a restart.
 #   4. A trainer that always fails: the watchdog gives up after its restarts.
 #
-#   thud/az/watchdog_check.sh [BIN_DIR]    # default build-checks/bin; KEEP=1 keeps the files
+#   thud/az/watchdog_test.sh [BIN_DIR]    # default build-tests/bin; KEEP=1 keeps the files
 
 set -uo pipefail
 repo=$(cd "$(dirname "$0")/../.." && pwd)
-bin=${1:-$repo/build-checks/bin}
-tmp=$(mktemp -d "${TMPDIR:-/tmp}/watchdog_check.XXXXXX")
+bin=${1:-$repo/build-tests/bin}
+tmp=$(mktemp -d "${TMPDIR:-/tmp}/watchdog_test.XXXXXX")
 trap '[ -n "${KEEP:-}" ] || rm -rf "$tmp"' EXIT
 failures=0
 export OMP_NUM_THREADS=2

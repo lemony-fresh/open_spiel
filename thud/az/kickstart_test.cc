@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Checks kickstarting in our copy of the trainer (thud/PLAN.md, kickstarting): the
+// Tests kickstarting in our copy of the trainer (thud/PLAN.md, kickstarting): the
 // teacher's scores (AlphaBetaPlayer::Scores), its policy (TeacherPolicy) and the mixed
 // policy targets PlayGame records — with a stand-in network (a uniform prior, every
 // value 0), so that no model is needed:
@@ -37,8 +37,8 @@
 //      from the single weight.
 //   5. Cost (printed): Scores at depths 2 and 3 on self-play-like positions.
 //
-//   thud/az/build.sh thud/az/kickstart_check.cc
-//   build-shared/kickstart_check
+//   thud/az/build.sh thud/az/kickstart_test.cc
+//   build-shared/kickstart_test
 
 #include <chrono>
 #include <cmath>

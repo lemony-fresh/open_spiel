@@ -13,7 +13,7 @@
 // limitations under the License.
 
 // Net2Net for our residual networks — the growth az_grow.cc does, here so that
-// grow_check.cc can test it on small networks (see az_grow.cc for the method).
+// grow_test.cc can test it on small networks (see az_grow.cc for the method).
 
 #ifndef THUD_AZ_NET2NET_H_
 #define THUD_AZ_NET2NET_H_

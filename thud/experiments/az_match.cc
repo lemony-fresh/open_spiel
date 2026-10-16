@@ -21,7 +21,7 @@
 // (PUCT; thud/az/), the same number of simulations (`sims`; `sims_a` and `sims_b` give
 // each network its own, e.g. to measure what more simulations gain on each side) and the
 // same rule for untried moves (`untried`, default upstream's — with it our copy searches
-// exactly as upstream's does, thud/az/identity_check.cc; `untried_a` and `untried_b` give
+// exactly as upstream's does, thud/az/identity_test.cc; `untried_a` and `untried_b` give
 // each network its own, e.g. the rule it was trained with), no root noise, and always play
 // their most visited move. `temperature_a` and `temperature_b` give each network the policy
 // softmax temperatures per player it was trained with (comma-separated, as the trainer's
@@ -55,7 +55,7 @@
 // diagnosis): per player, the least prior mass network A's search gives the captures
 // (moves written with an "x") at that player's nodes ("0,0.5": at the trolls' nodes
 // half the prior) — MCTSBot::SetPriorFloors.
-// Self-play's conditions (2026-10-13; thud/DESIGN_dwarf_signal.md, check Q3), off by
+// Self-play's conditions (2026-10-13; thud/DESIGN_dwarf_signal.md, measurement 3), off by
 // default: `noise=LIST` gives the searches at each player's roots the trainer's root noise
 // (per player 0 or 1, "1,0": at the dwarfs' roots, in both networks' searches; Dirichlet
 // `noise_alpha`, default 0.1, mixed in at `noise_epsilon`, default 0.25), and
@@ -64,7 +64,7 @@
 // (temperature 1). With either, every battle gets fresh searches seeded from `seed`, the
 // pair and the side, so reruns play the same battles whichever thread plays them (the
 // searches' random tie-breaks and noise included); without them nothing changes.
-// `teacher_mix_a=LIST` (check Q2): per player, network A's prior at that player's nodes
+// `teacher_mix_a=LIST` (measurement 2): per player, network A's prior at that player's nodes
 // mixed with kickstarting's teacher ("0.5,0": at the dwarfs' nodes, half the teacher) —
 // (1 - w) x the network's + w x the softmax of AlphaBetaPlayer::Scores at `teacher_depth`
 // plies (default 2) over `teacher_temperature` points (default 0.25), the trainer's

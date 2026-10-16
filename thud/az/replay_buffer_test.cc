@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Checks ReplayBuffer (thud/az/replay_buffer.h), whose Add moves each position into
+// Tests ReplayBuffer (thud/az/replay_buffer.h), whose Add moves each position into
 // its slot, against upstream's SerializableCircularBuffer, whose Add copies it in. Both
 // get the same positions, shaped like the trainer's (the legal moves, a 6 x 15 x 15
 // observation, the policy over the legal moves, a value): games of 50-400 positions,
@@ -27,19 +27,19 @@
 //   0. Loading: ours holds exactly what its positions need right after LoadBuffer;
 //      upstream's holds more (the control: libnop's spare capacity).
 //   4. Memory: in ours every slot's vectors hold exactly their sizes; in upstream's
-//      the slots keep larger storage (the control: the check sees the ratchet).
+//      the slots keep larger storage (the control: the test sees the ratchet).
 //   5. A file cut short (2026-10-15; a run killed while writing its buffer in place):
 //      ours refuses to load the saved file cut to 99.9% and to half (each load in a
 //      child process, which must stop with an error); upstream's loads them without
-//      an error — the control, and the reason ours checks — keeping only the positions
+//      an error — the control, and the reason ours verifies its reads — keeping only the positions
 //      before the cut, its count of positions added still the file's. The file whole
 //      loads in a child too (the control that the child can succeed).
 //
 // Needs only headers and libopen_spiel.so (no LibTorch), so it builds small:
 //   clang++ -std=gnu++20 -O2 -I. -Iopen_spiel -Iopen_spiel/abseil-cpp \
 //     -Iopen_spiel/json/include -Iopen_spiel/libnop/libnop/include -DOPEN_SPIEL_BUILD_WITH_LIBNOP \
-//     thud/az/replay_buffer_check.cc -Lbuild-shared -lopen_spiel \
-//     -Wl,-rpath,$PWD/build-shared -o build-shared/replay_buffer_check
+//     thud/az/replay_buffer_test.cc -Lbuild-shared -lopen_spiel \
+//     -Wl,-rpath,$PWD/build-shared -o build-shared/replay_buffer_test
 
 #include <sys/wait.h>
 #include <unistd.h>
@@ -147,11 +147,11 @@ int main(int argc, char** argv) {
   while (first.Size() < kSize) {
     for (TrainInputs& p : Game(&rng)) first.Add(p);
   }
-  first.SaveBuffer(dir + "/replay_buffer_check_start.data");
+  first.SaveBuffer(dir + "/replay_buffer_test_start.data");
   open_spiel::SerializableCircularBuffer<TrainInputs> upstream(kSize);
   open_spiel::thud_az::ReplayBuffer<TrainInputs> ours(kSize);
-  upstream.LoadBuffer(dir + "/replay_buffer_check_start.data");
-  ours.LoadBuffer(dir + "/replay_buffer_check_start.data");
+  upstream.LoadBuffer(dir + "/replay_buffer_test_start.data");
+  ours.LoadBuffer(dir + "/replay_buffer_test_start.data");
   const auto [loaded_held, loaded_needed] = Bytes(ours);
   const auto [up_loaded_held, up_loaded_needed] = Bytes(upstream);
   std::cout << "loaded, upstream's: " << up_loaded_held << " bytes held for "
@@ -193,10 +193,10 @@ int main(int argc, char** argv) {
   check(same_sample, "2. same samples (500, equal seeds)");
 
   // 3. Saved files.
-  upstream.SaveBuffer(dir + "/replay_buffer_check_upstream.data");
-  ours.SaveBuffer(dir + "/replay_buffer_check_ours.data");
-  const std::string file_a = Read(dir + "/replay_buffer_check_upstream.data");
-  const std::string file_b = Read(dir + "/replay_buffer_check_ours.data");
+  upstream.SaveBuffer(dir + "/replay_buffer_test_upstream.data");
+  ours.SaveBuffer(dir + "/replay_buffer_test_ours.data");
+  const std::string file_a = Read(dir + "/replay_buffer_test_upstream.data");
+  const std::string file_b = Read(dir + "/replay_buffer_test_ours.data");
   check(!file_a.empty() && file_a == file_b,
         "3. same saved file (" + std::to_string(file_a.size()) + " bytes)");
 
@@ -211,8 +211,8 @@ int main(int argc, char** argv) {
   check(up_held > up_needed, "4. control: upstream's slots keep larger storage");
 
   // 5. A file cut short.
-  const std::string saved = dir + "/replay_buffer_check_ours.data";
-  const std::string cut = dir + "/replay_buffer_check_cut.data";
+  const std::string saved = dir + "/replay_buffer_test_ours.data";
+  const std::string cut = dir + "/replay_buffer_test_cut.data";
   // Loads `path` into a fresh buffer of ours in a child process; its exit status.
   auto load_in_child = [&](const std::string& path) {
     std::cout.flush();

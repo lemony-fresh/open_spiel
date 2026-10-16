@@ -202,7 +202,7 @@ class ResConvPolicyOutputBlockImpl : public torch::nn::Module {
   // the policy logits only at (rows[i], actions[i]) — no mask, no other action.
   std::vector<torch::Tensor> ValueAndPolicyAt(torch::Tensor x, torch::Tensor rows,
                                               torch::Tensor actions);
-  // The planes the policy logits are taken from, for checks.
+  // The planes the policy logits are taken from, for tests.
   torch::Tensor PolicyPlanes(torch::Tensor x);
 
  private:

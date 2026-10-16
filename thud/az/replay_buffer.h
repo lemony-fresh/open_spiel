@@ -41,9 +41,9 @@ namespace open_spiel::thud_az {
 // storage and takes the new element's, so each slot holds its own position's size.
 // And upstream's LoadBuffer leaves spare storage in every vector it reads (libnop
 // reads them element by element: 45% more than the elements need in
-// replay_buffer_check), so ours compacts the loaded buffer: each element replaced by
+// replay_buffer_test), so ours compacts the loaded buffer: each element replaced by
 // a copy of itself, which holds exactly its size. The contents, samples and saved
-// files are the same either way (thud/az/replay_buffer_check.cc).
+// files are the same either way (thud/az/replay_buffer_test.cc).
 template <class T>
 class ReplayBuffer : public SerializableCircularBuffer<T> {
  public:
@@ -63,7 +63,7 @@ class ReplayBuffer : public SerializableCircularBuffer<T> {
   // after a crash or a preemption): upstream's ignores the status of each read, so a file
   // cut short — written in place by a run killed while saving — loads without an error:
   // only the positions before the cut, with total_added_ still the file's, which breaks
-  // Add's slot arithmetic (found 2026-10-15, thud/az/replay_buffer_check.cc). Ours stops
+  // Add's slot arithmetic (found 2026-10-15, thud/az/replay_buffer_test.cc). Ours stops
   // on a read that fails or a count of positions that does not match the file's.
   void LoadBuffer(const std::string& path) {
     nop::Deserializer<nop::StreamReader<std::ifstream>> deserializer{path};

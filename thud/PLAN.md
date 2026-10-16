@@ -293,7 +293,7 @@ of a from-square × direction × distance action layout.
     games must play all five kinds of move, or the test fails.
 - **Every hand-written move expectation is cross-checked** against hexparrot's independent
   engine by `thud/experiments/crosscheck_tests.py` (added 2026-09-24): exact move sets,
-  legal and illegal moves, reach tables and the position after a move, plus a check that
+  legal and illegal moves, reach tables and the position after a move, plus a test that
   every test diagram is a position the reader accepts. **Re-run it after changing any
   test.** Its first run found two diagrams with 12 trolls, which the reading rules decided
   that day reject.
@@ -306,9 +306,9 @@ The full OpenSpiel suite passes 285 of 285.
   from `./open_spiel/scripts/generate_new_playthrough.sh thud`: one seeded random game of
   308 turns, which the trolls win by taking the last dwarf (returns -0.75 / +0.75).
   **Replay it after any change to the rules, the encoding, the text formats or the
-  observation** (`thud/run_checks.sh playthrough`: its recorded moves replayed, every line
+  observation** (`thud/run_tests.sh playthrough`: its recorded moves replayed, every line
   compared, as upstream's `playthrough_test.py` does); a difference means behaviour
-  changed. Generating a new one is not the check: it plays new random moves (corrected
+  changed. Generating a new one is not the test: it plays new random moves (corrected
   2026-10-15; CLAUDE.md has the update command for an intended change).
 - `TestOpenSpielGenericTests` in `thud_test.cc`: `LoadGameTest`, `NoChanceOutcomesTest`,
   and `RandomSimTest` with 10 games from the opening and 10 from a position read from text
@@ -477,12 +477,12 @@ equal machine time. Never stack changes that have not been shown to work.
 |---|---|---|
 | 0 — done | C++ AlphaZero builds (LibTorch from the pip wheel); tic-tac-toe control; Thud smoke test; C++ against Python layout control; throughput | — |
 | 1 — done 2026-09-27 | **Baseline learning with unmodified OpenSpiel**: 64 x 4, 100 against 400 simulations at equal machine time, with a **match program** (head-to-head, pairs of battles with sides swapped); with unchanged code, the **tree-reuse potential** and the dwarfs' **visit spread**. Result: learning works through step 14, then the dwarfs' play collapsed; 100 beat 400; the dwarfs' searches are pure breadth. Run A2 (2x buffer), since done (2026-09-28): slower learning, no collapse | Learning works: later networks beat earlier ones head-to-head, the evaluation per side improves. And which of 100 or 400 is better |
-| 2 — done 2026-09-27 | **Our own copy** of the C++ AlphaZero and its MCTS in `thud/az/`, changed in nothing but its namespace (`open_spiel::thud_az`; parameter names identical) — made by `import_from_upstream.py` from upstream commit 540bba6e, built by `thud/az/build.sh`. Passed: (1) **textual identity** — `import_from_upstream.py --check`: all 12 copies are exactly a fresh import (a one-character change is caught), which covers code no test reaches (the batching queue, the trainer's threads, resuming); (2) **`identity_check.cc`** against upstream's code: equal network outputs, equal searches without and with root noise and with random rollouts and the solver (50 of 50 positions each), a checkpoint of ours loads in upstream's code with equal outputs, an equal learning step; every control differs — which covers the layout check; (3) the **tic-tac-toe control** through `az_trainer` (session 5's settings, 19 minutes): losses 1.55 / 0.50 → 1.27 / 0.07 → 0.96 / 0.04 at steps 1, 17, 26 (upstream's copy: 1.56 / 0.47 → 1.27 / 0.07 → 0.95 / 0.05), self-play draws 38% → 86% (upstream 41% → 83%), against MCTS at 40 / 126 / 400 simulations +0.36 / +0.26 / +0.12 at the end (upstream +0.34 / +0.38 / +0.06), draws against stronger MCTS. **Resuming works** in upstream's trainer (run A2) and in our copy (run C resumed 2026-09-28: step 17 continued from 352,553 positions with the full buffer and the latest model reloaded) | Textual identity; identical outputs, searches, training step; upstream loads our checkpoint; the tic-tac-toe control learns as upstream's did |
-| 3a — done 2026-09-28 | **Value of untried moves** — urgent (user): the dwarfs' searches spread over nearly every move once the network judges them lost, so their policy targets stay flat, and the better the trolls get, the worse it becomes. **Implemented** in our copy (`thud/az/mcts.{h,cc}`, passed through the trainer as `--untried_move_value` and `--untried_move_reduction`, saved in `config.json`): three rules — `upstream` (0), `sibling_mean_minus_reduction` (the visit-weighted mean of the visited siblings minus 0.2 × √(their prior mass), KataGo's rule with the siblings' mean for the parent's value), `loss` (AlphaZero's) — at every node, **defaulting to sibling_mean_minus_reduction** (user, 2026-09-27; an exception to the upstream-default rule above). Tests: `untried_move_check.cc` (the formula on a hand-built node; on 85 self-play positions of run A's step 14 at 100 simulations the dwarfs' searches visit a median 99 moves with upstream's rule, 31 with the default, 1 with `loss`, which without root noise never leaves its first move; the trolls' 17, 23, 1); `identity_check.cc` still passes with `upstream`, and the default changes 50 of 50 searches. **Run C** (run A's settings with the default rule, 6 hours, 2026-09-27 20:31 to 2026-09-28 02:32): **no collapse, and much stronger dwarf play** — against the anchor step 8 +10.4, 12 +43.5, 14 +40.1, 16 +46.4 (run A: +18.9, +23.1, +26.1, +3.9); at step 16 as dwarfs +21.6 (A: −24.9); the dwarfs' searches visited a median 19 moves at every step (A: 95-99). Head-to-head at equal positions, C step 16 against A step 16: **+20.9** a pair (+17.3 to +24.4, 20 of 20 pairs); against A's best, step 14: −1.2 (−6.9 to +4.4) searching with upstream's rule, +3.9 (−0.2 to +7.9) with the new one — neither significant. Details in *First training runs*. **Continued to step 29** (2026-09-29): even with step 16 head-to-head (+1.1), but its dwarf play much weaker against A step 14 (−20.0 as dwarfs, step 16 −2.4; −11.5 a pair) and the anchor, with upstream's rule in the searches — forgetting or the evaluation's rule? (*First training runs*). **Evaluated as trained** (Step 1, 2026-09-29): no collapse (C's dwarfs never below −0.6 against the anchor), but a drift from step 16 on — step 29 beats step 16 (+4.1), yet its dwarfs lost 10 points against the anchor and it loses to A step 14 (−8.5): specialisation; Step 2 (the buffer) indicated — the quick forgetting check found the dwarfs' move probabilities drifting; **Step 2** (run D, a 4x memory, 2026-09-30): no policy drift, D29 beats C29 (+7.3) and C16 (+8.4), still loses to A14 (−5.4) — forgetting explains part; **run E** (D continued with a 7x memory to step 44, 2026-10-01): E44 beats D29 (+9.7), its dwarfs recover against the anchor (+8.7, D29 +3.2), no forgetting, still loses to A14 (−3.5) | Beats run A head-to-head at equal positions, and the dwarfs' searches narrow |
+| 2 — done 2026-09-27 | **Our own copy** of the C++ AlphaZero and its MCTS in `thud/az/`, changed in nothing but its namespace (`open_spiel::thud_az`; parameter names identical) — made by `import_from_upstream.py` from upstream commit 540bba6e, built by `thud/az/build.sh`. Passed: (1) **textual identity** — `import_from_upstream.py --check`: all 12 copies are exactly a fresh import (a one-character change is caught), which covers code no test reaches (the batching queue, the trainer's threads, resuming); (2) **`identity_test.cc`** against upstream's code: equal network outputs, equal searches without and with root noise and with random rollouts and the solver (50 of 50 positions each), a checkpoint of ours loads in upstream's code with equal outputs, an equal learning step; every control differs — which covers the layout probe; (3) the **tic-tac-toe control** through `az_trainer` (session 5's settings, 19 minutes): losses 1.55 / 0.50 → 1.27 / 0.07 → 0.96 / 0.04 at steps 1, 17, 26 (upstream's copy: 1.56 / 0.47 → 1.27 / 0.07 → 0.95 / 0.05), self-play draws 38% → 86% (upstream 41% → 83%), against MCTS at 40 / 126 / 400 simulations +0.36 / +0.26 / +0.12 at the end (upstream +0.34 / +0.38 / +0.06), draws against stronger MCTS. **Resuming works** in upstream's trainer (run A2) and in our copy (run C resumed 2026-09-28: step 17 continued from 352,553 positions with the full buffer and the latest model reloaded) | Textual identity; identical outputs, searches, training step; upstream loads our checkpoint; the tic-tac-toe control learns as upstream's did |
+| 3a — done 2026-09-28 | **Value of untried moves** — urgent (user): the dwarfs' searches spread over nearly every move once the network judges them lost, so their policy targets stay flat, and the better the trolls get, the worse it becomes. **Implemented** in our copy (`thud/az/mcts.{h,cc}`, passed through the trainer as `--untried_move_value` and `--untried_move_reduction`, saved in `config.json`): three rules — `upstream` (0), `sibling_mean_minus_reduction` (the visit-weighted mean of the visited siblings minus 0.2 × √(their prior mass), KataGo's rule with the siblings' mean for the parent's value), `loss` (AlphaZero's) — at every node, **defaulting to sibling_mean_minus_reduction** (user, 2026-09-27; an exception to the upstream-default rule above). Tests: `untried_move_test.cc` (the formula on a hand-built node; on 85 self-play positions of run A's step 14 at 100 simulations the dwarfs' searches visit a median 99 moves with upstream's rule, 31 with the default, 1 with `loss`, which without root noise never leaves its first move; the trolls' 17, 23, 1); `identity_test.cc` still passes with `upstream`, and the default changes 50 of 50 searches. **Run C** (run A's settings with the default rule, 6 hours, 2026-09-27 20:31 to 2026-09-28 02:32): **no collapse, and much stronger dwarf play** — against the anchor step 8 +10.4, 12 +43.5, 14 +40.1, 16 +46.4 (run A: +18.9, +23.1, +26.1, +3.9); at step 16 as dwarfs +21.6 (A: −24.9); the dwarfs' searches visited a median 19 moves at every step (A: 95-99). Head-to-head at equal positions, C step 16 against A step 16: **+20.9** a pair (+17.3 to +24.4, 20 of 20 pairs); against A's best, step 14: −1.2 (−6.9 to +4.4) searching with upstream's rule, +3.9 (−0.2 to +7.9) with the new one — neither significant. Details in *First training runs*. **Continued to step 29** (2026-09-29): even with step 16 head-to-head (+1.1), but its dwarf play much weaker against A step 14 (−20.0 as dwarfs, step 16 −2.4; −11.5 a pair) and the anchor, with upstream's rule in the searches — forgetting or the evaluation's rule? (*First training runs*). **Evaluated as trained** (Step 1, 2026-09-29): no collapse (C's dwarfs never below −0.6 against the anchor), but a drift from step 16 on — step 29 beats step 16 (+4.1), yet its dwarfs lost 10 points against the anchor and it loses to A step 14 (−8.5): specialisation; Step 2 (the buffer) indicated — the quick forgetting measurement found the dwarfs' move probabilities drifting; **Step 2** (run D, a 4x memory, 2026-09-30): no policy drift, D29 beats C29 (+7.3) and C16 (+8.4), still loses to A14 (−5.4) — forgetting explains part; **run E** (D continued with a 7x memory to step 44, 2026-10-01): E44 beats D29 (+9.7), its dwarfs recover against the anchor (+8.7, D29 +3.2), no forgetting, still loses to A14 (−3.5) | Beats run A head-to-head at equal positions, and the dwarfs' searches narrow |
 | 3b — after Step 1 (below) | **Playout cap randomisation**, with settings per side in the code but **equal to start** (proposal in *Changes to the search and trainer*) — unless the **uneven match** (C's final network, step 29, against itself, 400 against 100 simulations, parked 2026-09-29: per-side settings become a setting to tune later) shows that extra simulations gain the dwarfs clearly more than the trolls; then the dwarfs get full searches more often, or budgets scale with the number of legal moves. (User asked about more simulations for the dwarfs, 2026-09-27. The case for them was upstream's rule, which spread the dwarfs' searches over every move; since 3a their searches are about as focused as the trolls' — but over 7-11% of their legal moves, the trolls' over 34-78% (medians in run C's buffers), so whether more simulations help them more is measured, not assumed. Unequal budgets tilt self-play towards the dwarfs, a bias to measure. The trolls' floor of ~100 simulations came from upstream's rule, under which a search visits every move once before any twice; it no longer applies.) | Beats the previous best setting head-to-head at equal time |
 | 3c — postponed 2026-09-29 | **Tree reuse, one tree shared by both sides** — **postponed** (user, 2026-09-29; why, how to build and how to test it in *Changes to the search and trainer*, tree reuse: AlphaZero, KataGo and Leela Chess Zero do not reuse in self-play, because reuse weakens root noise; it would add ~15-30% more visits a search — the cache spares the network calls of re-traversing the previous search's positions, not the simulations; the dwarfs' collapse involves exploration) — only if the reusable share stays large (own-tree reuse ~0. Shared-tree share = the most visited move's share, from the buffer statistics: with upstream's rule the dwarfs' 1-3%, the trolls' 57-77% while they won easily, then 17-20% (run A); **with the new rule ~13-14% for the dwarfs and ~13-17% for the trolls at 100 simulations through step 16 (run C), rising to 18-20% for both by step 23 in its continuation, and for the dwarfs to 21-30% at steps 26-29 (the trolls 18-20%) — roughly 15-30% more simulations per search, against playout caps' 1.37x**; re-read as the policy sharpens, since the watcher records it every step). **Priority** (user asked, 2026-09-28): kept after 3b — on 2026-09-28 it bought ~15-20% more simulations a search (on 2026-09-29 the dwarfs' share reached the ~30% mark below at run C's step 29: one reading so far, to discuss with the user), playout caps 1.37x in KataGo's measurement, and it is the larger change (a tree kept across moves and shared by both sides, root noise re-applied, a larger memory limit than the trainer's 10 MB); 3b's budget semantics (new simulations, or topping up to N visits) are chosen with reuse in mind. **Move it up** if the shared-tree share rises above ~30% for either side in the watcher's statistics, or when 3b is done | Same searches with reuse off; beats 3b's setting head-to-head |
 | 4 | Settings: `uct_c`, root noise α (0.03 and 0.3 against 0.1), temperature drop | Each change beats the previous setting head-to-head |
-| 5 — built 2026-10-02 | **Convolutional policy head** (user, 2026-09-26: later in the roadmap; started 2026-10-01 at the user's request) — first on the layout-check harness, with an exhaustive test of the action-to-plane map. It is the one planned change that makes our networks unloadable by unmodified OpenSpiel. **Built** behind `--nn_model=resnet_conv_policy` (as AlphaZero's and Leela Chess Zero's heads; 420,988 weights at 64 x 4 against 9,244,626), map and model tested (*Changes to the search and trainer*); **the harness passed** (2026-10-02, `az_head_check`, held-out and training positions, both heads, 32 x 2 and 64 x 4, seeds 1-3): the dwarfs' policy mass on hurls 98.8-99.4% on held-out positions against the linear head's 75-78% (which reproduces the layout control), no overfitting (the linear head: 94-96% on its training positions), 3x closer to symmetric; ~15% slower per full batch of 32 or learning step, faster per small batch, and 12% slower over run C'; then **run C'** (`~/thud-runs/stage5_conv.sh`): run C's settings with the new head as the only change, from scratch to step 16, against C as trained at equal steps and against the anchor — its gate (the harness not clearly failing) was met; trained 2026-10-02 06:50-13:38, 12% slower than C, no overfitting, but **its dwarfs much weaker** than C's at equal steps (against the anchor −10.3 at step 16, C +9.5; the trolls equal); **C'16 loses to C16 head-to-head, −8.5** (30 of 40 pairs): stage 5 fails in this run; the cause to analyse first (for the user) | Faster policy learning on the harness, no more overfitting; then no worse in self-play head-to-head |
+| 5 — built 2026-10-02 | **Convolutional policy head** (user, 2026-09-26: later in the roadmap; started 2026-10-01 at the user's request) — first on the layout-probe harness, with an exhaustive test of the action-to-plane map. It is the one planned change that makes our networks unloadable by unmodified OpenSpiel. **Built** behind `--nn_model=resnet_conv_policy` (as AlphaZero's and Leela Chess Zero's heads; 420,988 weights at 64 x 4 against 9,244,626), map and model tested (*Changes to the search and trainer*); **the harness passed** (2026-10-02, `az_head_probe`, held-out and training positions, both heads, 32 x 2 and 64 x 4, seeds 1-3): the dwarfs' policy mass on hurls 98.8-99.4% on held-out positions against the linear head's 75-78% (which reproduces the layout control), no overfitting (the linear head: 94-96% on its training positions), 3x closer to symmetric; ~15% slower per full batch of 32 or learning step, faster per small batch, and 12% slower over run C'; then **run C'** (`~/thud-runs/stage5_conv.sh`): run C's settings with the new head as the only change, from scratch to step 16, against C as trained at equal steps and against the anchor — its gate (the harness not clearly failing) was met; trained 2026-10-02 06:50-13:38, 12% slower than C, no overfitting, but **its dwarfs much weaker** than C's at equal steps (against the anchor −10.3 at step 16, C +9.5; the trolls equal); **C'16 loses to C16 head-to-head, −8.5** (30 of 40 pairs): stage 5 fails in this run; the cause to analyse first (for the user) | Faster policy learning on the harness, no more overfitting; then no worse in self-play head-to-head |
 | 5b — built 2026-10-02 | **Symmetry augmentation** (user, 2026-10-01: right after the head, as its own change) — each sampled position turned or mirrored by a random one of the board's **8** symmetries (not 16: *Changes to the search and trainer*), behind `--symmetry_augmentation`, default off; tested; on the harness with both heads (the 2 x 2, 2026-10-02): **the linear head gains much** (held-out hurl mass 75.0% → 86.8%, its overfitting gone), **the new head little** (98.8% → 99.1%, policy 20% closer to symmetric); no measurable cost. **Self-play: G'16 beats G16 by +10.2** (2026-10-03; its dwarfs better at every step) — **adopted** (the user, 2026-10-03), in every run from now on | Less overfitting or faster learning on the harness; then no worse in self-play head-to-head |
 | 5c — decided 2026-10-02, started 2026-10-03 | **Instrumentation** (the user, 2026-10-02): per-side splits of the trainer's losses and value statistics, self-play results as margins and how games ended, search statistics per side (breadth, the prior's entropy, how far the search moves it) — **built and checked 2026-10-03**; and **a ladder of anchors with a rating** for strength (*How we evaluate networks*) — **the rating script built 2026-10-03** (`ladder.py`; anchors A14, E44, D29, C29, C16, and G'44 at the top since the promotion rule was decided, 2026-10-04). The fixed validation set was **shelved** (the user, 2026-10-03): the pilot showed strong searches agreeing on the best move only ~20% of the time, so its policy targets would measure a reference's style; its value-only variant judged of low value. **The evaluation watcher and the game analyser** (items 5 and 6) **built 2026-10-05**, for the GPU phase's tuning | Each statistic checked against an independent computation (done: the mixed numbers, replayed games, `az_buffer_stats`, a hand-built position per ending); the ladder's ratings reproduce the matches we have |
 | 6 | Cloud GPU, longer runs — first a weaker, cheaper GPU with many CPU cores, stronger ones as the network grows (the user, 2026-10-03; options in *Cloud GPU options*) | Throughput measured there first, and **every machine-dependent setting reasoned about or benchmarked on each new machine** (buffer, network and batch sizes, threads, cadence; *Cloud GPU options*) |
@@ -539,7 +539,7 @@ below):
 | `learner_batches` (fixed training per step) | Lets a larger buffer keep run C's training per step | **Keep** |
 | Margins as the value target | The value learns the expected margin, our objective | **Keep** |
 | Matches with each network on its own rule, read per side | Showed the dwarfs' drift that mixed results hid | **Keep** |
-| Overfitting check in the trainer | Works (control 7.12 against 3.76); none in run C' | **Keep** (a log only) |
+| Overfitting measure in the trainer | Works (control 7.12 against 3.76); none in run C' | **Keep** (a log only) |
 | Symmetry augmentation (5b) | Harness: linear head 75% → 87%, overfitting gone; self-play: G'16 beats G16 by +10.2, its dwarfs better at every step | **Keep**, in every run |
 | Convolutional policy head (5) | Harness: 99% against 75-78%; self-play: run C' −8.5 against C — its dwarf policy barely learnt, but its trolls are much better (+18.4 against E44's dwarfs) | ~~Revisit as a troll-only head~~ — **superseded** (2026-10-15): the convolutional head for both sides since runs L and M (L102 beat K102 by +10.72 a pair, its dwarfs included) |
 | Convolutional policy head on a trained trunk (2026-10-10) | The long-capture probe: K83's linear head ignores multi-square hurls; the same frozen trunk with a convolutional head trained on run K's buffer (convK83) makes 2-square hurls its top move 81% of the time and shoves visible at every distance; convK83 beat K83 by +16.8 a pair (39 of 40) | **Testing** in training (run L against run K continued) |
@@ -554,7 +554,7 @@ below):
 | Training against alpha-beta, 30% of the positions at depth 2 (run I) | Its trolls learnt to punish (an adjacent dwarf taken 46% of the time in self-play, run H 23.5%), its dwarfs did not (every game against depth 2 ended at −32: no signal); I83 against H83 +2.73 (−0.55 to +6.00), not promoted | **Keep as run K's base**; not enough alone |
 | Alpha-beta's depth per side, depth-1 trolls (run J) | No gain for the dwarfs (they still lose every dwarf against depth 1); J83 against I83 −10.20 (−14.48 to −5.92) | **Drop** |
 | Kickstarting from alpha-beta's move scores, depth 2 (2026-10-08) | Run K (weight 0.3, temperature 0.25): K83 beat I83 by +30.0 a pair (40 of 40) and H83 by +30.6 (40 of 40); the first win against an outside opponent (alpha-beta depth 1, +8.7); mostly the trolls | **Keep** (K83 the top anchor) |
-| Input planes from the rules (20 planes 2026-10-08, replaced by 50 on 2026-10-11) | 48 move planes (direction x distance, at the moving piece) and 2 maps; every check passes (hand-built positions, the move generator, all 8 symmetries, each plane on its own channel, the surgery exact) | **Testing** (run M against run L) |
+| Input planes from the rules (20 planes 2026-10-08, replaced by 50 on 2026-10-11) | 48 move planes (direction x distance, at the moving piece) and 2 maps; every test passes (hand-built positions, the move generator, all 8 symmetries, each plane on its own channel, the surgery exact) | **Testing** (run M against run L) |
 | A 32 x 2 network | Its convolutions see only 11 x 11 squares | **Drop**; keep 64 x 4, grow when learning flattens |
 | `uct_c`, temperature drop | Not tried | **Later**, on the GPU |
 | Gumbel AlphaZero | Not tried; a large change | **Later**, only if few-simulation search stays the bottleneck |
@@ -656,11 +656,13 @@ the search and trainer*, run C'.
 | 2026-10-15 | D1's taper gets a further condition: the value's side-to-move gap closed (check 4) — once the teacher is tapered the dwarfs' policy targets come from the search, which relies on that value | user (Claude proposed) | the design, §5 D1 and §10 |
 | 2026-10-15 | Before renting a GPU, every feature it needs built and tested here, every relevant setting exposed (the *GPU readiness checklist* in *Cloud GPU options*; when decided, of its 28 rows 9 done, 2 built but untested, 17 missing — among them Net2Net growth, a learning-rate schedule, a device option for our tools, profiling the batching path) | user | *Cloud GPU options* |
 | 2026-10-15 | The hybrid head (convolutional for the trolls, linear for the dwarfs; 2026-10-03) superseded: since runs L and M the convolutional head serves both sides, the dwarfs included (L102 against K102 +10.72; against hexparrot L102 −21.4, K102 −37.1) | user | the head table above; *the long-capture probe* |
-| 2026-10-15 | Tests kept complete and run by one command: every feature with a check (the new ones: `grow_check`, `teacher_mix_check`, `trainer_check.sh`, `az_match_check.sh`, the playthrough replay, the sanitized checks), all built without `-DNDEBUG` and run by `thud/run_checks.sh` (quick ~20 s, `--full` ~3 min); git hooks run them — pre-commit the quick ones when a commit changes code, pre-push all when the pushed commits do; the *Tests* list tracks each check, its control, and every gap | user | *Cloud GPU options*, *Tests* |
+| 2026-10-15 | Tests kept complete and run by one command: every feature with a check (the new ones: `grow_test`, `teacher_mix_test`, `trainer_test.sh`, `az_match_test.sh`, the playthrough replay, the sanitized checks), all built without `-DNDEBUG` and run by `thud/run_tests.sh` (quick ~20 s, `--full` ~3 min); git hooks run them — pre-commit the quick ones when a commit changes code, pre-push all when the pushed commits do; the *Tests* list tracks each check, its control, and every gap | user | *Cloud GPU options*, *Tests* |
 | 2026-10-15 | After the replication: **a longer D1 + C3 run first** (run N continued from N121, 40 steps to 161, check 4 and the share of self-play games keeping dwarfs every 10 steps), not yet a value test run (B1′, or C7 reversing the rule of 2026-10-07) — the cheapest way to learn whether the value's gap closes as our own dwarfs survive more | user (Claude proposed) | *How we evaluate networks* (the dwarfs' training signal); the design's §10 |
 | 2026-10-15 | The GPU checklist's stable features built and checked while run N continues: a learning-rate schedule and a value-loss weight, a watchdog with crash-safe saving, a transfer script, a setup script, the throughput sweep; the batching path profiled (the trainer paused briefly for exclusive measurements, the user's permission) | user | *Cloud GPU options* |
-| 2026-10-15 | The legal policy on by default (the priors from the legal moves' logits alone; equal to ~1e-7, every compared search identical); upstream's computation kept behind the switch, for identity_check | user (Claude proposed) | *Cloud GPU options*, the batching path |
+| 2026-10-15 | The legal policy on by default (the priors from the legal moves' logits alone; equal to ~1e-7, every compared search identical); upstream's computation kept behind the switch, for identity_test | user (Claude proposed) | *Cloud GPU options*, the batching path |
 | 2026-10-15 | Upstream: the json.h comment fix not opened; the LoadBuffer fix as its own PR after #1637 is merged | user | *Upstreaming*, further candidates |
+| 2026-10-15 | One word per concept for what "check" had meant: **tests** (our test programs, files `*_test`, `thud/run_tests.sh`, `build-tests/`), **measurements** (the design's numbered ones: measurement 4 = the value by side to move), **probes** (analysis programs: `az_blunder_probe`, `az_noise_probe`, `az_head_probe`, `az_layout_probe`), **assertions**, **measures** (logged statistics); the session log keeps the old words | user | *Tests*; CLAUDE.md |
+| 2026-10-15 | The taper's condition (d): the gap counts as closed when, with the dwarfs to move, a far dwarf is worth at least 80% of its worth with the trolls to move, in two measurements in a row | user (Claude proposed) | the design's §5 |
 
 **Considered and set aside** (with the reason): the Python AlphaZero (a layout bug, and
 slow; fallback note below); a 32 x 2 network (its convolutions see 11 x 11 squares);
@@ -766,17 +768,17 @@ first session, with no patch at all.**
   actor): see the throughput step.
 - [x] **Thud layout control, C++ against Python** (user, 2026-09-25: compare fairly, with
   exactly the Python runs' parameters) — **passes, 2026-09-25: the C++ model reads Thud's
-  board correctly.** `az_layout_check.py`'s supervised task, trained with upstream's C++
+  board correctly.** `az_layout_probe.py`'s supervised task, trained with upstream's C++
   model, unmodified (`VPNetModel::Learn`), on exactly the Python runs' data and settings:
-  `az_layout_check.py --export` writes the random games (0-399 for training,
+  `az_layout_probe.py --export` writes the random games (0-399 for training,
   10,000-10,099 for testing), checksums of the positions taken from them (every 7th turn),
-  and each seed's batch order; the new `az_layout_check.cc` replays the games with Thud's
+  and each seed's batch order; the new `az_layout_probe.cc` replays the games with Thud's
   C++ code, stops unless its 20,036 + 4,816 positions reproduce the checksums (a
   tampered count and a tampered plane sum were both caught), and trains on the same
   batches in the same order — resnet 32 x 2, learning rate 1e-3, weight decay 1e-4,
   1,500 steps of 128, seeds 1-3. Built as OpenSpiel's `docs/library.md` describes, with no
   CMake change: `build-shared/libopen_spiel.so` plus upstream's `model.cc` and `vpnet.cc`
-  compiled alongside (`thud/experiments/build_az_program.sh az_layout_check`). On the
+  compiled alongside (`thud/experiments/build_az_program.sh az_layout_probe`). On the
   held-out positions at step 1,500, mean of the seeds (range):
 
   | Task | Baseline | Python as is | Python planes last | **C++** |
@@ -912,7 +914,7 @@ first session, with no patch at all.**
   - **Sleep freezes WSL.** This laptop was set to sleep after 5 minutes without input
     even on mains power (the user set it to never on 2026-09-26). WSL's clocks stop
     meanwhile and the wall clock jumps on resume. Monotonic-clock measurements survive;
-    wall-clock ones do not — a first trainer check lost ~39 and ~9 minutes to sleep, and
+    wall-clock ones do not — a first trainer test lost ~39 and ~9 minutes to sleep, and
     only its pause-free games could be used (they agreed with the final numbers), and the
     benchmark follow-up's 82 minutes of wall time were probably mostly sleep, not the
     overrunning searches I first blamed. Detect pauses by comparing `/proc/uptime` with
@@ -991,7 +993,7 @@ first session, with no patch at all.**
   the second, and from ~4 minutes on, when the first short battles ended, the larger
   cache still held them (its value hit rate jumped from ~45% to 69-81%, today's stayed
   at ~40%). Before any replay (90-240 s) the 4x cache ran 3,438 against 3,275-3,538: no
-  gain, as expected. (Engine identity: `identity_check.cc` still passes with the
+  gain, as expected. (Engine identity: `identity_test.cc` still passes with the
   counters, 12 of 12.) **In real self-play the value hits are fewer**: run D's trainer
   logs, steps 16-25 (2026-09-30), 13-22% of ~2.2-2.9 million value requests per step
   hit the cache (move-probability requests 100%) — root noise at every root, the sampled
@@ -1142,12 +1144,12 @@ first session, with no patch at all.**
   step 14's trolls −20.0 (step 16: −2.4), against the untrained anchor's −4.5 (+21.6; the
   games lasted a median 395 moves, step 16's 131) — while against C step 16's trolls its
   dwarfs won by 5.5: not transitive. Two readings (settled below — as trained, a drift; the
-  quick check: forgetting in the dwarfs' move probabilities): (a) **forgetting** — its
+  quick measurement: forgetting in the dwarfs' move probabilities): (a) **forgetting** — its
   dwarfs play well against the trolls they train against and lost what beat other trolls
   (the buffer holds ~3 learning steps; if so, the buffer's "newer network losing"
   trigger — pronounced here, not yet shown persistent); (b) **the evaluation** —
   upstream's rule spreads a side's search when the network judges that side losing.
-  **Checked 2026-09-29** (`untried_move_check`, 3 self-play games per network with
+  **Checked 2026-09-29** (`untried_move_test`, 3 self-play games per network with
   upstream's rule, 100 simulations; `~/thud-runs/stage1_matches/untried_check_C_step*.txt`):
   under upstream's rule the dwarfs' searches spread for **both** — step 16 a median 99
   moves visited (15 dwarf positions; its games were short), step 29 76 (87) — against 15
@@ -1158,7 +1160,7 @@ first session, with no patch at all.**
   ~100 moves the policy ranks highest, the one whose single evaluation is best
   (`CompareFinal`: visits, then total value) — a test of the value head one move ahead,
   not of the policy with its own search. The drop may lie there (forgetting in the value
-  head, or values that no longer separate dwarf moves). The decisive check is the match
+  head, or values that no longer separate dwarf moves). The decisive measurement is the match
   against A step 14 with the new rule in both searches (backlog, user 2026-09-29);
   fairer still, each network searching with its own training rule (`az_match` has one
   `untried` for both). The user's
@@ -1177,7 +1179,7 @@ first session, with no patch at all.**
   anchor (20 each) — then C8, C12, C20, C24 against the anchor and C29 against A14 (60
   pairs). If C's dwarfs hold up, the rule prevented the collapse for about twice as many
   positions as run A lasted (~640,000 against ~330,000): 3a confirmed, and the per-side
-  curve against the anchor becomes a health check at the end of every run. **Step 2,
+  curve against the anchor becomes a health measurement at the end of every run. **Step 2,
   only if they decline as trained:** the replay buffer as the second cause — our buffer
   holds 65,536 positions, ~200-300 games, where AlphaGo Zero trained on its most recent
   500,000 games; run A2 (2x) had not collapsed where A did (weak); C29's results do not
@@ -1190,7 +1192,7 @@ first session, with no patch at all.**
   `replay_buffer_size / replay_buffer_reuse` new positions) and how much work each
   learning step does (`replay_buffer.Size() / train_batch_size` batches,
   `alpha_zero.cc:425`), so that ratio is chosen deliberately. **Chosen: option C**
-  (2026-09-30, user: the quick check first, then option C if warranted): our copy trains
+  (2026-09-30, user: the quick measurement first, then option C if warranted): our copy trains
   a fixed 64 batches per learning step (C's amount) drawn from the larger buffer, with
   C's cadence (a step every 21,845 new positions) — so only the memory changes, from ~3
   learning steps of games to ~12, and each position is still trained on ~3 times. (Option
@@ -1231,7 +1233,7 @@ first session, with no patch at all.**
   - Stage 3a in the narrow sense holds: the rule prevents run A's collapse. Training with
     it has not produced a network better than A's best.
 
-  **The quick forgetting check** (2026-09-30, `thud/experiments/az_forgetting.cc`, 3.5
+  **The quick forgetting measurement** (2026-09-30, `thud/experiments/az_forgetting.cc`, 3.5
   minutes; `~/thud-runs/stage1_matches/forgetting_2026-09-30.jsonl`): the same 4,096
   positions from each of C's archives (steps N-2..N for N = 3, 6, ..., 30), and for C's
   networks 0, 8, 12, 16, 20, 24, 29, per side, the value error against the game's
@@ -1265,7 +1267,7 @@ first session, with no patch at all.**
   archiver copies a few hundred positions after each third step; e.g. 378 between
   archives 6 and 9.) Then, each network as trained: D29 against C29 (40 pairs), the
   anchor (20), A14 (60), C16 (40), D20 and D24 against the anchor (20 each), and the
-  forgetting check of D's networks on C's archives. If D's dwarfs keep their repertoire
+  forgetting measurement of D's networks on C's archives. If D's dwarfs keep their repertoire
   and D beats C29 without losing to A14, forgetting was the cause.
 
   **Run D's results** (2026-09-30: steps 16-29 from 02:57, frozen 07:40-10:48 by a
@@ -1283,7 +1285,7 @@ first session, with no patch at all.**
   | D29 vs the anchor | 20 | +28.1 (+23.9 to +32.3) | 20 / 0 / 0 | +3.2 / +24.9 |
 
   - **The longer memory stops the dwarfs' policy from forgetting** (the forgetting
-    check of D16-D29 on C's archives, same positions): D29's dwarf move-probability loss
+    measurement of D16-D29 on C's archives, same positions): D29's dwarf move-probability loss
     on archives 3, 18 and 21 is 5.74, 4.89 and 4.48, C16's level (5.73, 4.90, 4.58), where
     C29 had 8.03, 6.57 and 5.63; D's dwarf policy is also less peaked (its likeliest move
     is the most visited in 65% of archive 30's dwarf positions, C29's 88%). The trolls'
@@ -1517,7 +1519,7 @@ first session, with no patch at all.**
      then (on a faster machine, a run from scratch may need them less, or for fewer
      steps).
   **Order on a new machine**: (1) set up and check correctness — the build, our test
-  programs, `identity_check`, a short tic-tac-toe control; (2) benchmark group 1, ~1
+  programs, `identity_test`, a short tic-tac-toe control; (2) benchmark group 1, ~1
   hour — `az_search_cost`, then actors x inference threads x batch with the real
   network; (3) **a baseline repeat**: G''s settings to step ~16, which should learn
   per step as on this CPU — the positive control for the move; (4) then groups 2 and 3,
@@ -1528,153 +1530,157 @@ first session, with no patch at all.**
 
   **GPU readiness checklist** (the user, 2026-10-15: time on a rented GPU is expensive
   even when used badly, so every feature it needs is to be ready and tested here first,
-  and every relevant setting exposed). State: **done** = built and checked (a check
+  and every relevant setting exposed). State: **done** = built and tested (a test
   program, or real runs); **built, untested** = built but never run where it matters;
   **missing** = not built. *Before renting* = to do here first.
 
   | Feature | Why on the GPU | State | To do |
   |---|---|---|---|
   | *Setup* | | | |
-  | A build on the rented machine: LibTorch with CUDA (the pip wheel, as here), `build-torch/`, `build-shared/`, our programs | nothing runs without it | **built, partly tested** (2026-10-15): `thud/setup_machine.sh` — install.sh's packages and dependencies, the venv with torch 2.10.0 (on x86_64 PyPI's CUDA wheel), `~/.bashrc`, `build/` and `build-shared/`, our programs, hexparrot at its commit, every check, and with a GPU a CUDA smoke test; each step skipped when done; `build.sh` and `checks.mk` now link LibTorch's CUDA libraries when the wheel has them (without, a CUDA device fails: "no CUDA backend"). Not yet run on a fresh clone; never on x86 or with CUDA | *before renting*: the dry run on a fresh clone here; on a cheap x86 box if one is at hand |
-  | The checks on the new machine (`thud/run_checks.sh --full`: every check, *Tests* below; the tic-tac-toe control) | correctness before any spending | **done** (here, 2026-10-15: 28 checks, ~4 min, none needs a run folder — the networks they read are made by `make_test_network`) | run them there first (the order above) |
+  | A build on the rented machine: LibTorch with CUDA (the pip wheel, as here), `build-torch/`, `build-shared/`, our programs | nothing runs without it | **built, partly tested** (2026-10-15): `thud/setup_machine.sh` — install.sh's packages and dependencies, the venv with torch 2.10.0 (on x86_64 PyPI's CUDA wheel), `~/.bashrc`, `build/` and `build-shared/`, our programs, hexparrot at its commit, every test, and with a GPU a CUDA smoke test; each step skipped when done; `build.sh` and `tests.mk` now link LibTorch's CUDA libraries when the wheel has them (without, a CUDA device fails: "no CUDA backend"). Not yet run on a fresh clone; never on x86 or with CUDA | *before renting*: the dry run on a fresh clone here; on a cheap x86 box if one is at hand |
+  | The tests on the new machine (`thud/run_tests.sh --full`: every test, *Tests* below; the tic-tac-toe control) | correctness before any spending | **done** (here, 2026-10-15: 28 tests, ~4 min, none needs a run folder — the networks they read are made by `make_test_network`) | run them there first (the order above) |
   | The trainer on a GPU (`--devices=cuda:0`; several copies, `cuda:0,cuda:0`) | the network on the GPU | **built, untested on a GPU** (upstream's device handling; no GPU here); the setup script's step 8 runs it there: 2 steps on `cuda:0` and on `cuda:0,cuda:0`, the learner on `cuda:0` | on the machine: step 8 (`--gpu-smoke-only`) |
-  | Our tools on a GPU: `az_match devices=LIST` (one copy of each network per entry, e.g. `cuda:0,cuda:0`) | matches at GPU speed | **built, untested on a GPU** (2026-10-15): the default reproduces the old binary exactly (pairs and request counts, one thread); two CPU copies play identical games (since 2026-10-15 a permanent check, `az_match_check.sh` 4, with the control that the summary records the copies); `cuda:0` here reaches Torch and fails as this CPU-only LibTorch must ("no CUDA backend") | on the machine: one short match |
+  | Our tools on a GPU: `az_match devices=LIST` (one copy of each network per entry, e.g. `cuda:0,cuda:0`) | matches at GPU speed | **built, untested on a GPU** (2026-10-15): the default reproduces the old binary exactly (pairs and request counts, one thread); two CPU copies play identical games (since 2026-10-15 a permanent test, `az_match_test.sh` 4, with the control that the summary records the copies); `cuda:0` here reaches Torch and fails as this CPU-only LibTorch must ("no CUDA backend") | on the machine: one short match |
   | — `az_restructure device=` | distillation at GPU speed | **built, untested on a GPU** (2026-10-15): the default writes byte-identical checkpoints (the input-plane surgery on convK83) | on the machine |
   | — `az_grow device=` | growth on the GPU | **built, untested on a GPU** | on the machine |
-  | — the probes (`az_dwarf_value_probe`, `az_blunder_check`, `az_risk_probe`, `az_long_capture_probe`, `az_input_plane_trace`, `az_feature_probe`, …) | — | **missing**: they hard-code `/cpu:0` — cheap enough on the CPU | only if one proves slow |
+  | — the probes (`az_dwarf_value_probe`, `az_blunder_probe`, `az_risk_probe`, `az_long_capture_probe`, `az_input_plane_trace`, `az_feature_probe`, …) | — | **missing**: they hard-code `/cpu:0` — cheap enough on the CPU | only if one proves slow |
   | *Throughput* | | | |
   | `az_search_cost`: the search's CPU cost, the batching cap | how many cores a GPU needs | **done** (here: the search ~3.3 µs a simulation; with a tiny network the batching path capped at ~25,000-40,000 simulations/s, ~52,000 with the legal policy) | rerun there |
-  | The batching path's overhead | possibly the GPU phase's limit (an extrapolation: below) | **profiled and one cause fixed** (2026-10-15, `perf`, the trainer paused 38 s): with the tiny network of `az_search_cost` (nearly free to evaluate), half the inference threads' time went to the policy over all 19,800 distinct actions — the mask and the softmax — not to queues or locks (< 2%), the searching threads mostly waiting on the 2 inference threads (~25% of the cores busy). **The legal policy** (`VPNetModel::SetLegalPolicy`, on by default): the logits of the legal moves alone, normalised in double — the priors within ~1e-7, the values bit for bit, all 120 compared searches identical (`legal_policy_check`); measured (the trainer paused 62 s): the tiny network 2.4x (Thud) and 1.5x (chess), **our real network on this CPU +1% (M102), chess at 64 x 4 ±0**: with real networks here the network's own forward passes dominate — the bottleneck on this CPU, as before. Whether the bookkeeping limits a GPU is unmeasured | on the machine: the sweep with the legal policy on and off (`legal_policy=`) |
-  | A throughput sweep (actors x inference threads x batch with the real network) | the machine settings, group 1 | **built** (2026-10-15): `az_search_cost parts=2 net=RUN:STEP devices=... batched_threads=LIST batch=LIST inference_threads=LIST` — a line per setting, then the fastest; checked here on a test network (the format, the grid) | on the machine |
+  | The batching path's overhead | possibly the GPU phase's limit (an extrapolation: below) | **profiled and one cause fixed** (2026-10-15, `perf`, the trainer paused 38 s): with the tiny network of `az_search_cost` (nearly free to evaluate), half the inference threads' time went to the policy over all 19,800 distinct actions — the mask and the softmax — not to queues or locks (< 2%), the searching threads mostly waiting on the 2 inference threads (~25% of the cores busy). **The legal policy** (`VPNetModel::SetLegalPolicy`, on by default): the logits of the legal moves alone, normalised in double — the priors within ~1e-7, the values bit for bit, all 120 compared searches identical (`legal_policy_test`); measured (the trainer paused 62 s): the tiny network 2.4x (Thud) and 1.5x (chess), **our real network on this CPU +1% (M102), chess at 64 x 4 ±0**: with real networks here the network's own forward passes dominate — the bottleneck on this CPU, as before. Whether the bookkeeping limits a GPU is unmeasured | on the machine: the sweep with the legal policy on and off (`legal_policy=`) |
+  | A throughput sweep (actors x inference threads x batch with the real network) | the machine settings, group 1 | **built** (2026-10-15): `az_search_cost parts=2 net=RUN:STEP devices=... batched_threads=LIST batch=LIST inference_threads=LIST` — a line per setting, then the fastest; tested here on a test network (the format, the grid) | on the machine |
   | *Training: settings exposed* | | | |
-  | The trainer's settings: `uct_c`, the untried-move rule and reduction, simulations (per player), policy temperatures (per player), root noise α and ε (per player), temperature and its drop, the learning rate, weight decay, batch size, batches per step, the buffer (size, reuse, growing start), symmetry augmentation, policy target pruning, alpha-beta's share and depth (per player), kickstarting's weight (per player), depth and temperature, network size and model, actors, inference threads, batch and cache | the tuning groups 1-5 | **done** — each with a check (`untried_move_check`, `conv_policy_check`, `augmentation_check`, `pruning_check`, `growing_buffer_check`, `search_settings_check`, `alphabeta_training_check`, `kickstart_check`), used in runs, and since 2026-10-15 all on at once end to end (`trainer_check.sh`) | — |
-  | A learning-rate schedule (warm-up, decay) | long runs, bigger batches | **done** (2026-10-15): `--lr_warmup_steps`, `--lr_warmup_start` (a linear warm-up), `--lr_schedule=STEP:FACTOR,...` (AlphaZero's and KataGo's step-wise factors), on the network's own rate (vpnet.pb), the rate logged per step (`learning_rate` in learner.jsonl); `learning_settings_check` (the factors by hand, the config's round trip and old configs' defaults, the rate set, a step at rate 0 moving no parameter) and `trainer_check.sh` (the rates of 3 steps); found on the way: a checkpoint restores its optimizer's rate (so without a schedule a run trains at its checkpoint's rate), and `az_grow`'s default rate now the source's vpnet.pb's | — |
-  | A value-loss weight (E1 of the design) | the value learns small effects poorly | **done** (2026-10-15): `--value_loss_weight` (the losses reported unweighted); `learning_settings_check`: at weight 0 the value head's own parameters exactly unchanged, at 1 they move, weight 2 moves the trunk differently | — |
-  | Playout cap randomisation (3b) | recommended for the GPU | **done** (2026-10-15): `--playout_cap_full_share` (each of the network's moves searched in full and recorded with that probability) and `--playout_cap_fast_simulations` (the rest: no root noise, no forced playouts, not recorded; KataGo, arXiv 1902.10565, 3.1); `playout_cap_check` (off: the old games exactly; on at a quarter: 25.4% of 6,150 moves recorded, every one a full search; the fast bots without noise) and `trainer_check.sh` (half in full) | the setting to use: by test runs on the GPU (stage 3b) |
-  | Tapers by results (kickstarting per side, the alpha-beta share), gated | long unattended runs | **missing** — by hand, run to run. Its parts (the design's §5, conditions a-d): (a) the noise-free matches and (b) the regression gates are built; (c) the visits' mass on unsafe dwarf moves against the prior's has no tool yet (a probe over the recorded targets), and (d) "the side-to-move gap closed" has no threshold yet (the user's decision; check 4 runs every 10 steps in the longer run) | after (c)'s probe and (d)'s threshold: a supervisor between segments, as `night11` does for check 4 (moderate) |
+  | The trainer's settings: `uct_c`, the untried-move rule and reduction, simulations (per player), policy temperatures (per player), root noise α and ε (per player), temperature and its drop, the learning rate, weight decay, batch size, batches per step, the buffer (size, reuse, growing start), symmetry augmentation, policy target pruning, alpha-beta's share and depth (per player), kickstarting's weight (per player), depth and temperature, network size and model, actors, inference threads, batch and cache | the tuning groups 1-5 | **done** — each with a test (`untried_move_test`, `conv_policy_test`, `augmentation_test`, `pruning_test`, `growing_buffer_test`, `search_settings_test`, `alphabeta_training_test`, `kickstart_test`), used in runs, and since 2026-10-15 all on at once end to end (`trainer_test.sh`) | — |
+  | A learning-rate schedule (warm-up, decay) | long runs, bigger batches | **done** (2026-10-15): `--lr_warmup_steps`, `--lr_warmup_start` (a linear warm-up), `--lr_schedule=STEP:FACTOR,...` (AlphaZero's and KataGo's step-wise factors), on the network's own rate (vpnet.pb), the rate logged per step (`learning_rate` in learner.jsonl); `learning_settings_test` (the factors by hand, the config's round trip and old configs' defaults, the rate set, a step at rate 0 moving no parameter) and `trainer_test.sh` (the rates of 3 steps); found on the way: a checkpoint restores its optimizer's rate (so without a schedule a run trains at its checkpoint's rate), and `az_grow`'s default rate now the source's vpnet.pb's | — |
+  | A value-loss weight (E1 of the design) | the value learns small effects poorly | **done** (2026-10-15): `--value_loss_weight` (the losses reported unweighted); `learning_settings_test`: at weight 0 the value head's own parameters exactly unchanged, at 1 they move, weight 2 moves the trunk differently | — |
+  | Playout cap randomisation (3b) | recommended for the GPU | **done** (2026-10-15): `--playout_cap_full_share` (each of the network's moves searched in full and recorded with that probability) and `--playout_cap_fast_simulations` (the rest: no root noise, no forced playouts, not recorded; KataGo, arXiv 1902.10565, 3.1); `playout_cap_test` (off: the old games exactly; on at a quarter: 25.4% of 6,150 moves recorded, every one a full search; the fast bots without noise) and `trainer_test.sh` (half in full) | the setting to use: by test runs on the GPU (stage 3b) |
+  | Tapers by results (kickstarting per side, the alpha-beta share), gated | long unattended runs | **missing** — by hand, run to run. Its parts (the design's §5, conditions a-d): (a) the noise-free matches and (b) the regression gates are built; (c) the visits' mass on unsafe dwarf moves against the prior's has no tool yet (a probe over self-play positions, as `az_capture_targets` for captures; a stricter rule proposed 2026-10-15, the loop's gain after the step at most 0.8, for the user to confirm), and (d) is decided (the user, 2026-10-15: closed when a far dwarf with the dwarfs to move is worth at least 80% of its worth with the trolls to move, twice in a row; measurement 4 runs every 10 steps in the longer run) | after (c)'s probe: a supervisor between segments, as `night11` does for measurement 4 (moderate) |
   | The alpha-beta share per side; kickstarting's temperature per side | finer scaffolds | **missing** | if needed (small) |
   | A faster alpha-beta of our own (captures first, a table of positions, iterative deepening) | a depth-3 teacher; alpha-beta then sets the pace on the CPU beside the GPU | **missing** | before deeper teachers |
   | The value-target options B1′, C7, E2 (the design) | if D1 leaves the side-to-move gap open | **missing** — designed only | when needed |
   | Mixed precision | speed on large networks | **missing** | later, if the network grows a lot |
   | *Network growth* | | | |
-  | Net2Net widening (more filters), function-preserving: `thud/az/az_grow.cc` (2026-10-15) | grow the network without starting over | **done** — every new trunk channel copies a random old one, the same choice in every layer (the input block, every residual block, the policy head's first convolution and batch norm, the value head's hidden layer), the weights reading them divided by the copies; checked on real networks: M102 (convolutional head, input planes) 64 → 96 and 64 → 128, K83 (linear head) 64 → 96, the outputs equal within 7e-7 (values) and 5e-6 (policies) on 200 positions of random games; **the control** (the same growth without the division) differs by 0.7-1.9, as it must; the saved network reloads with identical outputs. **Unit tests** (`grow_check`, 2026-10-15; the growth in `thud/az/net2net.h`): on small networks with random batch norms, the mapping's properties, the function kept (1e-7) for wider, deeper, both, the linear head, no growth; three controls (no division; a batch norm's statistics left uncopied; the new blocks not the identity), every tensor accounted for | — |
-  | — symmetry breaking (`noise=`) | copies would stay copies under training | **done** — noise of that many times each tensor's standard deviation on the new channels' incoming weights; at 0.01 the outputs move by ≤ 0.005 (values) and ≤ 0.035 (policies); `grow_check` 5: without noise the copies stay equal through 30 learning steps, with 0.01 they part | the value to use: by the live test |
+  | Net2Net widening (more filters), function-preserving: `thud/az/az_grow.cc` (2026-10-15) | grow the network without starting over | **done** — every new trunk channel copies a random old one, the same choice in every layer (the input block, every residual block, the policy head's first convolution and batch norm, the value head's hidden layer), the weights reading them divided by the copies; tested on real networks: M102 (convolutional head, input planes) 64 → 96 and 64 → 128, K83 (linear head) 64 → 96, the outputs equal within 7e-7 (values) and 5e-6 (policies) on 200 positions of random games; **the control** (the same growth without the division) differs by 0.7-1.9, as it must; the saved network reloads with identical outputs. **Unit tests** (`grow_test`, 2026-10-15; the growth in `thud/az/net2net.h`): on small networks with random batch norms, the mapping's properties, the function kept (1e-7) for wider, deeper, both, the linear head, no growth; three controls (no division; a batch norm's statistics left uncopied; the new blocks not the identity), every tensor accounted for | — |
+  | — symmetry breaking (`noise=`) | copies would stay copies under training | **done** — noise of that many times each tensor's standard deviation on the new channels' incoming weights; at 0.01 the outputs move by ≤ 0.005 (values) and ≤ 0.035 (policies); `grow_test` 5: without noise the copies stay equal through 30 learning steps, with 0.01 they part | the value to use: by the live test |
   | — the value head's hidden layer grown apart from the trunk; other models (`mlp`) | — | **missing** (the hidden layer follows the trunk's width; `az_grow` refuses other models) | if ever needed |
   | Net2Net deepening (extra residual blocks starting as the identity) | the same, in depth | **done** (`az_grow nn_depth=`, 2026-10-15): the new blocks after the old ones, their last batch norm's scale and shift at 0 (Goyal et al. 2017); the outputs equal the source's exactly (0) for M102 4 → 6 blocks, and with widening (128 x 6; K83 96 x 5) as above | — |
-  | — a live test: training on from a grown network | that it learns, not just computes | **partly**: in miniature (`trainer_check.sh` 3, 2026-10-15: the trainer takes a grown 12 x 2 network, its buffer and log, and learns a step with finite losses); the real test still **missing** | a trainer segment from a grown M102 (e.g. 96 x 6, `noise=0.01`) in a gap between runs: no loss spike, the losses falling below the source's |
+  | — a live test: training on from a grown network | that it learns, not just computes | **partly**: in miniature (`trainer_test.sh` 3, 2026-10-15: the trainer takes a grown 12 x 2 network, its buffer and log, and learns a step with finite losses); the real test still **missing** | a trainer segment from a grown M102 (e.g. 96 x 6, `noise=0.01`) in a gap between runs: no loss spike, the losses falling below the source's |
   | — the access it needs: `VPNetModel::NamedTensors()` (every parameter and buffer by name, sharing storage) | — | **done** (our copy, `thud/az/vpnet.h`) | — |
-  | Distillation into a new structure from a buffer (`az_restructure nn_width= nn_depth= nn_model= freeze=none`) | a bigger network warm-started from a buffer | **built for a new head only** — tested for a new head (convK83; since 2026-10-15 `trainer_check.sh` 4: a new head on the frozen trunk) and new input planes; **into another width or depth it stops by design** (found 2026-10-15): its copy check requires the copied trunk to give the source's values, and at a new size almost nothing is copied | only if distillation is wanted beside `az_grow`: the check limited to what was copied (small) |
-  | Input-plane surgery (`az_restructure input_planes=1 copy=all`) | new inputs | **done** (`input_planes_check`; run M) | — |
+  | Distillation into a new structure from a buffer (`az_restructure nn_width= nn_depth= nn_model= freeze=none`) | a bigger network warm-started from a buffer | **built for a new head only** — tested for a new head (convK83; since 2026-10-15 `trainer_test.sh` 4: a new head on the frozen trunk) and new input planes; **into another width or depth it stops by design** (found 2026-10-15): its copy test requires the copied trunk to give the source's values, and at a new size almost nothing is copied | only if distillation is wanted beside `az_grow`: the test limited to what was copied (small) |
+  | Input-plane surgery (`az_restructure input_planes=1 copy=all`) | new inputs | **done** (`input_planes_test`; run M) | — |
   | A fresh optimizer, a new learning rate (`az_fresh_optimizer`) | after surgery or growth | **done** | — |
   | *Evaluation and monitoring* | | | |
   | `az_match` (networks, alpha-beta, MCTS, hexparrot; self-play's conditions; the teacher in a prior) | matches | **done** | the device option (above) |
   | The ladder (`ladder.py`), the watcher (`watch_run.py`), the probes, the evaluation queues (`night9`-style) | evaluation | **done** | — |
-  | The regression gates (standard errors, positive controls) | safe promotions and tapers | **built** (2026-10-15): `thud/experiments/regression_gates.py` — the design's seven measures, paired with the anchor on the same openings or positions (alpha-beta per side, blunders with a battle-clustered bootstrap, troll kills, short hurls, the trolls' captures; long hurls monitored); its blunder count equals `az_blunder_check`'s on 4 networks; on real data N121 passes against M102, the positive controls fail (K83 short hurls, G'64 blunders, G'64 against I83 the trolls' captures); `regression_gates_check.py` on made inputs (itself: all pass at 0; each control fails its gate alone). The measurements it reads are matches and probes run by hand or a queue | a queue that measures a network (the matches and probes) and runs the gates |
+  | The regression gates (standard errors, positive controls) | safe promotions and tapers | **built** (2026-10-15): `thud/experiments/regression_gates.py` — the design's seven measures, paired with the anchor on the same openings or positions (alpha-beta per side, blunders with a battle-clustered bootstrap, troll kills, short hurls, the trolls' captures; long hurls monitored); its blunder count equals `az_blunder_probe`'s on 4 networks; on real data N121 passes against M102, the positive controls fail (K83 short hurls, G'64 blunders, G'64 against I83 the trolls' captures); `regression_gates_test.py` on made inputs (itself: all pass at 0; each control fails its gate alone). The measurements it reads are matches and probes run by hand or a queue | a queue that measures a network (the matches and probes) and runs the gates |
   | *Robustness and logistics* | | | |
-  | Resuming a run after an interruption | preemption, crashes | **done** (run C; run N after a Windows restart, 2026-10-14; since 2026-10-15 `trainer_check.sh` 2: the step follows on, the logs appended) | — |
-  | Restarting a run by itself after a crash or a preemption (a watchdog) | spot instances | **done** (2026-10-15): `thud/az/watchdog.sh` (restarts on a crash or kill, resumes from config.json; gives up after 5 restarts without progress; a stop asked of it passed on as SIGINT), and crash-safe saving in our copy: the buffer and the checkpoints written under a temporary name and renamed; the resume skipping a truncated last record of learner.jsonl and ending the logs' unfinished lines; our `LoadBuffer` refusing a cut-off file (upstream's loads it without an error, half the positions lost: an upstream bug, *Upstreaming*). `watchdog_check.sh`: kills during a buffer write and a checkpoint write, a truncated record — the run finishes with every step once; the control: a half-written buffer refused; the stop; giving up | after a machine restart: start the watchdog again (cron `@reboot`) |
-  | Moving runs to and from the machine (buffers ~4.5 GB, checkpoints, logs) | start from our networks, bring results home | **built, checked locally** (2026-10-15): `thud/transfer_run.sh FROM TO [--state-only]` (rsync, resumable; every file's SHA-256 compared; the copy's config.json path set to its folder; a running run refused); `transfer_check.sh` between local folders: the copy resumes into itself, the original untouched, `--state-only`, an interrupted copy completed. Over ssh untested (no second machine) | the first real transfer: a state-only push of a run |
+  | Resuming a run after an interruption | preemption, crashes | **done** (run C; run N after a Windows restart, 2026-10-14; since 2026-10-15 `trainer_test.sh` 2: the step follows on, the logs appended) | — |
+  | Restarting a run by itself after a crash or a preemption (a watchdog) | spot instances | **done** (2026-10-15): `thud/az/watchdog.sh` (restarts on a crash or kill, resumes from config.json; gives up after 5 restarts without progress; a stop asked of it passed on as SIGINT), and crash-safe saving in our copy: the buffer and the checkpoints written under a temporary name and renamed; the resume skipping a truncated last record of learner.jsonl and ending the logs' unfinished lines; our `LoadBuffer` refusing a cut-off file (upstream's loads it without an error, half the positions lost: an upstream bug, *Upstreaming*). `watchdog_test.sh`: kills during a buffer write and a checkpoint write, a truncated record — the run finishes with every step once; the control: a half-written buffer refused; the stop; giving up | after a machine restart: start the watchdog again (cron `@reboot`) |
+  | Moving runs to and from the machine (buffers ~4.5 GB, checkpoints, logs) | start from our networks, bring results home | **built, tested locally** (2026-10-15): `thud/transfer_run.sh FROM TO [--state-only]` (rsync, resumable; every file's SHA-256 compared; the copy's config.json path set to its folder; a running run refused); `transfer_test.sh` between local folders: the copy resumes into itself, the original untouched, `--state-only`, an interrupted copy completed. Over ssh untested (no second machine) | the first real transfer: a state-only push of a run |
   | A time and cost budget per run (timeouts) | money | **done** (the runners' timeouts) | — |
 
   **Tests** (the user, 2026-10-15: unit tests for the growth, "pretty complete" tests of
   the other features, commit hooks for them, and "carefully keep track of what's
   implemented and what's tested and what's missing, even if small subfeatures are
-  missing"). `thud/run_checks.sh` builds what is out of date (`thud/checks.mk`, into
-  `build-checks/`, **without `-DNDEBUG`**) and runs the quick checks (~20 s, four at once)
-  or with `--full` all 28 (~4 min; times alone on an idle machine); none needs a run folder — the networks the checks read
+  missing"). `thud/run_tests.sh` builds what is out of date (`thud/tests.mk`, into
+  `build-tests/`, **without `-DNDEBUG`**) and runs the quick tests (~20 s, four at once)
+  or with `--full` all 30 (~4 min; times alone on an idle machine); none needs a run folder — the networks the tests read
   are small untrained ones from `thud/az/make_test_network.cc`. **The hooks**:
-  `.githooks/pre-commit` runs the quick checks when a commit changes code (the game, `thud/az/`,
-  `thud/experiments/`, the checks, the hooks; docs alone go through), `.githooks/pre-push`
+  `.githooks/pre-commit` runs the quick tests when a commit changes code (the game, `thud/az/`,
+  `thud/experiments/`, the tests, the hooks; docs alone go through), `.githooks/pre-push`
   all of them when the pushed commits change code, after its upstream guard (both tested
-  2026-10-15 on copies with the checks replaced by a marker: docs-only and deletions skip,
-  code runs, a failing check stops the push, the guard still refuses `thud/` upstream).
-  Beside a running experiment the checks run one at a time in the idle class. Every
-  check, with what it covers (and its control, the evidence that it can fail):
+  2026-10-15 on copies with the tests replaced by a marker: docs-only and deletions skip,
+  code runs, a failing test stops the push, the guard still refuses `thud/` upstream).
+  Beside a running experiment the tests run one at a time in the idle class. Every
+  test, with what it covers (and its control, the evidence that it can fail):
 
-  | Check | Set, time | What it covers | Its control |
+  | Test | Set, time | What it covers | Its control |
   |---|---|---|---|
   | `thud_test` (`open_spiel/games/thud/thud_test.cc`) | quick, 2 s | the rules: every move kind, captures, endings, the encoding, text formats, symmetries; OpenSpiel's generic tests | hand-worked expectations |
   | `crosscheck_tests.py` | quick, 0.2 s | `thud_test`'s expectations recomputed by hexparrot's engine (needs hexparrot set up) | 2 known differences listed apart |
-  | `playthrough` (in `run_checks.sh`) | full, 3.5 s | the baseline's recorded moves replayed, every line compared (as upstream's `playthrough_test.py`) | a copy with one board line changed must not replay equal |
-  | `features_check` | quick, 3 s | the 50 input planes: hand-built positions, the planes against the move generator | — (exact expectations) |
-  | `input_planes_check` | full, 65 s | the planes inside the network: net surgery keeps the outputs, each plane reaches exactly its positions, learning reaches exactly the planes present | judged against the next plane's positions it must fail |
-  | `conv_policy_check` | full, 148 s | the convolutional policy head: each logit at its own plane and square, the masking, learning, checkpoints | rows and columns swapped must fail; a fresh network's outputs must differ from a reloaded one's |
-  | `augmentation_check` | quick, 0.2 s | the 8 symmetries of observations, moves and policy targets | positions mirrored independently, as text |
-  | `identity_check` | full, 88 s | our AlphaZero copy computes as upstream's, bit for bit: outputs (ours with the legal policy off, `SetLegalPolicy(false)`), a learning step, searches with and without noise, rollouts | another network, seed, step must differ |
-  | `legal_policy_check` (new) | full, 44 s | the legal policy, our default, against upstream's computation, for the three models, batches of 1 and 32: the values bit for bit, the priors within 1e-6 (measured ~1e-7) summing to 1; reported: searches with it on and off (all 120 identical) | another network's priors must differ |
-  | `learning_settings_check` (new) | quick, 0.8 s | the learning-rate schedule's factors, the config's round trip and old configs' defaults, `SetLearningRate`, the rate a checkpoint restores, the value-loss weight, the saves under temporary names | a step at the network's rate must move the parameters; weight 1 must move the value head |
-  | `watchdog_check.sh` (new) | full, 90 s | the watchdog and crash-safe saving: kills during a buffer write and a checkpoint write, a truncated record — the run finishes, every step once; the stop; giving up | a half-written buffer must be refused |
-  | `transfer_check.sh` (new) | full, 24 s | `transfer_run.sh` between local folders: checksums, the copy's path, the copy resumes into itself, the original untouched, `--state-only`, a running run refused, an interrupted copy completed | the original's config.json must still point at the original |
-  | `playout_cap_check` (new) | quick, 1.3 s | playout cap randomisation: off plays the old games; on records about the share, every recorded position a full search; the fast bots | off, every move must be recorded |
-  | `regression_gates_check.py` (new) | quick, 0.9 s | the gates' arithmetic on made inputs: a network against itself; the blunder rule by hand; positions that do not match skipped | each made regression must fail its gate alone; lower long hurls only monitored |
-  | `untried_move_check` | full, 107 s | the untried-move rules: the formula, and their effect on searches | upstream's rule must spread the dwarfs' searches |
-  | `pruning_check` | quick, 13 s | forced playouts and policy target pruning | k 0 must leave 3x more children short |
-  | `search_settings_check` | quick, 0.3 s | per-player simulations, policy temperatures, root noise α and ε (InitAZBot) | temperatures {1, 1} must change nothing, {2, 1} must spread a sharp prior; with no list both sides noised |
-  | `growing_buffer_check`, `replay_buffer_check`, `az_buffer_truncate self_test` | quick, < 1 s | the growing buffer's size; our replay buffer against upstream's (contents, samples, saved bytes, memory; since 2026-10-15 a file cut short: ours refuses it); truncating a buffer | upstream's ratchet must show; upstream's must load the cut file without an error (its bug) |
-  | `instrumentation_check` | quick, 0.2 s | how a game's end is classified, every ending | a position one move short |
-  | `alphabeta_training_check` | quick, 0.2 s | games against alpha-beta: only our network's positions recorded, its moves AlphaBetaPlayer's, per-side depths, the log line, the configuration's round trip | another seed must change a move; self-play must record both sides |
-  | `kickstart_check` | full, 131 s | the teacher's scores and policy, the mixed targets, the weight per player | depth 1 must score the position's moves alike; the mixed target must differ from the unmixed |
-  | `teacher_mix_check` (new) | quick, 0.3 s | `az_match teacher_mix_a`: the mix per player, exactly; the values unchanged; the cache | the teacher must differ from the prior at both nodes |
-  | `grow_check` (new) | quick, 2.4 s | Net2Net (`net2net.h`): the mapping; the function kept for wider, deeper, both, the linear head, no growth; every tensor accounted for; copies stay equal under training without noise, part with it; a grown network reloads | three: no division; a batch norm's statistics left uncopied; new blocks not the identity — each must exceed 10x the tolerance |
-  | `trainer_check.sh` (new) | quick, 26 s | the trainer end to end with every feature of ours on (two device copies, batching, augmentation, pruning, 2 learner batches, alpha-beta games, kickstarting and noise per player, a learning-rate warm-up and schedule, a value-loss weight): checkpoints, buffer, logs, config; resuming (the step follows on, the rates the schedule's, logs appended); training on from an `az_grow` network; `az_restructure` (a new head, frozen trunk); `az_fresh_optimizer` | the tools' own fatal checks (az_grow's control among them) |
-  | `az_match_check.sh` (new) | full, 97 s | `az_match`: reproducible; the record (openings, sides, the summary's arithmetic); `noise=`, `sample_plies=` and players without a network (alpha-beta, MCTS, hexparrot) the same whichever thread; `devices=`; `teacher_mix_a=` | each option must change the games; another seed too; the summary must record the devices |
-  | `sanitized` (in `run_checks.sh`) | full, 10 s | `replay_buffer_check`, `features_check`, `az_buffer_truncate` under AddressSanitizer and UBSan | the binaries must carry ASan's instrumentation (and ASan was seen catching a heap overflow here) |
+  | `playthrough` (in `run_tests.sh`) | full, 3.5 s | the baseline's recorded moves replayed, every line compared (as upstream's `playthrough_test.py`) | a copy with one board line changed must not replay equal |
+  | `features_test` | quick, 3 s | the 50 input planes: hand-built positions, the planes against the move generator | — (exact expectations) |
+  | `input_planes_test` | full, 65 s | the planes inside the network: net surgery keeps the outputs, each plane reaches exactly its positions, learning reaches exactly the planes present | judged against the next plane's positions it must fail |
+  | `conv_policy_test` | full, 148 s | the convolutional policy head: each logit at its own plane and square, the masking, learning, checkpoints | rows and columns swapped must fail; a fresh network's outputs must differ from a reloaded one's |
+  | `augmentation_test` | quick, 0.2 s | the 8 symmetries of observations, moves and policy targets | positions mirrored independently, as text |
+  | `identity_test` | full, 88 s | our AlphaZero copy computes as upstream's, bit for bit: outputs (ours with the legal policy off, `SetLegalPolicy(false)`), a learning step, searches with and without noise, rollouts | another network, seed, step must differ |
+  | `legal_policy_test` (new) | full, 44 s | the legal policy, our default, against upstream's computation, for the three models, batches of 1 and 32: the values bit for bit, the priors within 1e-6 (measured ~1e-7) summing to 1; reported: searches with it on and off (all 120 identical) | another network's priors must differ |
+  | `learning_settings_test` (new) | quick, 0.8 s | the learning-rate schedule's factors, the config's round trip and old configs' defaults, `SetLearningRate`, the rate a checkpoint restores, the value-loss weight, the saves under temporary names | a step at the network's rate must move the parameters; weight 1 must move the value head |
+  | `watchdog_test.sh` (new) | full, 90 s | the watchdog and crash-safe saving: kills during a buffer write and a checkpoint write, a truncated record — the run finishes, every step once; the stop; giving up | a half-written buffer must be refused |
+  | `transfer_test.sh` (new) | full, 24 s | `transfer_run.sh` between local folders: checksums, the copy's path, the copy resumes into itself, the original untouched, `--state-only`, a running run refused, an interrupted copy completed | the original's config.json must still point at the original |
+  | `playout_cap_test` (new) | quick, 1.3 s | playout cap randomisation: off plays the old games; on records about the share, every recorded position a full search; the fast bots | off, every move must be recorded |
+  | `regression_gates_test.py` (new) | quick, 0.9 s | the gates' arithmetic on made inputs: a network against itself; the blunder rule by hand; positions that do not match skipped | each made regression must fail its gate alone; lower long hurls only monitored |
+  | `ladder_test.py` (new) | quick, 0.7 s | the ladder: known strengths recovered exactly (both links, a chain of matches), the 95% intervals' coverage with noise (77 of 80), differences, player names, loading az_match's files | one player 5 points a battle better must rise by 10 |
+  | `position_edits_test` (new) | quick, 1.5 s | the value probe's position edits (`position_edits.h`): the far pieces, a piece removed, a dwarf moved — each against a computation of its own, on 707 positions | removing another piece must give another board |
+  | `untried_move_test` | full, 107 s | the untried-move rules: the formula, and their effect on searches | upstream's rule must spread the dwarfs' searches |
+  | `pruning_test` | quick, 13 s | forced playouts and policy target pruning | k 0 must leave 3x more children short |
+  | `search_settings_test` | quick, 0.3 s | per-player simulations, policy temperatures, root noise α and ε (InitAZBot) | temperatures {1, 1} must change nothing, {2, 1} must spread a sharp prior; with no list both sides noised |
+  | `growing_buffer_test`, `replay_buffer_test`, `az_buffer_truncate self_test` | quick, < 1 s | the growing buffer's size; our replay buffer against upstream's (contents, samples, saved bytes, memory; since 2026-10-15 a file cut short: ours refuses it); truncating a buffer | upstream's ratchet must show; upstream's must load the cut file without an error (its bug) |
+  | `instrumentation_test` | quick, 0.2 s | how a game's end is classified, every ending | a position one move short |
+  | `alphabeta_training_test` | quick, 0.2 s | games against alpha-beta: only our network's positions recorded, its moves AlphaBetaPlayer's, per-side depths, the log line, the configuration's round trip | another seed must change a move; self-play must record both sides |
+  | `kickstart_test` | full, 131 s | the teacher's scores and policy, the mixed targets, the weight per player | depth 1 must score the position's moves alike; the mixed target must differ from the unmixed |
+  | `teacher_mix_test` (new) | quick, 0.3 s | `az_match teacher_mix_a`: the mix per player, exactly; the values unchanged; the cache | the teacher must differ from the prior at both nodes |
+  | `grow_test` (new) | quick, 2.4 s | Net2Net (`net2net.h`): the mapping; the function kept for wider, deeper, both, the linear head, no growth; every tensor accounted for; copies stay equal under training without noise, part with it; a grown network reloads | three: no division; a batch norm's statistics left uncopied; new blocks not the identity — each must exceed 10x the tolerance |
+  | `trainer_test.sh` (new) | quick, 26 s | the trainer end to end with every feature of ours on (two device copies, batching, augmentation, pruning, 2 learner batches, alpha-beta games, kickstarting and noise per player, a learning-rate warm-up and schedule, a value-loss weight): checkpoints, buffer, logs, config; resuming (the step follows on, the rates the schedule's, logs appended); training on from an `az_grow` network; `az_restructure` (a new head, frozen trunk); `az_fresh_optimizer` | the tools' own fatal tests (az_grow's control among them) |
+  | `az_match_test.sh` (new) | full, 97 s | `az_match`: reproducible; the record (openings, sides, the summary's arithmetic); `noise=`, `sample_plies=` and players without a network (alpha-beta, MCTS, hexparrot) the same whichever thread; `devices=`; `teacher_mix_a=` | each option must change the games; another seed too; the summary must record the devices |
+  | `sanitized` (in `run_tests.sh`) | full, 10 s | `replay_buffer_test`, `features_test`, `az_buffer_truncate` under AddressSanitizer and UBSan | the binaries must carry ASan's instrumentation (and ASan was seen catching a heap overflow here) |
 
-  **Not covered by any check** (the gaps, to be kept current):
+  **Not covered by any test** (the gaps, to be kept current):
 
-  - *The probes and analysis programs* (`az_blunder_check`, `az_dwarf_value_probe`,
+  - *The probes and analysis programs* (`az_blunder_probe`, `az_dwarf_value_probe`,
     `az_risk_probe`, `az_long_capture_probe`, `az_feature_probe`, `az_input_plane_trace`,
     `az_capture_targets`, `az_teacher_stats`, `az_search_cost`, `az_target_quality`,
-    `az_head_check`, `az_noise_check`, `az_forgetting`, `az_merge_buffers`): measurements
+    `az_head_probe`, `az_noise_probe`, `az_forgetting`, `az_merge_buffers`): measurements
     with their own placebos or controls where they have one, but no unit test of their
-    helpers (e.g. the blunder check's safe-move rule, the value probe's shifted dwarf).
-  - *The Python tools*: `ladder.py`, `watch_run.py`, `analyse_games.py`, the night queues —
-    checked by hand once each (the ladder against the matches), no tests.
-  - *`az_match` options outside `az_match_check`*: `capture_floor_a`, `share=1`,
+    helpers (e.g. the blunder probe's safe-move rule) — the value probe's position edits
+    are tested (`position_edits_test`), since the taper's condition (d) acts on that probe.
+  - *The Python tools*: `watch_run.py`, `analyse_games.py`, the night queues — tested by
+    hand once each, no tests (`ladder.py`, whose ratings decide promotions, has
+    `ladder_test.py`).
+  - *`az_match` options outside `az_match_test`*: `capture_floor_a`, `share=1`,
     `progress`, `cache`, `inference_threads`, `untried_a`/`untried_b`,
     `temperature_a`/`temperature_b`, `sims_a`/`sims_b`; `SelfPlayChooser`'s sampling only
     end to end. Its default path to `hexparrot_player.py` is found from the binary's folder
-    and is right only for `build-shared/` (the check passes it explicitly).
-  - *The trainer*: its evaluators (`trainer_check` runs none), `explicit_learning`,
+    and is right only for `build-shared/` (the test passes it explicitly).
+  - *The trainer*: its evaluators (`trainer_test` runs none), `explicit_learning`,
     resignation (`cutoff_probability`, off in our runs), `inference_cache` sizes, the
-    learner's statistics' numbers (checked once by hand, 2026-10-03).
-  - *Sanitizers on the LibTorch programs*: only the three checks without LibTorch run
+    learner's statistics' numbers (tested once by hand, 2026-10-03).
+  - *Sanitizers on the LibTorch programs*: only the three tests without LibTorch run
     sanitized; ThreadSanitizer was never run on the trainer's or az_match's threads.
   - *CUDA*: nothing here (no GPU); the device code runs with CPU copies only. The setup
     script's smoke test (step 8) covers it on the machine.
   - *The setup script* (`thud/setup_machine.sh`): not yet run on a fresh clone; never on
     x86, with apt, or with a CUDA wheel. *`transfer_run.sh` over ssh*: untested (no second
-    machine; between local folders it is checked).
-  - *The warnings*: `-Wno-everything` remains in `build.sh` and `checks.mk` (to be narrowed,
+    machine; between local folders it is tested).
+  - *The warnings*: `-Wno-everything` remains in `build.sh` and `tests.mk` (to be narrowed,
     CLAUDE.md); without it the game's header warns once — `ThudState`'s defaulted copy
     assignment is deleted, as in 25 upstream games: harmless, left as upstream writes it.
   - `az_restructure` into another width or depth stops by design (the checklist above).
-  - *Stage-1 programs on upstream's AlphaZero* (`az_layout_check`, `az_throughput`,
+  - *Stage-1 programs on upstream's AlphaZero* (`az_layout_probe`, `az_throughput`,
     `az_reuse`, `az_buffer_stats`) are not in the suite.
 
-  **Where a check, not the code, had to change** (the user asked that this be noted): no
-  test needed a change in the game or in our AlphaZero code. `pruning_check` and
-  `untried_move_check` were written for trained networks: on untrained ones their
+  **Where a test, not the code, had to change** (the user asked that this be noted): no
+  test needed a change in the game or in our AlphaZero code. `pruning_test` and
+  `untried_move_test` were written for trained networks: on untrained ones their
   controls fail (a near-uniform prior binds no forced playouts; values near 0 spread no
   search), so `make_test_network` gives the networks a trained one's shape
-  (`policy_scale=5`, `value_bias=-1`) — the checks themselves unchanged, `untried_move_check`
+  (`policy_scale=5`, `value_bias=-1`) — the tests themselves unchanged, `untried_move_test`
   run on 1 game instead of 6 (a whole game of 800 plies at 100 simulations each). Fixed in
-  the new checks while writing them: `az_match_check` compared the games files byte for
-  byte, but battles are written as they finish (sorted now); `trainer_check` tested
-  `az_restructure` into 12 x 2 (now a new head, after the finding above); `grow_check`
+  the new tests while writing them: `az_match_test` compared the games files byte for
+  byte, but battles are written as they finish (sorted now); `trainer_test` tested
+  `az_restructure` into 12 x 2 (now a new head, after the finding above); `grow_test`
   left LibTorch unseeded (its controls then varied from 5e-4 to 7e-3 between runs; seeded,
-  each control must exceed 10x the tolerance); the sanitized check's control tripped over
-  `pipefail`; `trainer_check` required a game against alpha-beta in 2 steps at a share of
-  0.3, which fails 4% of the time (0.7^9; now 0.5 over 3 steps, 1 in 2,000). Refactored for the checks, each shown to change nothing: the growth into
+  each control must exceed 10x the tolerance); the sanitized test's control tripped over
+  `pipefail`; `trainer_test` required a game against alpha-beta in 2 steps at a share of
+  0.3, which fails 4% of the time (0.7^9; now 0.5 over 3 steps, 1 in 2,000). Refactored for the tests, each shown to change nothing: the growth into
   `net2net.h` (byte-identical checkpoints), `TeacherMixEvaluator` into
   `thud/experiments/teacher_mix.h` (identical games and summary). Found on the way: the
   playthrough instruction in CLAUDE.md and Phase 4 (regenerate and diff) could never pass —
   a new playthrough plays new random moves; corrected to upstream's replay. Later the
-  same day, with the GPU checklist's features: `learning_settings_check` first compared
+  same day, with the GPU checklist's features: `learning_settings_test` first compared
   outputs after a step at rate 0, which move through the batch norms' running statistics
-  at any rate (now the parameters); `watchdog_check`'s killer was too slow to catch a
+  at any rate (now the parameters); `watchdog_test`'s killer was too slow to catch a
   checkpoint being written (now a larger network and a tight poll), and its control's
-  test was malformed; `transfer_check`'s stand-in trainer exited at once. **The checks
+  test was malformed; `transfer_test`'s stand-in trainer exited at once. **The tests
   found four defects in the code** (none in the game): upstream's `json::FromString`
   stops the program on a line that does not parse, so the first tolerant resume died on
   a truncated record (now only whole lines are parsed); the record after a fragment
@@ -1897,9 +1903,9 @@ the run, otherwise only the last ~3 steps (run C had an archive besides; run E's
 archive folder is empty). Our
 tools work from these after the fact: `az_buffer_stats` (search breadth per side),
 `az_forgetting` (a network's fit to older positions), `az_target_quality` (targets
-against deeper searches), `az_match` (strength as trained, per side), `az_head_check`.
+against deeper searches), `az_match` (strength as trained, per side), `az_head_probe`.
 
-*Can we see overfitting?* Partly. The new-against-trained check shows a generalisation
+*Can we see overfitting?* Partly. The new-against-trained measure shows a generalisation
 gap, but (1) it mixes the sides, whose policy losses differ (~5 against ~3 nats), so
 a dwarf-only problem can hide; (2) new positions come from the current network's own
 play, so they flatter it (in run C' new positions often had the lower loss); (3) it
@@ -1927,7 +1933,7 @@ implement it now" — the tuning's branches are judged by them); item 7 only if 
 turns unstable:
 
 1. **Per-side splits** of everything now mixed: the training losses, the
-   new-against-trained check, `value_accuracy` and `value_prediction`. The learner has
+   new-against-trained measure, `value_accuracy` and `value_prediction`. The learner has
    each position's side to move. Small change in our copy.
 2. **Self-play results as margins, per step**: the dwarfs' mean final margin and its
    spread, and how games ended (all of one side captured, no legal move, the 200- or
@@ -1962,23 +1968,23 @@ can be computed afterwards.
 **Items 1-3 built and checked** (2026-10-03, our copy's trainer; no switch, they only
 log): `learner.jsonl` gains `loss_by_side` (each side's policy and value loss and
 positions; the model now also returns each position's losses, detached), the
-new-against-trained check's `new_by_side` / `trained_by_side`, `selfplay` (player 0's
+new-against-trained measure's `new_by_side` / `trained_by_side`, `selfplay` (player 0's
 return — in Thud the dwarfs' — with a histogram of 21 buckets of 0.1, and the counts of
 each `endings` category) and `by_side` (per side: positions, median legal moves, moves
 visited, top share, effective moves, the prior's median effective moves, the mean KL
 divergence of the visit counts from the prior, how often the prior's top move is the
 most visited, and the values' sign accuracy and size at 7 points of the side's own
 turns); the learner's text log a line of losses by side, and each actor's game line
-its ending. **Checks:** `identity_check` 12 of 12 (one learning step equal to
+its ending. **Tests:** `identity_test` 12 of 12 (one learning step equal to
 upstream's: the losses unchanged); in a 3-step smoke run (32 x 2, 20 simulations,
 augmentation on) the two sides' losses weighted by their positions reproduce the mixed
-ones to ~1e-7 (training losses and both halves of the new-against-trained check); all
+ones to ~1e-7 (training losses and both halves of the new-against-trained measure); all
 32 logged games replayed in `pyspiel` give the logged ending and return, the margin
 matching the pieces left; the per-step search statistics match `az_buffer_stats` on the
-same 6,736 positions; `instrumentation_check` (new) plays one hand-built position to
+same 6,736 positions; `instrumentation_test` (new) plays one hand-built position to
 each of the five endings (each with a control one move earlier) plus a cut-off game
 and another game's end, 12 of 12, and catches a planted error (the turn limit's `>=`
-as `>`); `conv_policy_check` and `augmentation_check` still pass. The prior statistics
+as `>`); `conv_policy_test` and `augmentation_test` still pass. The prior statistics
 are plausible on the smoke run's untrained network (its prior near uniform: 269.7
 effective moves of 270) but were not recomputed independently. **First real use:** run
 G' continued from 2026-10-03 (`~/thud-runs/stage5b_Gaug_continue.sh`).
@@ -2004,7 +2010,7 @@ changes training):
   nice 19, which competes as an equal with our trainers (themselves at nice 19); but
   the idle class is not "leftovers only": it weighs 3 against a nice-19 task's 15 (the
   kernel's `WEIGHT_IDLEPRIO`, `sched_prio_to_weight`), so it still gets ~1/6 of a core
-  the two contend for — in a first check (two 20-second blocks each way, beside G''s
+  the two contend for — in a first measurement (two 20-second blocks each way, beside G''s
   trainer) the trainer used ~6.0 cores with two idle-class matches running and ~7.3
   with them paused. Whether that costs the trainer speed is the **load test** below.
   `--nice` runs the matches at nice 19 instead. And only with memory to spare: its
@@ -2017,7 +2023,7 @@ changes training):
   out-of-memory killer would pick the largest process. (Both numbers were first
   measured too early, at 0.6 and 7.4 GB: on 2026-10-05 the first test's two matches
   grew to 1.4 GB each, swap reached 2.9 of 4 GB and 0.8 GB stayed available before the
-  test was stopped.) It only reports: stopping a run stays a decision. **Check:** the
+  test was stopped.) It only reports: stopping a run stays a decision. **Test:** the
   first test (W24 against C16 and C29, 6 pairs each; expected near W16/W29's −16) was
   stopped for memory before a pair finished; to redo once the machine is free. Its
   first real use was the load test: G'46 against G'44 (20 pairs, finished) and A14
@@ -2036,10 +2042,10 @@ changes training):
   would not do: G''s throughput varies 12-13% from step to step, and spreading games
   over blocks would smear the contrast; on quiet nights (runs E and G) the
   per-block measure varies 2-5%, on W's night (the user on the laptop) 15-17%.
-  **Checks:** on G''s and E's old logs with made-up blocks, a planted 5% slowdown is
+  **Tests:** on G''s and E's old logs with made-up blocks, a planted 5% slowdown is
   found (+6.0%, +2.6 to +9.4; +7.2%, +3.1 to +11.2) and nothing planted reads as
   nothing (19 of 20 random schedules' intervals contain 0); the toggler's 20-second
-  check had the load at 0.0 CPU seconds when paused, and resumed it at the end. With
+  test had the load at 0.0 CPU seconds when paused, and resumed it at the end. With
   the CPU time per block it can tell a lost CPU share (the trainer gets less CPU)
   from lost efficiency (the same CPU, less done: memory bandwidth or caches; the test
   does not tell those two apart). If the watcher does slow the trainer, the likely fix
@@ -2072,7 +2078,7 @@ changes training):
   latest segment only: G''s steps 1-44 are gone). **Done at the next trainer build**
   (2026-10-05, the buffer fix below): the actor and evaluator logs now append, as the
   learner's does, so a resumed run keeps its games (G' from its resume at 19:56).
-  **Checks:** every replay of W's
+  **Tests:** every replay of W's
   698 logged games reproduces its logged returns, and its ending, computed from the
   replay by the trainer's rules, matches the logged one (698 of 698, 4 of them at the
   no-capture limit); the captures counted move by move add up to the pieces missing;
@@ -2092,7 +2098,7 @@ changes training):
   beside G' found its trainer growing, 9.75 GB at 15:39 to 10.62 GB at 19:16, 6.1-6.4 GB
   of it in the main heap, where the learner writes the buffer). Two causes in upstream's
   buffer (`open_spiel/utils/circular_buffer.h`, `serializable_circular_buffer.h`), shown
-  by `thud/az/replay_buffer_check.cc` on positions shaped like ours: (1) once full,
+  by `thud/az/replay_buffer_test.cc` on positions shaped like ours: (1) once full,
   `Add` copy-assigns a position into the oldest slot, and a copy-assigned `std::vector`
   keeps its storage when that is large enough, so each slot keeps the largest position
   it ever held — a slot that held a dwarf position (median ~240 legal moves, 24 bytes
@@ -2103,7 +2109,7 @@ changes training):
   GB. **Fixed in our copy, no upstream change** (`thud/az/replay_buffer.h`,
   `ReplayBuffer`): `Add` moves the position into its slot (the learner takes its
   reservoir sample's copy first), and `LoadBuffer` replaces every element by a copy of
-  itself, which holds exactly its size. **Checks:** the same contents, samples and saved
+  itself, which holds exactly its size. **Tests:** the same contents, samples and saved
   file as upstream's buffer, and exactly the bytes the positions need after loading and
   after 3 turnovers (upstream's +45% and +72% are the controls); a smoke run of the
   trainer, fresh to step 2 and resumed to 3 (8 actors, 20 simulations, 32 x 2, a buffer
@@ -2117,7 +2123,7 @@ changes training):
   cache's results: upstream's `LRUCache::Get` returns a copy, two of ~4 KB per hit). We
   passed them by pointer and moved them, checked that, and **reverted it** (the user,
   2026-10-05: they save neither compute nor RAM, and similarity to upstream helps).
-  **Checks:** a match plays the
+  **Tests:** a match plays the
   same games before and after (4 pairs, identical); the CPU study's batching benchmark:
   12,025 / 12,275 → 12,293 / 12,459 simulations a second at 32 threads, 24,287 / 24,472
   → 24,277 / 24,571 at 64 — **no measurable gain**: these copies are not what caps the
@@ -2136,24 +2142,24 @@ changes training):
   than a drop (`malloc_trim` after loading would return it; not built).
 
 *Design of items 1-4* (Claude, 2026-10-02; each behind no switch — they only log — but
-each with a check that it measures what it claims, as every change here):
+each with a test that it measures what it claims, as every change here):
 
 - **1. Per-side splits.** The side to move is in every stored position: the
   observation's "trolls to move" plane (`thud::kTrollsToMovePlane`, plane 3 counting
   from 0, one value over the whole plane; `thud.h`), so no format change. The model's loss function gets a variant returning per-position
   policy and value losses (the trainer's means are their averages), and the learner
-  averages them per side: the training losses, the new-against-trained check, and
-  `value_accuracy` / `value_prediction` (from each state's `current_player`). Check:
+  averages them per side: the training losses, the new-against-trained measure, and
+  `value_accuracy` / `value_prediction` (from each state's `current_player`). Test:
   the two sides' averages, weighted by their counts, reproduce today's mixed numbers.
 - **2. Self-play results as margins.** Per step: the dwarfs' mean final margin, its
   spread and a histogram (the trajectories' returns), and how each game ended — all
   dwarfs or all trolls captured, no legal move, the 200-turn no-capture limit, the
   800-turn limit — read from the final state in the actor and carried in the
-  trajectory. Check: on a few logged games, replayed from their move lists, the same
+  trajectory. Test: on a few logged games, replayed from their move lists, the same
   margins and endings.
 - **3. Search statistics per side.** Per step, from the new positions' targets: moves
   visited, the most visited move's share, effective moves (exp of the entropy), as
-  `az_buffer_stats` computes them (check: equal on a saved buffer). And from each
+  `az_buffer_stats` computes them (test: equal on a saved buffer). And from each
   root, recorded by the actor as three numbers per position: the network's prior's
   entropy (its own prior, before root noise: the evaluator's cached one, no extra
   network call), the KL divergence of the visit counts from it (how far the search
@@ -2174,7 +2180,7 @@ each with a check that it measures what it claims, as every change here):
   (`--validation_set=PATH`) and logs the scores before each learning step (~4,000
   inferences, a few seconds), and an offline tool scores any run's saved checkpoints
   — so runs A, C, C', D, E, G and G' can be compared on the same positions
-  retroactively. Checks: the untrained network scores worst; the set ranks our
+  retroactively. Tests: the untrained network scores worst; the set ranks our
   networks as the matches did (G'16 above G16, C16 above C'16, E44 above D29 above
   C29); a second build with another seed gives the same ranking. The reference
   network itself is excluded from judging (its own score is inflated).
@@ -2193,7 +2199,7 @@ keep for the rest of the project):
   margin's ceiling of ±32; fits better than linear: 42 against 40 of 53 matches
   inside their intervals with every match in); a player is a network as it searched
   (another rule is another player); rating R = D + T, the expected margin per pair
-  against the anchor, **E44**, with standard errors and a fit check against every
+  against the anchor, **E44**, with standard errors and a goodness of fit against every
   match. **The untrained network does not belong on the ladder**: with its matches in,
   the misfits were exactly those — A14, which beats our strong networks, beats it by
   only +26.1 where C16 searching broadly beats it by +46.4: beating a near-random
@@ -2339,7 +2345,7 @@ keep for the rest of the project):
   its self-play statistics); the learner adds these games' positions to the buffer but
   reports them apart (`vs_alphabeta` in `learner.jsonl`: our network's return as each
   side, the positions), the self-play statistics staying self-play's. Checked by
-  `thud/az/alphabeta_training_check.cc` (all pass at the first run): only the
+  `thud/az/alphabeta_training_test.cc` (all pass at the first run): only the
   network's positions recorded, one per its move, the returns the final position's;
   every alpha-beta move the player's choice with the game's seed (control: another seed
   differs); self-play still records both sides; the log lines; depth 1 takes a free
@@ -2361,7 +2367,7 @@ keep for the rest of the project):
   second 3-step trainer run (share 0.3 of positions): 0.31, 0.32 and 0.24 per step,
   **0.29 over all** (3,697 of 12,803 positions), 64-74% of the games; each actor near
   the target (17-20 of 24-28 games); the sides 36 and 37; the books balanced at every
-  step; `alphabeta_training_check` passes again.
+  step; `alphabeta_training_test` passes again.
   **Run I** (2026-10-07 19:29 to 2026-10-08 02:08, steps 65-83, mains, no pause;
   `~/thud-runs/runI_Gaug64_T15_AB30`: G'64 with run H's settings plus 30% of the
   positions against alpha-beta depth 2; its control run H's steps 65-83): **its trolls
@@ -2390,7 +2396,7 @@ keep for the rest of the project):
   enough: value targets that see a blunder directly (material a few moves ahead,
   n-step returns), kickstarting. **Built 2026-10-08:** `alphabeta_depth` is a per-player
   list ("2,1"; one value for both; a number in older configs loads as that number),
-  `AlphaBetaDepth` in our copy; `alphabeta_training_check` parts 7-8 (all pass); a
+  `AlphaBetaDepth` in our copy; `alphabeta_training_test` parts 7-8 (all pass); a
   2-step trainer run played 24 games against depth-1 trolls and 23 against depth-2
   dwarfs; a malformed list stops the trainer at its start. Run J's folder
   (`~/thud-runs/runJ_Gaug64_T15_AB30_d21`) is run I's start, its config differing only
@@ -2415,7 +2421,7 @@ keep for the rest of the project):
   few turns ahead) or kickstarting their policy from alpha-beta's scores of each move —
   to choose after a diagnosis on the blunder positions (is it the dwarfs' prior, the
   trolls' prior inside the dwarfs' search, or the value of the position after the
-  capture?). **The diagnosis** (2026-10-08, `thud/experiments/az_blunder_check.cc` on
+  capture?). **The diagnosis** (2026-10-08, `thud/experiments/az_blunder_probe.cc` on
   the games against hexparrot, 150 blunders each of G'64 and I83, searched again as
   played): a blunder is a non-capturing dwarf move next to a troll taken at once —
   **82% of G'64's dwarf moves, 50% of I83's**. (1) The dwarfs' prior favours them: such
@@ -2433,7 +2439,7 @@ keep for the rest of the project):
   value: kickstarting both sides' policies from alpha-beta's move scores fits,
   short-term value targets less.
 - **Input features from the rules** (proposed by the user, 2026-10-08; after the
-  capture check below, kickstarting first and the features as their own experiment
+  capture measurement below, kickstarting first and the features as their own experiment
   later; **superseded on 2026-10-11 by *the input planes, as decided* — 50 planes,
   below**). Extra input planes that state facts the rules decide
   at once — what can be taken next move, what can be hurled or shoved and how far —
@@ -2463,7 +2469,7 @@ keep for the rest of the project):
   earlier version of this line said KataGo and Leela do this when adding features,
   which no source checked on 2026-10-09 confirmed): I83's or H83's weights with the new
   input channels' weights set to zero, so that it first plays exactly as before — the
-  first mode of *a tool to restructure a network*, below. **Checks:** each
+  first mode of *a tool to restructure a network*, below. **Tests:** each
   plane against the move generator on random and tangled positions (a plane says
   "can be taken" iff a legal capture takes it — with a planted error as the control);
   the zero-weight network's outputs identical to the original's; the planes of a
@@ -2476,11 +2482,11 @@ keep for the rest of the project):
   from the trunk for each action, which fits run I's trolls finding captures at their
   own root (46%) while their prior stays tiny; a conv policy head (stage 5's, whose
   trolls learnt faster) points the same way. Kickstarting helps if the network has
-  simply not been *told*. One check separates the two: in run I's self-play, troll
+  simply not been *told*. One measurement separates the two: in run I's self-play, troll
   positions with a capture available — the search's visits on captures (the policy
   target) against the network's prior on them; a large gap that training does not
   close says representation (features first), little visit mass says the targets
-  never asked for it (kickstarting first). **The check** (2026-10-08,
+  never asked for it (kickstarting first). **The measurement** (2026-10-08,
   `thud/experiments/az_capture_targets.cc`: 200 troll positions with a capture
   available from run I's last self-play games, searched as self-play does, root noise
   on): G'64's prior gives captures 0.123 of its mass — their uniform share (12.4% of
@@ -2489,24 +2495,24 @@ keep for the rest of the project):
   I's alpha-beta games raised both), so the network can represent "this troll move
   captures"; **the targets ask for it too weakly**: kickstarting first, the features
   as their own experiment later. **The features are built and checked** (2026-10-08;
-  these 20 planes were replaced on 2026-10-11 by the 50 below, and `features_check`
+  these 20 planes were replaced on 2026-10-11 by the 50 below, and `features_test`
   rewritten for them): `thud/az/thud_features.h` computes the 20 planes from the
   6-plane observation;
-  `thud/az/features_check.cc` (all pass at the first run, 5 s): on 2,385 positions
+  `thud/az/features_test.cc` (all pass at the first run, 5 s): on 2,385 positions
   (979 from run I's self-play) the exact planes match the move generator with no
   difference (7,472 takeable dwarfs, 2,351 takeable trolls), the danger maps disagree
   with a placed piece on 3 of 333,730 squares (dwarfs; the placed dwarf blocking a
   shove's path) and 0 of 222,551 (trolls), the planes of turned boards are the turned
   planes, and both planted errors are caught. Not yet wired into the network.
 - **Kickstarting** (Schmitt et al., "Kickstarting deep reinforcement learning", 2018;
-  chosen by the capture check above; built 2026-10-08). `--kickstart_weight` w,
+  chosen by the capture measurement above; built 2026-10-08). `--kickstart_weight` w,
   `--kickstart_depth`, `--kickstart_temperature` T (points): every recorded position's
   policy target becomes (1 − w) × the search's visits + w × the teacher's policy, the
   softmax over each legal move's material score (`AlphaBetaPlayer::Scores`: the
   material after the move and the opponent's best reply to depth − 1, no tie-break)
   over T points; the move played is still the search's, and w = 0 is upstream's
   target. (Mixing the targets is the same as adding w × the cross-entropy to the
-  teacher, kickstarting's distillation term.) Checked by `thud/az/kickstart_check.cc`
+  teacher, kickstarting's distillation term.) Checked by `thud/az/kickstart_test.cc`
   (all pass at the first run): a capture scores one point above every other troll move
   at depth 1; a lone dwarf's three steps next to a troll one point below the rest at
   depth 2, and alike at depth 1 (the control); the teacher's policy; weight 0 records
@@ -2518,7 +2524,7 @@ keep for the rest of the project):
   trainer's throughput (below); an alpha-beta of our own with captures searched first
   and a table of positions would make it so, the same search the equal-time matches
   need. Also built for the confirmation: `MCTSBot::SetPriorFloors` / `ApplyPriorFloor`
-  (`search_settings_check` part 5, all pass: hand-worked numbers, floors 0 change no
+  (`search_settings_test` part 5, all pass: hand-worked numbers, floors 0 change no
   search, the trolls' roots get the floored prior, the floor reaches inside dwarf
   searches) and `az_match capture_floor_a=LIST`.
   **Depth 2 for both sides** (the user, 2026-10-08). Depth 3 would be affordable for
@@ -2533,12 +2539,12 @@ keep for the rest of the project):
   depth 2, 200 positions a side from run I's last self-play games, ~1 core-minute; at
   T = 0.25 / 0.5 / 1 / 2): the dwarfs have 255 legal moves on average, 39% of them tied
   for the best score, which get 91 / 73 / 53 / 45% of the teacher's mass; the blunder
-  check's unsafe moves (15% of the legal moves, 11% of them tied for the best) get
+  probe's unsafe moves (15% of the legal moves, 11% of them tied for the best) get
   5.9 / 7.8 / 11.3 / 13.2%. The trolls have 32.5, 36% tied for the best (92 / 70 / 54 /
   45%); at the 138 positions with a capture available, captures are 11% of the legal
   moves (74% of them tied for the best, the rest captures that a hurl punishes) and get
   89 / 61 / 39 / 25% — against G'64's prior on them 0.123 and its search's 0.125 (the
-  capture check). **Decided for run K** (proposed by Claude, adopted by the user,
+  capture measurement). **Decided for run K** (proposed by Claude, adopted by the user,
   2026-10-08): **T = 0.25** — the
   teacher decisive about material (at 0.5 it still puts over a quarter of its mass on
   worse moves); **w = 0.3** — the captures' share of the trolls' targets rises from
@@ -2551,7 +2557,7 @@ keep for the rest of the project):
   trainer rebuilt with kickstarting, each actor logging "Kickstarting: weight W, depth
   D, temperature T" (the previous binary kept as `build-shared/az_trainer_before_kickstart`);
   `~/thud-runs/night3_2026-10-08.py` (dry-run with fakes, a failing and a passing
-  check): checks of `az_match_next` and a kickstarting smoke run, then the
+  measurement): tests of `az_match_next` and a kickstarting smoke run, then the
   capture-floor confirmation, run K and its evaluation as run J's.
   **The capture-floor confirmation** (2026-10-09 11:51-12:27, `~/thud-runs/night3_2026-10-08/`;
   the prediction: if the trolls' prior inside the dwarfs' search causes the blunders,
@@ -2601,7 +2607,7 @@ keep for the rest of the project):
   matches its targets, the network can represent captures and the planes would mainly
   save capacity; if it lags far behind after 19 steps of such targets, representation
   (or the 2-number policy head) is the bottleneck. (2) *The blunder diagnosis of K83*
-  (`az_blunder_check` on its games against hexparrot), against G'64's and I83's: the
+  (`az_blunder_probe` on its games against hexparrot), against G'64's and I83's: the
   dwarfs' prior on unsafe moves, the trolls' prior on the capture inside the dwarfs'
   search. (3) **The feature probe** (`thud/experiments/az_feature_probe.cc`, new):
   linear probes (Alain and Bengio, arXiv 1610.01644; McGrath et al., "Acquisition of
@@ -2698,7 +2704,7 @@ keep for the rest of the project):
   square, the feature probe). So the gap lies between the trunk and the move logits:
   the linear policy head, which reads 2 numbers a square, cannot say "this dwarf, this
   direction, this distance" for many dwarfs at once; the trolls, 8 pieces, get their
-  shoves through it. This fits the head check (the linear head learnt the dwarfs'
+  shoves through it. This fits the head probe (the linear head learnt the dwarfs'
   hurls to 75-78% of their policy mass, the convolutional head 99%) and AlphaZero's
   chess and shogi heads (a convolutional policy of 73 planes a square for moves by
   direction and distance). **Next, to confirm cheaply** (done the same day: convK83,
@@ -2812,7 +2818,7 @@ keep for the rest of the project):
     augmentation; one input channel weighted, the network moved only where that plane
     is nonzero, a zero plane the control); the surgery (the new channels zero: outputs
     exactly convK83's).
-    **Built and passed at the first run** (2026-10-11): `thud/az/features_check.cc`
+    **Built and passed at the first run** (2026-10-11): `thud/az/features_test.cc`
     (rewritten; 12 hand-built positions — the longest hurl and shove, 7 east, the
     longest diagonal hurl, 5, a line one short, a dwarf and the Thudstone in the path,
     two trolls in a path, a lone dwarf next to a troll, a troll line shoving at three
@@ -2824,7 +2830,7 @@ keep for the rest of the project):
     empty squares (a dwarf blocking a shove's path) and 0 of 227,089; rotating then
     computing equals computing then rotating on all 7 symmetries, 0 squares differ; the
     board has room for exactly the kept distances and none of the dropped; the planted
-    errors caught) and `thud/az/input_planes_check.cc` (new; for the convolutional and
+    errors caught) and `thud/az/input_planes_test.cc` (new; for the convolutional and
     the linear head: after the surgery the outputs exactly the original's on 2,708
     positions; weight on one plane's channel moves the outputs exactly where that plane
     is nonzero, for all 50 planes, the next plane's positions as the control failing;
@@ -2832,7 +2838,7 @@ keep for the rest of the project):
     none of the 11 absent). `VPNetModel` (our copy) builds the input with
     `ModelInput`, widens the first layer in `CopyParametersFrom`, and `Parameter` reads a
     weight by name; `CreateGraphDef` takes extra input planes; `az_restructure` does the
-    surgery (`input_planes=1 copy=all max_batches=0`, its check: outputs exactly the
+    surgery (`input_planes=1 copy=all max_batches=0`, its test: outputs exactly the
     source's). Run M's start made so (`~/thud-runs/runM_K83_conv_planes`, 56 input
     planes, outputs exactly convK83's on 200 positions).
   - **Learning, over many steps** (the user): one backward pass gives every plane
@@ -2841,7 +2847,7 @@ keep for the rest of the project):
     loss is no worse than without the planes, the old weights stay in range, and zeroing
     the planes changes the outputs more and more — a small tool reading the checkpoints,
     no change to the trainer.
-  - **The offline check** (2026-10-12 01:44-03:25, after the user's pause;
+  - **The offline measurement** (2026-10-12 01:44-03:25, after the user's pause;
     `~/thud-runs/probe_2026-10-11/`): convK83 trained on as a whole on run K's buffer,
     without the planes (A) and with them (B), learning rate 0.0001. **Both overfit at
     once** — the training loss falls, the held-out loss rises from the first report (A:
@@ -2900,7 +2906,7 @@ keep for the rest of the project):
     **Decided** (the user, 2026-10-12): **M is the main line** — the planes kept, as
     they may help later (longer dwarf lines, long hurls) and the network uses them.
     **The weights over run M's 19 checkpoints** (`thud/experiments/az_input_plane_trace.cc`,
-    new; the user's check of learning over many steps): from zero they grow every step
+    new; the user asked to see the learning over many steps): from zero they grow every step
     (median 0.026 at step 84 → 0.170 at 102, the largest 0.04 → 0.62, still rising), by
     distance as captures occur in the games (distances 1-3 0.28 / 0.34 / 0.50, 4 0.09, 5
     ~0.005, 6-7 exactly 0 — no such capture in run M's games, so no gradient), the maps
@@ -2913,7 +2919,7 @@ keep for the rest of the project):
     its destination — for a dwarf, which moves like a queen, up to 14 squares from the
     origin where the move is scored (13 already in the opening, (0,5)-(13,5)) — and only
     the danger map holds it, there. **When:** after run M, with the blunder diagnosis
-    (`az_blunder_check`) on M's games against hexparrot, and a probe of risks by distance
+    (`az_blunder_probe`) on M's games against hexparrot, and a probe of risks by distance
     built like the long-capture probe (minimal pairs: a dwarf move of k squares onto a
     danger square or a safe one; does the prior avoid the first at every k?). **Gap if**
     the dwarfs' prior still favours unsafe moves (K83: 0.337 of its mass on 18.9% of the
@@ -2962,38 +2968,38 @@ keep for the rest of the project):
 - **The dwarfs' training signal** (the user, 2026-10-12, asked for a design comparing
   approaches — upsides, downsides, costs of development, training and running, validation
   — reviewed adversarially by a reviewer agent: **`thud/DESIGN_dwarf_signal.md`**; revised
-  2026-10-13 with the results of its checks). **Findings:** outcome saturation — 98-100% of
+  2026-10-13 with the results of its measurements). **Findings:** outcome saturation — 98-100% of
   self-play games since run K's step ~77 end with every dwarf gone (M102: 162 of 162) —
   came with training against alpha-beta (run I saturated without kickstarting, 80-95% at
   steps 70-83; run H, without alpha-beta, 41-67%). **Losing every dwarf is not forced by
   the game; it is how our network plays the dwarfs**: alpha-beta at depth 2 playing the
   dwarfs keeps dwarfs alive against M102's trolls in 20 of 20 battles (−13.2) and in all
   236 logged training games against our trolls (−16.2); our dwarfs lose every one
-  (self-play −25.2). **The checks** (the night of 2026-10-13, `~/thud-runs/night7_2026-10-13.py`,
+  (self-play −25.2). **The measurements** (the night of 2026-10-13, `~/thud-runs/night7_2026-10-13.py`,
   results in `~/thud-runs/checks_2026-10-13/`; matches only):
-  - **Check 4, the value by side to move** (`az_dwarf_value_probe`, new): a far dwarf
+  - **Measurement 4, the value by side to move** (`az_dwarf_value_probe`, new): a far dwarf
     removed costs the value clearly with the trolls to move (M102 +0.021, K83 +0.050; a
     dwarf 0.031) but hardly with the dwarfs to move (M102 +0.002 to +0.011); H83 (the
     clean control: run I's steps without its alpha-beta games) and G'64 have no such gap
     — it came with those games, because the only positions from games in which dwarfs
     survive are our trolls' against alpha-beta's dwarfs, all trolls to move.
-  - **Check 1, the value at the blunders** (`az_blunder_check`, extended): one ply down
+  - **Measurement 1, the value at the blunders** (`az_blunder_probe`, extended): one ply down
     (trolls to move) the value prefers the teacher's safe move by a third of a dwarf. (Its
     comparison of the search's Q is biased by selection — the positions are moves the
     search chose — and shows nothing; the third review.) In self-play's conditions two
     thirds of the blunders come from the noise.
-  - **Check 2, the teacher in the dwarfs' search at play time** (`az_match
+  - **Measurement 2, the teacher in the dwarfs' search at play time** (`az_match
     teacher_mix_a`, new; no noise): the dwarf side gains +7.6 / +10.6 / +15.9 points a
     battle against L102's trolls at mixes 0.3 / 0.5 / 0.7, +5.5 / +9.8 / +12.8 against
     K83's; 37-40 of 40 battles keep dwarfs; the dwarfs kill as many trolls or more; our
     trolls unchanged within the noise. **But the dwarfs survive by stalling** (38 of 40
     battles at 0.7 end at the no-capture limit, after 435 plies on average).
-  - **Check 3, self-play's root noise** (`az_match noise=… sample_plies=10`, new; the
+  - **Measurement 3, self-play's root noise** (`az_match noise=… sample_plies=10`, new; the
     noisy cell reproduces the trainer's self-play, 91 plies and −25.9): the dwarfs' own
     noise costs them 6.3 dwarfs by ply 60 and ~1.8 points a battle (its rule for C3 met),
     but without it outcomes stay saturated (1% of battles keep a dwarf); either side's
     noise breaks the stalls in which dwarfs survive without noise (26% → 0-1%).
-  - **Check 5, older trolls under noise**: M102's dwarfs keep dwarfs in 9 of 40 battles
+  - **Measurement 5, older trolls under noise**: M102's dwarfs keep dwarfs in 9 of 40 battles
     against K83's trolls, margin −9.4 — all nine by killing every troll.
   - **Also found** (the third review, rerun): self-play slides within every run — run
     M's blunders 8.6% → 14.9% → 23.2% of the dwarfs' moves by thirds of the run — so a
@@ -3001,16 +3007,16 @@ keep for the rest of the project):
   **Decided** (the user, 2026-10-13; the decision log): test runs from M102, a control
   and **D1** (the dwarfs' kickstarting weight 0.7, the trolls at 0.3); its taper slow
   and gated; **regression gates** in the promotion rule (above). **Built 2026-10-13**:
-  `--player_kickstart_weight` (D1; `kickstart_check` extended, all pass) and
+  `--player_kickstart_weight` (D1; `kickstart_test` extended, all pass) and
   `--player_policy_epsilon` / `--player_policy_alpha` (C3, the root noise per player;
-  `search_settings_check` extended, all pass), both off unless set, in
+  `search_settings_test` extended, all pass), both off unless set, in
   `build-shared/az_trainer_d1` for both runs; the run folders from M102's state,
   `~/thud-runs/runM_K83_conv_planes_cont` (the control, "M continued") and
   `~/thud-runs/runN_M102_d1` (run N: D1), to step 121; the runner
   `~/thud-runs/night8_2026-10-13.py control|d1`. D1's weight is capped at 0.7 (the user;
   if it is not enough, the teacher stays on longer). The win rule settled (the user,
   2026-10-14).
-  **Check 2b** (2026-10-13 18:22-20:12; the 0.7 mix in M102's dwarf prior against plain
+  **Measurement 2b** (2026-10-13 18:22-20:12; the 0.7 mix in M102's dwarf prior against plain
   M102 in self-play's conditions): under the trainer's noise no battle keeps a dwarf (0
   of 40; the dwarfs lose dwarfs more slowly, −22.0 against −25.9), with the dwarfs' roots
   noise-free 28 of 40 do (no mix: 1 of 80), mostly in stalls of ~620 plies — by its rule,
@@ -3027,7 +3033,7 @@ keep for the rest of the project):
   (hexparrot +8.9 ± 2.4 against the control), blunders 13.1%; N2121 against N121 +0.95
   (−2.04 to +3.94): the gain replicates. **Decided** (the user, 2026-10-15): a longer
   D1 + C3 run first — run N continued from N121, 40 steps (`~/thud-runs/runN_d1_cont`,
-  from 14:30), check 4 every 10 steps beside the survival share. **Next:** its segments
+  from 14:30), measurement 4 every 10 steps beside the survival share. **Next:** its segments
   and evaluation; the regression gates and the promotion tests of N121 or N2121.
 - **A tool to restructure a network** (the user, 2026-10-09: "I feel like we are going
   to need that repeatedly"; designed now, built when run K's results pick the first
@@ -3054,7 +3060,7 @@ keep for the rest of the project):
      and zero outgoing weights; never zero both ways, which leaves a unit no learning
      signal. A deeper one: a new residual block whose last batch norm starts at scale and
      shift zero adds nothing to the block's input, which is already past a ReLU, so the
-     network is unchanged. A new head: mode 2. **Check:** outputs identical to the old
+     network is unchanged. A new head: mode 2. **Test:** outputs identical to the old
      network's on held-out positions; the control: one planted nonzero weight on a new
      channel changes them.
   2. *Train from a replay buffer* — for what cannot be copied: load a saved buffer
@@ -3062,7 +3068,7 @@ keep for the rest of the project):
      are alike), train the new network with the trainer's loss, learning rate and
      symmetry augmentation (optionally only its new parts first, the copied ones frozen,
      then all), report the held-out loss per side every few hundred batches, stop when
-     it stops falling (the overfitting check's logic). **Checks:** the trained network
+     it stops falling (the overfitting measure's logic). **Tests:** the trained network
      fits held-out positions better than the untrained one (the positive control) and
      better than one trained on shuffled targets (the negative one).
   **Output:** a run folder — `config.json` with the new structure, `vpnet.pb`, the
@@ -3072,7 +3078,7 @@ keep for the rest of the project):
   so every saved buffer serves every structure. **Caveats:** mode 2 learns the old
   searches' targets — a warm start at about the old network's level, then self-play
   has to carry it further; and an offline comparison of two structures on the same
-  buffer is a filter, not a verdict (the stage-5 head check favoured the convolutional
+  buffer is a filter, not a verdict (the stage-5 head probe favoured the convolutional
   head, run C' then lost to run C). Its time on this CPU is measured when built.
   **Mode 2 built 2026-10-10** (the user: build it, after the long-capture probe):
   `thud/az/az_restructure.cc`, with `VPNetModel::CopyParametersFrom` (by name and
@@ -3082,10 +3088,10 @@ keep for the rest of the project):
   its name (the trunk and the value head, named alike in both output blocks), freezes
   them with freeze=copied, trains the new head on a saved buffer with Thud's 8
   symmetries, every 20th block of 1,024 positions held out, keeps the best by held-out
-  policy loss. Checks built in, fatal on failure: the new network's values equal the
+  policy loss. Tests built in, fatal on failure: the new network's values equal the
   source's before training (the copy) and after it when frozen (the freeze). Tested on
   the 4,096-position smoke buffer (16 x 1 network): 32 tensors copied, 20 parameters
-  frozen, both checks exactly 0, the held-out policy loss falling 4.25 → 4.17 in 200
+  frozen, both tests exactly 0, the held-out policy loss falling 4.25 → 4.17 in 200
   batches (the source's linear head 4.24) while the held-out value loss stayed 0.7805.
   Mode 1 (net surgery for new input channels) built 2026-10-11 (`input_planes=1
   copy=all`; *the input planes, as decided*). The first use queued
@@ -3093,7 +3099,7 @@ keep for the rest of the project):
   convolutional policy head on K83's frozen trunk, trained on run K's final buffer,
   then the long-capture probe on it and on K83. **Done** (2026-10-10 17:27-19:19,
   `~/thud-runs/convK83_2026-10-10/`, outputs in `~/thud-runs/probe_2026-10-10/`): 74
-  tensors copied, 44 parameters frozen, both checks exactly 0; best at 5,500 batches
+  tensors copied, 44 parameters frozen, both tests exactly 0; best at 5,500 batches
   (~1 s a batch; stopped at 6,500 by patience): held-out policy loss **3.653** (dwarfs
   4.518, trolls 2.973) against K83's linear head 3.665 (4.573, 2.952) — K83's on
   positions it trained on, so the comparison favours it — the value loss 0.0570
@@ -3167,7 +3173,7 @@ keep for the rest of the project):
     Leela Chess Zero (matches, plus a held-out tenth of its own self-play data as a test
     set — no external reference) do. Why: items 1-3 already show training health per
     step and side (they would have shown C''s dwarf policy stuck near uniform during the
-    run), and the new-against-trained check, now per side, is in effect Leela Chess
+    run), and the new-against-trained measure, now per side, is in effect Leela Chess
     Zero's held-out test loss; the set's unique promise — comparability across runs, a
     cheap stand-in for strength — is what the pilot undermined (the policy targets are
     a reference's style), and the ladder gives both by measuring strength itself. A
@@ -3498,7 +3504,7 @@ goes into our own copy, decided 2026-09-26 — stages 3 and 5 of the roadmap, on
   parked uneven match (400 against 100 simulations, per side, *Changes to the search and
   trainer*, playout caps) would measure it. (3) The risk weighs most on the dwarfs:
   reuse weakens root noise, the exploration their move probabilities need — the
-  forgetting check (2026-09-30) found exactly those narrowing onto a small repertoire —
+  forgetting measurement (2026-09-30) found exactly those narrowing onto a small repertoire —
   and weakening it now would also confound Step 2's test of the buffer. Revisit once the collapse is solved and playout caps are
   in, if the dwarfs' most visited move keeps more than ~30% of the visits (the watcher's
   statistics — the reusable share, which grows as the policy sharpens), or on the GPU if
@@ -3534,7 +3540,7 @@ goes into our own copy, decided 2026-09-26 — stages 3 and 5 of the roadmap, on
   9. Matches: no gain (a player's own tree two plies later holds almost nothing), leave
      it off.
   **How to test it** (no training run needed for the search itself):
-  1. Switched off: identical searches and games to today's (as `identity_check.cc`).
+  1. Switched off: identical searches and games to today's (as `identity_test.cc`).
   2. The handover: after a move, the new root's subtree equals the played child's
      subtree before (counts and values); the node count stays consistent.
   3. Noise: fresh noise on every child of a reused root, mixed into plain priors, before
@@ -3552,7 +3558,7 @@ goes into our own copy, decided 2026-09-26 — stages 3 and 5 of the roadmap, on
      network's top moves). Paired on the same positions, several hundred to a thousand;
      controls: a fresh 130-simulation search must beat a fresh 100 (the test can see a
      gain this size), and reuse should match a fresh search with the same total visits.
-  7. Then no worse in the next training run (the per-side health check against the
+  7. Then no worse in the next training run (the per-side health measurement against the
      anchor), or on the GPU.
 - **A convolutional policy head** — **built 2026-10-02** (user's go-ahead, 2026-10-01),
   behind a switch: `--nn_model=resnet_conv_policy` (default `resnet`, upstream's head).
@@ -3576,15 +3582,15 @@ goes into our own copy, decided 2026-09-26 — stages 3 and 5 of the roadmap, on
   (`WithPolicyMap`, `thud/az/vpnet.cc`) and is not saved in checkpoints. **Tests:**
   `thud_test.cc` `TestPolicyPlaneIndex` (all 19,800 actions on distinct entries, each on
   its plane at its square by the test's own decoding, exactly the corner cells unused,
-  two entries worked out by hand); `thud/az/conv_policy_check.cc` (each action's logit
+  two entries worked out by hand); `thud/az/conv_policy_test.cc` (each action's logit
   is its plane's entry at its square on random inputs and weights, 39,600 of 39,600,
   control with rows and columns swapped 2,160 — only the 9 diagonal squares; policies
   over exactly the legal moves summing to 1; every weight gets a gradient; both heads fit
   a fixed batch, policy loss 4.8 → 0.023 in 150 steps; a checkpoint reloads exactly,
-  control a fresh network differs); `identity_check` still passes 12 of 12 for the old
+  control a fresh network differs); `identity_test` still passes 12 of 12 for the old
   head; the trainer runs with it end to end. A planted error in the map, the symmetries
-  or the observation transform is caught (four mutations). **Test on the layout-check
-  harness:** `thud/experiments/az_head_check.cc`, the layout check's task on our copy,
+  or the observation transform is caught (four mutations). **Test on the layout-probe
+  harness:** `thud/experiments/az_head_probe.cc`, the layout probe's task on our copy,
   evaluating held-out test positions and as many training positions (overfitting);
   run 2026-10-02 04:02-05:16 (`~/thud-runs/head_check.sh`, `~/thud-runs/head_check/`):
   timing, then both heads at 32 x 2 and 64 x 4, seeds 1-3, 1,500 steps of 128. **Result:
@@ -3653,13 +3659,13 @@ goes into our own copy, decided 2026-09-26 — stages 3 and 5 of the roadmap, on
     trolls won every game at every step and the searches' values stayed confident (their
     size, the trainer's `value_prediction`, 0.8-0.97); in C's the dwarfs won 8 games at
     step 12 and the values' size fell to 0.2-0.5 by step 16.
-  - **No overfitting** (the trainer's new check): before each learning step the new
+  - **No overfitting** (the trainer's new measure): before each learning step the new
     positions' policy loss is at or below that of positions already trained on (step 10:
     4.38 against 4.51; step 16: 4.33 against 4.32), the value losses alike after step 3.
   - **Speed**: step 16 after 6.72 hours against C's 5.98, 12% slower (13-16 positions a
     second from step 3 on, C 16-18; the user asleep until ~11:00, nothing else running);
     only step 1, on the untrained network, was faster (14.0 against 12.1). The head
-    check's full-batch timing (~15% slower) was the better guide.
+    probe's full-batch timing (~15% slower) was the better guide.
   - Caveats: one run each, and run-to-run variation at this scale is unmeasured; the
     harness tests fitting fixed targets, self-play also what the search does with the
     priors.
@@ -3763,7 +3769,7 @@ goes into our own copy, decided 2026-09-26 — stages 3 and 5 of the roadmap, on
   (`thud::SymmetricAction`); the value stays. **Tests:** `thud_test.cc`
   `TestSymmetryHelpers` (squares, all 19,800 actions under all 8 symmetries against the
   test's own mirroring, each a permutation, all distinct; observations of mirrored
-  random-game positions); `thud/az/augmentation_check.cc` against positions mirrored
+  random-game positions); `thud/az/augmentation_test.cc` against positions mirrored
   independently as text: observations, legal moves, the policy's moves (each leads to the
   mirror image of its child) and values, 1,608 of 1,608; symmetry 0 changes nothing;
   control: untransformed observations differ in 1,379 of 1,407 (the rest: the fully
@@ -3771,7 +3777,7 @@ goes into our own copy, decided 2026-09-26 — stages 3 and 5 of the roadmap, on
   harness's `augment=1` does the same, and it measures how differently a network answers
   a position and its mirror image (value gap, policy distance). **Harness result**
   (2026-10-02 05:49-06:45, `~/thud-runs/head_check_augment.sh`: 64 x 4, both heads, seeds
-  1-3, with the head check's unaugmented runs the 2 x 2; means of 3 seeds, min-max in
+  1-3, with the head probe's unaugmented runs the 2 x 2; means of 3 seeds, min-max in
   brackets):
 
   | 64 x 4 | linear | linear, augmented | new | new, augmented |
@@ -3833,7 +3839,7 @@ goes into our own copy, decided 2026-09-26 — stages 3 and 5 of the roadmap, on
       (+35.3 against +36.3), its dwarfs a little better (+3.2, p = 0.29), its trolls
       worse (−4.2, p = 0.008) — augmentation about makes up for the large buffer's
       handicap.
-    - The trainer's overfitting check shows nothing here: with the large buffer, new
+    - The trainer's overfitting measure shows nothing here: with the large buffer, new
       positions score *better* than trained ones (G'16: 4.17 against 4.52), because the
       trained sample spans the run's whole history, its old targets flatter — the drift
       *Instrumentation* predicts; the validation set will measure this properly.
@@ -3866,7 +3872,7 @@ goes into our own copy, decided 2026-09-26 — stages 3 and 5 of the roadmap, on
       playouts"; it decouples "the policy target in AlphaZero from the dynamics of MCTS
       or the use of explorative noise". Also weaker or per-side noise, and more
       simulations for the dwarfs.
-    - **Tested the same evening — confirmed for G'** (`thud/experiments/az_noise_check.cc`,
+    - **Tested the same evening — confirmed for G'** (`thud/experiments/az_noise_probe.cc`,
       2026-10-03 22:05-22:25: the reference pilot's 80 dwarf and 81 troll positions, each
       searched as self-play records it, 100 simulations with root noise under two seeds,
       and once without noise):
@@ -3951,14 +3957,14 @@ goes into our own copy, decided 2026-09-26 — stages 3 and 5 of the roadmap, on
         zeroes a child left with one; k = 2 as KataGo. In self-play the actors search
         with forced playouts and record the pruned counts as the policy target; the move
         is still chosen from the unpruned counts, the evaluator's and the matches'
-        searches unchanged. **Tests** (`thud/az/pruning_check.cc`, new): five hand-built
+        searches unchanged. **Tests** (`thud/az/pruning_test.cc`, new): five hand-built
         children against values worked out by hand (the most visited kept; one above
         the best's PUCT at once kept; one pruned to a single playout dropped to 0; one
         stopped by the PUCT bound before n_forced; an unvisited one 0), a planted error
         (the single-playout rule removed) caught; in 40 real searches (G'44, 100
         simulations, root noise) visited root children left below n_forced: 6 of 809
         with forced playouts, 62 of 807 without — at 100 simulations n_forced is only
-        ~1-4 playouts, so forcing binds for few children; `identity_check` 12 of 12
+        ~1-4 playouts, so forcing binds for few children; `identity_test` 12 of 12
         with the switch off. **Test plan** (the user asked, 2026-10-04): equal steps,
         not equal time — pruning is free and forced playouts keep 100 simulations a
         move, so a step costs the same; first the noise diagnostic on pruned targets,
@@ -3966,7 +3972,7 @@ goes into our own copy, decided 2026-09-26 — stages 3 and 5 of the roadmap, on
         by the new statistics (the dwarfs' prior moving away from uniform by steps 8-16:
         G'16 0.003 nats, C16 0.40) and then by matches against G'16.
         **The diagnostic says it does not work at our scale** (2026-10-04,
-        `az_noise_check` extended to pruned targets; the pilot's positions, two noise
+        `az_noise_probe` extended to pruned targets; the pilot's positions, two noise
         seeds): G'44's dwarf targets carry 65% of their mass on noise-boosted moves raw
         and 65% pruned, 15.2 against 14.7 effective moves, the two seeds' targets 0.758
         and 0.761 apart; E44 alike (41% / 41%). Why: pruning removes only *forced*
@@ -4000,7 +4006,7 @@ goes into our own copy, decided 2026-09-26 — stages 3 and 5 of the roadmap, on
         Gumbel's own search gives its candidates equal visits), so add the user's
         threshold (moves under m visits count as unvisited) or shrink each Q toward
         the mixed value by n / (n + n0).
-        **More simulations do not fix it either** (2026-10-04, `az_noise_check
+        **More simulations do not fix it either** (2026-10-04, `az_noise_probe
         sims=N`, G'44's dwarf searches): two noise seeds' most visited moves agree 6% at
         100 simulations, 11% at 200, 10% at 400 (with the noise-free search 10%, 16%,
         14%); the extra simulations spread the search (effective moves 15, 24, 37)
@@ -4015,11 +4021,11 @@ goes into our own copy, decided 2026-09-26 — stages 3 and 5 of the roadmap, on
         it within a few steps.
         **Built 2026-10-04** (the user's go-ahead; `--replay_buffer_start_size`, default 0
         = every position stored, as upstream): `GrowingBufferSize` and `SampleNewest` in
-        `thud/az/alpha_zero.h` — the learner (and the new-against-trained check's
+        `thud/az/alpha_zero.h` — the learner (and the new-against-trained measure's
         trained sample) draws only from the newest W(N) positions, W = N up to the
         start, then start (1 + 0.4 ((N / start)^0.75 − 1) / 0.75); distinct samples by
         Floyd's algorithm; `growing_buffer_size` logged per step. **Tests**
-        (`thud/az/growing_buffer_check.cc`, new): the formula against values worked out by hand
+        (`thud/az/growing_buffer_test.cc`, new): the formula against values worked out by hand
         (153,375 at 350,000 generated, 300,431 at a million, start 65,536); samples all
         among the newest, distinct, as many as asked, before and after the buffer wraps;
         uniform by a chi-square test (311 and 332 for 299 degrees of freedom, below the
@@ -4030,7 +4036,7 @@ goes into our own copy, decided 2026-09-26 — stages 3 and 5 of the roadmap, on
         2026-10-04 after the target-quality run): G''s settings with
         `--replay_buffer_start_size=65536`, fresh, to step 16; judged first by the dwarfs'
         prior (G'16 0.003 nats, C16 0.40), then W16 against G'16 and C16, W against the
-        anchor, `az_noise_check` on W16. **Result to step 16** (2026-10-04 16:36 to
+        anchor, `az_noise_probe` on W16. **Result to step 16** (2026-10-04 16:36 to
         2026-10-05 01:16; the buffer 22,036 → 153,778 positions): **the dwarfs' prior did
         not start** — effective moves within 1-2 of the legal moves at every step, its
         top move the most visited in 0.6-1.2% of dwarf positions; on the pilot's positions
@@ -4103,7 +4109,7 @@ goes into our own copy, decided 2026-09-26 — stages 3 and 5 of the roadmap, on
       doubled (~30 → 64: new kinds of positions); the value loss on new dwarf positions
       jumped from 0.04 to 0.54 while staying ~0.05 on trained ones — self-play found
       positions the value head did not know, and it adapted within ~5 steps. Exactly
-      what the new-against-trained check per side is for.
+      what the new-against-trained measure per side is for.
     - **G' continued again, steps 45-73** (2026-10-05 14:44 to 2026-10-06 03:07; stopped
       at step 54 for the replay buffer fix and resumed at 19:56; stopped after step 73 at
       the user's request, the power adapter very hot; its evaluation not yet run). **The
@@ -4194,7 +4200,7 @@ goes into our own copy, decided 2026-09-26 — stages 3 and 5 of the roadmap, on
       trolls wiped out in 15-31 games a step (G' 14 → 3-5). Self-play ~12% slower (~17.5
       positions a second against ~20; wider searches find fewer positions in the
       cache, likely). Its checkpoints are evaluated as trained: `az_match` takes
-      `temperature_a` / `temperature_b` (built 2026-10-07; check: `1,1` plays the same
+      `temperature_a` / `temperature_b` (built 2026-10-07; test: `1,1` plays the same
       games as none, `1.5,1` different ones — the control), the evaluation watcher reads
       each run's temperature from its `config.json`, and the ladder counts a network
       searching with another temperature than its run's as another player ("H72
@@ -4226,7 +4232,7 @@ goes into our own copy, decided 2026-09-26 — stages 3 and 5 of the roadmap, on
       (Leela's policy softmax temperature per player, at every node of that player,
       before root noise; `MCTSBot::SetPolicyTemperatures`) and `--player_simulations`
       (self-play simulations per player), both recorded in `config.json`, off by
-      default; checked by `thud/az/search_settings_check.cc` (temperature 1 changes no
+      default; checked by `thud/az/search_settings_test.cc` (temperature 1 changes no
       visit; 2 flattens the dwarfs' root priors and not the trolls'; the trainer's
       searches get their settings; old configs load). (2) The search-only filter on
       G'64's positions (100 / 200 / 400 / 800 against 4,000 and 16,000, with the binary
@@ -4292,7 +4298,7 @@ pre-PR checklist); the Thud evidence would stay in this fork. The uncompiled inf
   tic-tac-toe example); the rewrite of 2020-03-23 (`bcdb0b44`, "Switch to an explicit graph
   model") dropped it, and the 2025 flax port kept that. No upstream issue or PR mentions it
   (searched 2026-09-25).
-- It hurts learning (`thud/experiments/az_layout_check.py`): OpenSpiel's own model and
+- It hurts learning (`thud/experiments/az_layout_probe.py`): OpenSpiel's own model and
   update step, unmodified, resnet 32 x 2, 1,500 steps of 128, 3 seeds per variant, the same
   positions from random games — fed as they are, or transposed to planes last with a
   matching input shape. On held-out positions, mean of the seeds (range):
@@ -4416,9 +4422,9 @@ files has changed upstream since our copy (checked against upstream `master`, 20
    `serializable_circular_buffer_test.cc` (a loaded vector of 1,025 floats keeps less than
    1.5 times its size) — no exact-capacity assertions (implementation-dependent). **Checked
    so far** (compiled directly against `libopen_spiel.so`): both test programs pass with
-   the change, and **fail at exactly the new checks without it** (the controls), and run
+   the change, and **fail at exactly the new tests without it** (the controls), and run
    cleanly under AddressSanitizer and UndefinedBehaviorSanitizer.
-4. **Checks — done 2026-10-06** (the worktree with its own CMake builds, upstream's default
+4. **Tests — done 2026-10-06** (the worktree with its own CMake builds, upstream's default
    "Testing" one and a Release one with LibTorch, 6 jobs): `circular_buffer_test` and
    `serializable_circular_buffer_test` pass through `ctest`; so do `torch_integration_test`,
    `torch_model_test`, `torch_vpnet_test` and `dqn_torch_test` (DQN, the buffer's third
@@ -4450,10 +4456,10 @@ Found while building the GPU checklist's features; each checked in upstream's ow
    upstream's AlphaZero leaves when killed while it overwrites the buffer in place
    (`alpha_zero.cc:403`; a second Ctrl-C exits at once, `alpha_zero_torch_example.cc:90`)
    — loads without an error, only the positions before the cut, its count of positions
-   added still the file's, which breaks the slots' order (`replay_buffer_check`, part 5,
+   added still the file's, which breaks the slots' order (`replay_buffer_test`, part 5,
    on upstream's class). A clear bug; no issue or PR upstream. **Decided (the user):** a
    PR of its own after #1637 is merged (#1637 changes the same function), with the
-   checks of our `ReplayBuffer::LoadBuffer` and a test.
+   read validation of our `ReplayBuffer::LoadBuffer` and a test.
 3. **The legal policy** (our `VPNetModel::SetLegalPolicy`): upstream's AlphaZero masks and
    normalises the policy over every distinct action (`model.cc:210-211, 259-260, 335`,
    `vpnet.cc:161, 199-214`) — a general design whose cost grows with the action count

@@ -28,8 +28,8 @@
 // (exp of the entropy), and the distance between the two seeds' targets (half the
 // summed absolute differences).
 //
-//   thud/az/build.sh thud/experiments/az_noise_check.cc
-//   OMP_NUM_THREADS=2 build-shared/az_noise_check PILOT.jsonl [sims=100] RUN_DIR:STEP
+//   thud/az/build.sh thud/experiments/az_noise_probe.cc
+//   OMP_NUM_THREADS=2 build-shared/az_noise_probe PILOT.jsonl [sims=100] RUN_DIR:STEP
 //     [sims=N] [RUN_DIR:STEP ...]
 //
 // sims=N sets the simulations of every search for the networks after it (default

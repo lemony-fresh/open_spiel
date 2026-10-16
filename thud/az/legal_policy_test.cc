@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Checks the legal policy (VPNetModel::SetLegalPolicy, on by default; thud/PLAN.md, the
+// Tests the legal policy (VPNetModel::SetLegalPolicy, on by default; thud/PLAN.md, the
 // batching path): the priors from the logits of each position's legal moves alone,
 // against upstream's computation — the mask and the softmax over all 19,800 distinct
 // actions (SetLegalPolicy(false)). On networks built here with random weights, batch
@@ -31,7 +31,7 @@
 //      positions the most visited move, and every root child's visits, agree (a prior
 //      ~1e-7 apart can tip a near tie).
 //
-//   build-checks/bin/legal_policy_check
+//   build-tests/bin/legal_policy_test
 
 #include <cmath>
 #include <filesystem>
@@ -125,7 +125,7 @@ std::vector<VPNetModel::InferenceOutputs> Infer(
 int main() {
   std::shared_ptr<const open_spiel::Game> game = open_spiel::LoadGame("thud");
   const std::string base =
-      (std::filesystem::temp_directory_path() / ("legal_policy_check_" + std::to_string(getpid())))
+      (std::filesystem::temp_directory_path() / ("legal_policy_test_" + std::to_string(getpid())))
           .string();
   const auto positions = Positions(*game, 150);
   struct Kind {

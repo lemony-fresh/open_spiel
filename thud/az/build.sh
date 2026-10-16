@@ -24,7 +24,7 @@
 # missing.
 #
 #   thud/az/build.sh thud/az/az_trainer.cc          # -> build-shared/az_trainer
-#   thud/az/build.sh thud/az/identity_check.cc      # -> build-shared/identity_check
+#   thud/az/build.sh thud/az/identity_test.cc      # -> build-shared/identity_test
 #
 # A MAIN outside thud/az/ may also compile upstream sources: list them after it.
 

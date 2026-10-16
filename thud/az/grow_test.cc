@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Checks Net2Net (thud/az/net2net.h, used by az_grow; thud/PLAN.md, the GPU readiness
+// Tests Net2Net (thud/az/net2net.h, used by az_grow; thud/PLAN.md, the GPU readiness
 // checklist) on small networks built here — width 8, depth 2 — whose weights, batch-norm
 // scales and shifts and running statistics are all random (fresh batch norms have mean
 // 0, variance 1, scale 1 and shift 0, which would hide a batch norm left uncopied):
@@ -24,7 +24,7 @@
 //      copies) with the convolutional head and the input planes; deeper 2 -> 4; both, 8 x 2
 //      -> 16 x 3; the linear head without the input planes, 8 x 2 -> 12 x 3; and no growth
 //      at all (every tensor copied).
-//   3. Controls, each must differ by more than 10 x the tolerance (so the check would fail
+//   3. Controls, each must differ by more than 10 x the tolerance (so the test would fail
 //      them by a wide margin): the widening without the division by
 //      the copies; the widening with the new channels' batch-norm variances reset to 1
 //      (a batch norm left uncopied); the deepening with the new blocks' last batch-norm
@@ -37,8 +37,8 @@
 //      little before learning (< 0.05).
 //   6. A grown network saves and reloads with identical outputs.
 //
-//   thud/az/build.sh thud/az/grow_check.cc
-//   build-shared/grow_check
+//   thud/az/build.sh thud/az/grow_test.cc
+//   build-shared/grow_test
 
 #include <cmath>
 #include <filesystem>
@@ -182,7 +182,7 @@ std::vector<VPNetModel::TrainInputs> TrainBatch(const open_spiel::Game& game, st
 int main() {
   std::shared_ptr<const open_spiel::Game> game = open_spiel::LoadGame("thud");
   const std::string base =
-      (std::filesystem::temp_directory_path() / ("grow_check_" + std::to_string(getpid())))
+      (std::filesystem::temp_directory_path() / ("grow_test_" + std::to_string(getpid())))
           .string();
   std::filesystem::remove_all(base);
   torch::manual_seed(7);  // LibTorch's default generator is seeded nondeterministically.

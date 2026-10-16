@@ -31,11 +31,11 @@
 // convolutions keep their fresh initialisation and learn once the scale moves. Copies
 // would stay copies under training (identical weights get identical gradients), so
 // `noise` adds noise of that many times each tensor's standard deviation to the new
-// channels' incoming weights — 0 keeps the function exact, the check below.
+// channels' incoming weights — 0 keeps the function exact, the test below.
 //
-// Checks, printed and fatal if they fail: on positions of random games the grown network's
+// Tests, printed and fatal if they fail: on positions of random games the grown network's
 // values and policies equal the source's within `tolerance` (with noise=0); the control
-// that the check can fail: the same growth without the division by the copies must differ
+// that the test can fail: the same growth without the division by the copies must differ
 // by more than `tolerance`; the saved network reloads with the same outputs. With
 // noise > 0 the differences are reported, not required to vanish.
 //
@@ -191,7 +191,7 @@ int main(int argc, char** argv) {
   const auto [value, policy] = Differences(model, source, check);
   const auto [control_value, control_policy] = Differences(control, source, check);
   std::cerr << absl::StrFormat(
-      "check: on %d positions of random games the grown network's values differ from the "
+      "test: on %d positions of random games the grown network's values differ from the "
       "source's by %.3g at most, its policies by %.3g; the control (no division by the "
       "copies) by %.3g and %.3g\n",
       check.size(), value, policy, control_value, control_policy);
@@ -200,7 +200,7 @@ int main(int argc, char** argv) {
     open_spiel::SpielFatalError("The grown network does not compute what the source does");
   }
   if (widened && control_value <= tolerance && control_policy <= tolerance) {
-    open_spiel::SpielFatalError("The control did not fail: the check cannot see the copies");
+    open_spiel::SpielFatalError("The control did not fail: the test cannot see the copies");
   }
   model.SaveCheckpoint(step);
   VPNetModel reloaded(*game, to, "vpnet.pb", device);

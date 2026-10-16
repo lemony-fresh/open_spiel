@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Checks thud/experiments/regression_gates.py on inputs made here (no run folder): battles
+"""Tests thud/experiments/regression_gates.py on inputs made here (no run folder): battles
 of random play in az_match's games format (40 pairs, 4 opening plies), a probe file and
 az_capture_targets files.
 
@@ -30,10 +30,10 @@ az_capture_targets files.
      takes it counts 1 blunder of the dwarf moves after the opening; the same battle with
      that capture replaced by another move counts 0.
 
-(The blunder count also equals az_blunder_check's on real games — M102, N121, C121 and
+(The blunder count also equals az_blunder_probe's on real games — M102, N121, C121 and
 N2121 against hexparrot, checked 2026-10-15 — which needs run folders, so not here.)
 
-  python3 thud/experiments/regression_gates_check.py
+  python3 thud/experiments/regression_gates_test.py
 """
 
 import json
@@ -91,7 +91,7 @@ def gates(tmp, *args):
 
 def main():
   game = pyspiel.load_game("thud")
-  tmp = tempfile.mkdtemp(prefix="regression_gates_check.")
+  tmp = tempfile.mkdtemp(prefix="regression_gates_test.")
   base = {k: random_battles(game, s) for k, s in (("ab1", 1), ("ab2", 2), ("hexparrot", 3))}
   for k, battles in base.items():
     write(f"{tmp}/{k}.jsonl", battles)

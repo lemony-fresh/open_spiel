@@ -1,6 +1,6 @@
 # The dwarfs' training signal — a design
 
-Final, 2026-10-13: revised with the results of its checks and after three adversarial
+Final, 2026-10-13: revised with the results of its measurements and after three adversarial
 reviews (each review's findings were checked at the source before they were taken over —
 *Review log* at the end); the test runs' results and the replication added 2026-10-14 and
 2026-10-15 (§10). Written for the user to decide the next training runs. Context:
@@ -18,13 +18,13 @@ against alpha-beta, the input planes, the destination risk; runs G' to M) and
   positions as value-only data; **C3** per-side root noise; **C1** games against an older
   network's trolls; **B1** material ahead, and **B1′** the teacher's score, in the value
   target; **E1** a larger value-loss weight.
-- **Checks** (§4) are measurements without training, run before choosing training runs: **check 1**
-  the search's own comparison at the blunders; **check 2** the teacher in the dwarfs'
-  search; **check 3** self-play's root noise; **check 4** the value by side to move;
-  **check 5** older trolls in self-play's conditions; **check 2b** (to run before any
-  training night) the teacher in the dwarfs' search under the trainer's noise; **checks
+- **Measurements** (§4) are taken without training, before choosing training runs: **measurement 1**
+  the search's own comparison at the blunders; **measurement 2** the teacher in the dwarfs'
+  search; **measurement 3** self-play's root noise; **measurement 4** the value by side to move;
+  **measurement 5** older trolls in self-play's conditions; **measurement 2b** (to run before any
+  training night) the teacher in the dwarfs' search under the trainer's noise; **measurements
   6-7** (later, only if needed) what a lost dwarf costs in playouts, handicap starts. (In the conversation of
-  2026-10-13 checks 1-4 were called Q1, Q2, Q3 and Q5, check 5 P5.)
+  2026-10-13 measurements 1-4 were called Q1, Q2, Q3 and Q5, measurement 5 P5.)
 - **The value** is the network's estimate of the battle's result, from the dwarfs' side
   (−1 to 1). **The prior** is its probability for each move. **The teacher** is
   kickstarting's: the softmax of OpenSpiel's alpha-beta scores at depth 2 (material after
@@ -49,37 +49,37 @@ against alpha-beta, the input planes, the destination risk; runs G' to M) and
   every battle (20 of 20) and loses by 13.2 points a battle, where our network's dwarfs
   lose every dwarf and by 25.2 (a 1-ply search loses every dwarf too: the second ply is
   what keeps them alive).
-- **The mechanism, measured (check 4).** The value registers a far dwarf when the
+- **The mechanism, measured (measurement 4).** The value registers a far dwarf when the
   **trolls** are to move (M102 +0.021, K83 +0.050; a dwarf is 0.031) but hardly when the
   **dwarfs** are to move (M102 +0.002 to +0.011). H83 and G'64, trained without the games
   against alpha-beta, have no such gap: it came with those games, because the only
   positions of games in which dwarfs survive — our trolls' against alpha-beta's dwarfs —
   are all trolls-to-move positions. At a blunder the value one ply down (trolls to move)
-  does prefer the teacher's safe move, by a third of a dwarf (check 1).
-- **The strongest lever, measured at play time (check 2).** Mixing the teacher into M102's
+  does prefer the teacher's safe move, by a third of a dwarf (measurement 1).
+- **The strongest lever, measured at play time (measurement 2).** Mixing the teacher into M102's
   dwarf prior, in matches without noise: the dwarf side gains **+7.6 / +10.6 / +15.9
   points a battle at mixes 0.3 / 0.5 / 0.7** against L102's trolls (+5.5 / +9.8 / +12.8
   against K83's), 37-40 of 40 battles keep dwarfs, the dwarfs kill as many trolls or more,
   and our trolls are unchanged within the noise. **But the dwarfs survive by stalling**
   (38 of 40 battles at mix 0.7 end at the no-capture limit), and the trainer's root noise
-  breaks stalls (check 3: either side's noise alone takes the unmixed network's surviving
-  battles from 26% to 0-1%). **Check 2b**: under the trainer's noise the teacher-guided
+  breaks stalls (measurement 3: either side's noise alone takes the unmixed network's surviving
+  battles from 26% to 0-1%). **Measurement 2b**: under the trainer's noise the teacher-guided
   dwarfs keep no dwarf (0 of 40; they lose dwarfs more slowly and score +3.9); with the
   dwarfs' roots noise-free (C3) they keep dwarfs in **28 of 40** battles (no mix: 1 of 80).
-- **The other checks.** The dwarfs' own root noise (check 3) costs them 6 dwarfs by ply 60
+- **The other measurements.** The dwarfs' own root noise (measurement 3) costs them 6 dwarfs by ply 60
   and ~1.8 points a battle (its pre-set rule for C3 is met), but without it outcomes stay
-  saturated (1% of battles keep a dwarf). Against K83's older trolls (check 5) M102's
+  saturated (1% of battles keep a dwarf). Against K83's older trolls (measurement 5) M102's
   dwarfs keep dwarfs in 9 of 40 battles under noise — all nine by killing every troll.
 - **The test runs (§10).** From M102, 19 steps each: the control run (run M's recipe) and
   **run N, D1 + C3** (the dwarfs' teacher weight 0.7, the trolls' 0.3; no root noise at
-  the dwarfs' roots), as check 2b's rule chose. **Run N wins by §7's rule** — N121 against
+  the dwarfs' roots), as measurement 2b's rule chose. **Run N wins by §7's rule** — N121 against
   the control's C121 +5.50 a pair (+1.91 to +9.09); its dwarfs against hexparrot +9.3 ±
   2.2 better, blunders 9.8% against 21.6%; its trolls not worse — and **the replication,
   run N2** (a rerun of run N only, the user), meets it too: +6.10 (+3.09 to +9.11) against
   C121, +0.95 (−2.04 to +3.94) against N121. The control did not slide (C121 beat M102 by
   +7.20). The gain is the policy's: the value's side-to-move gap has not closed in 19
   steps. **Decided** (the user, 2026-10-15): a longer D1 + C3 run first — run N continued
-  from N121 for 40 steps, check 4 every 10 (§10).
+  from N121 for 40 steps, measurement 4 every 10 (§10).
 - **Decided by the user (2026-10-13):** test runs from M102 with D1; its slow, gated taper
   (§5); the regression gates, also in the promotion rule (§7; refined since by review 3).
   D1's weight capped at 0.7 (above it the dwarfs' policy target nears pure imitation of
@@ -150,7 +150,7 @@ In run M's self-play (324 games of actors 0-3, replayed):
   3.4%).
 - **Self-play is sliding, not standing still**: by thirds of run M (the same games) the
   blunder rate is 8.6% → 14.9% → 23.2% of the dwarfs' moves (the 16% above is the run's
-  average; M102's own rate in check 3's emulation is 28%), the dwarfs lost that way 5.8 →
+  average; M102's own rate in measurement 3's emulation is 28%), the dwarfs lost that way 5.8 →
   8.1 → 10.5 a game. By the reviewer's count (actors 0-1) the dwarfs' unsafe moves rose
   from 11.8% to 25.1% of their moves — above their ~21% share of the legal moves — and the
   trolls' punishing them at once from 85% to 97%; run K slid likewise (blunders 4% → 9% →
@@ -161,7 +161,7 @@ In run M's self-play (324 games of actors 0-3, replayed):
 
 v_captured − v_before (the value after the blunder and its capture, minus before the
 blunder) on **fixed** positions — M102's and K102's 150 blunder positions against
-hexparrot — for each network (`az_blunder_check`, values only; the control reproduces
+hexparrot — for each network (`az_blunder_probe`, values only; the control reproduces
 M102's published values exactly):
 
 | Network | On M102's positions (± SE) | On K102's positions | Divided by 1 − v² (pre-tanh) |
@@ -182,9 +182,9 @@ M102's published values exactly):
   two position sets) — specific to run M, its cause unknown.
 - **L102 and M102 blunder at the same rate** (25.6% / 25.4%) and tie head-to-head while
   their sensitivity differs 3-4x.
-- Both positions of this proxy are dwarf-to-move positions — exactly where check 4 found
+- Both positions of this proxy are dwarf-to-move positions — exactly where measurement 4 found
   the value weakest; the measurements by side to move and the search's own comparison
-  are checks 4 and 1.
+  are measurements 4 and 1.
 
 ## 2. Diagnosis
 
@@ -203,22 +203,22 @@ weight 0.3 (and ~0.4 at 0.7). (Exact policy iteration cannot stall below the opt
 the policy improvement theorem — but with approximate values, noisy targets and 100
 simulations the search here does not improve on the prior's unsafe moves.)
 
-**Measured since (check 4): the value's blindness is by side to move, and it comes from
+**Measured since (measurement 4): the value's blindness is by side to move, and it comes from
 the data.** The only games in the buffer in which dwarfs survive are those against
 alpha-beta's dwarfs, and from them only our trolls' positions are recorded (~26% of all
 positions) — trolls-to-move positions. There the value learnt a dwarf's worth; at
 dwarf-to-move positions, recorded only from games in which every dwarf is lost, it did
 not. H83 and G'64, trained without those games, show no gap. For the dwarfs' search this
 means: a dwarf move's child (trolls to move) is valued fairly — at the blunders it
-prefers the teacher's safe move by a third of a dwarf (check 1) — but every evaluation
+prefers the teacher's safe move by a third of a dwarf (measurement 1) — but every evaluation
 after a troll reply is a dwarf-to-move position, where a lost dwarf barely counts. (That
 the search therefore prefers blunders the deeper it looks is plausible but not shown:
-check 1's comparison of Q is biased by how its positions were selected.)
+measurement 1's comparison of Q is biased by how its positions were selected.)
 
 Why our dwarfs' search does not do what a 2-ply search does: it is not full-width. With
 ~285 legal moves and ~40 troll replies each, 100 simulations cannot see each move's
 replies; the prior must carry that knowledge, and it learns it from the visits (70%) and
-from the teacher — exactly alpha-beta at depth 2 — at only 30%. Check 2 shows how much
+from the teacher — exactly alpha-beta at depth 2 — at only 30%. Measurement 2 shows how much
 the teacher's knowledge in the prior is worth.
 
 Contributing factors:
@@ -226,7 +226,7 @@ Contributing factors:
 1. **Self-play's root noise** (Dirichlet α 0.1, ε 0.25, at every root of both sides) and
    10 plies (5 a side) sampled at temperature 1: the dwarfs' own noise costs them ~6
    dwarfs by ply 60 and ~1.8 points a battle, and either side's noise breaks the stalls in
-   which dwarfs survive without it (check 3).
+   which dwarfs survive without it (measurement 3).
 2. **The dwarfs' games against alpha-beta's trolls** give every one of those dwarf
    positions the target −1 (10.9% of the dwarfs' recorded positions in run M).
 3. **The search's resolution.** A lost dwarf (0.031) competes with the untried-move
@@ -248,7 +248,7 @@ result z; z mixed with the search's root value q; KataGo's short-term value targ
 or TD(λ) targets; potential-based shaping with the material as potential (Ng, Harada and
 Russell, ICML 1999: policy-invariant by design) — **are unlikely to help**: they give the
 value nothing new about dwarfs. (Our data are off-policy — root noise, temperature,
-alpha-beta games — so q-targets do differ from z-targets where those matter; check 3 found
+alpha-beta games — so q-targets do differ from z-targets where those matter; measurement 3 found
 the dwarfs' noise worth ~1.8 points a battle.) Reweighting the final score (a dwarf left
 worth more) does nothing while no dwarf is left.
 
@@ -272,7 +272,7 @@ value learn small effects (E1, E2).
   step, ~21,900 positions a step); one training run a night. **Evaluation** of 2-3
   networks takes about a day of machine time per round, between runs, not beside them
   (`CLAUDE.md`). Matches side by side do not add up: three matches gave ~1,500
-  simulations/s together, six ~1,400-1,700 (the checks, 2026-10-13).
+  simulations/s together, six ~1,400-1,700 (the measurements, 2026-10-13).
 - **Targets are fixed when a position enters the buffer**, which holds ~21 steps (458,752
   positions, ~21,850 a step; each position sampled ~3 times during its stay: 64 batches of
   1,024 a step). Any change to targets reaches the buffer gradually: over a 19-step run,
@@ -283,25 +283,25 @@ value learn small effects (E1, E2).
 - **No seed**: the trainer seeds its actors from the clock (`alpha_zero.cc`), so a
   replicate is a rerun, and run-to-run variance is unmeasured.
 
-## 4. The checks and their results (2026-10-13)
+## 4. The measurements and their results (2026-10-13)
 
 Run in the night of 2026-10-13 (`~/thud-runs/night7_2026-10-13.py`, results in
 `~/thud-runs/checks_2026-10-13/`; paused 9.3 hours by a standby when the charger came
 loose, results unaffected). The new options and tools were checked first: `az_match` with
 them off reproduces the old binary's matches exactly (pairs and request counts), its
-noisy battles are the same on 1 and 3 threads, and the extended `az_blunder_check` prints
+noisy battles are the same on 1 and 3 threads, and the extended `az_blunder_probe` prints
 the old fields unchanged.
 
-### Check 1 — the search's own comparison at the blunders
+### Measurement 1 — the search's own comparison at the blunders
 
-`az_blunder_check` (extended): at each blunder position, the blunder against the best safe
+`az_blunder_probe` (extended): at each blunder position, the blunder against the best safe
 move — the non-capturing move other than the blunder that the teacher scores best, the
 network's prior breaking ties; both root children's Q and visits in the search as played
 (100 simulations, no noise); each child's own value (trolls to move); each line's value
 after the trolls' reply (the capture after the blunder; after the safe move the reply
 taking the most material, the prior breaking ties). M102; 150 blunders each.
 
-| | Against hexparrot | In self-play's conditions (check 3's noisy cell) |
+| | Against hexparrot | In self-play's conditions (measurement 3's noisy cell) |
 |---|---|---|
 | Blunders, share of the dwarfs' moves | 25% | 28% (489 of 1,750) |
 | The noise-free search plays the blunder again | 100% | 35% |
@@ -317,14 +317,14 @@ the solid result here, since the way the positions were picked works against it.
 row and the row after the reply are **biased by selection** (review 3): the positions are
 moves the search chose, and a chosen move's Q beating one alternative among ~46 visited
 moves is close to automatic (in the hexparrot set the search chose the blunder in every
-case; in the self-play set, where it did not choose it, Q shows no preference). So check 1
-does not show that the search prefers blunders the deeper it looks; check 4 carries the
+case; in the self-play set, where it did not choose it, Q shows no preference). So measurement 1
+does not show that the search prefers blunders the deeper it looks; measurement 4 carries the
 claim about dwarf-to-move positions. To measure the search itself: unselected dwarf
 positions, the teacher's unsafe against its safe moves, each given a fixed number of
 simulations (not run). In self-play's conditions two thirds of the blunders come from the
 noise and the sampled plies (the noise-free search plays only 35% of them again).
 
-### Check 2 — the teacher in the dwarfs' search, without training
+### Measurement 2 — the teacher in the dwarfs' search, without training
 
 `az_match teacher_mix_a=w,0`: M102's prior at every dwarf node of its searches (as a
 network trained toward the teacher would have it) is (1 − w) × its own + w × the teacher's;
@@ -362,25 +362,25 @@ margins of a pair correlate at 0.04-0.34.)
 |---|---|---|---|
 | Mix 0.7 against L102 | 13.5 / 14.7 / 15.8 | 38 of 40 | 435 plies |
 | Mix 0.3 against L102 | 16.0 / 18.0 / 20.2 | 34 of 40 | 531 |
-| No mix, against itself (check 3's noise-free cell) | 19.4 / 23.5 / 27.6 | 12 of 40 | 303 |
+| No mix, against itself (measurement 3's noise-free cell) | 19.4 / 23.5 / 27.6 | 12 of 40 | 303 |
 
 The teacher does not prevent the early losses (13.5 dwarfs by ply 60 even at 0.7); it stops
 the bleeding afterwards, and the battle freezes until the no-capture limit. **And these
-matches had no root noise**, while check 3 shows that either side's noise alone breaks
+matches had no root noise**, while measurement 3 shows that either side's noise alone breaks
 the unmixed network's stalls (battles keeping dwarfs 26% → 0-1%). So what D1 needs —
 teacher-guided dwarfs keeping dwarfs *in self-play*, to give the value dwarf-to-move data
-— check 2 does not show. Other caveats: at play time the teacher is a real 2-ply search at
+— measurement 2 does not show. Other caveats: at play time the teacher is a real 2-ply search at
 every dwarf node; trained, the network only approximates it, and the buffer delays it
 (§3).
 
-### Check 2b — the teacher in the dwarfs' search under the trainer's noise (to run first)
+### Measurement 2b — the teacher in the dwarfs' search under the trainer's noise (to run first)
 
 `az_match` combines the options: M102 with `teacher_mix_a=0.7,0` against plain M102 in
 self-play's conditions (`sample_plies=10 opening=0`), once with `noise=1,1` (the
 trainer's) and once with `noise=0,1` (the dwarfs' roots noise-free: C3's condition); 40
 pairs each, ~1-1.5 hours together. Measured on the battles in which the mixed network
 plays the dwarfs: battles keeping dwarfs, dwarfs lost by ply 60, length, how they end —
-against check 3's cells without the mix (0% and 1% keeping dwarfs; 23.6 and 18.0 dwarfs
+against measurement 3's cells without the mix (0% and 1% keeping dwarfs; 23.6 and 18.0 dwarfs
 lost by ply 60). **Decides, fixed in advance:**
 
 - dwarfs kept in a clear share of battles (≥ 20%) under both sides' noise → **D1 alone**;
@@ -388,7 +388,7 @@ lost by ply 60). **Decides, fixed in advance:**
 - in neither → D1 does not desaturate self-play *at the start*. Training may still get
   there — the network learns the teacher's prior and the visits improve on it, a sharper
   prior is displaced less by the noise, the trolls and the value adapt — and the D1 run
-  shows whether it does (the share of self-play games keeping dwarfs, check 4's gap, by
+  shows whether it does (the share of self-play games keeping dwarfs, measurement 4's gap, by
   step). If both stay flat through the run, the value gets its own help next (**B1′**,
   or **C7** with the user's word, or C3).
 
@@ -398,9 +398,9 @@ the battles in which the mixed network plays the dwarfs):
 | Noise at the roots of | Battles keeping dwarfs | Dwarfs lost by ply 60 | Length | Dwarfs' margin | Trolls killed | Endings |
 |---|---|---|---|---|---|---|
 | both (the trainer's), mix 0.7 | **0 of 40** | 17.1 ± 0.7 | 129 plies | −22.0 ± 1.1 | 2.50 | every dwarf gone, 40 |
-| both, no mix (check 3) | 0 of 80 | 23.6 ± 0.4 | 91 | −25.9 ± 0.5 | 1.51 | every dwarf gone, 80 |
+| both, no mix (measurement 3) | 0 of 80 | 23.6 ± 0.4 | 91 | −25.9 ± 0.5 | 1.51 | every dwarf gone, 80 |
 | the trolls only, mix 0.7 | **28 of 40 (70%)** | 13.4 ± 0.4 | 621 | −17.0 ± 1.2 | 3.10 | no-capture limit 23, every dwarf gone 12, other 5 |
-| the trolls only, no mix (check 3) | 1 of 80 | 18.0 ± 0.3 | 167 | −24.2 ± 0.6 | 1.95 | every dwarf gone 79 |
+| the trolls only, no mix (measurement 3) | 1 of 80 | 18.0 ± 0.3 | 167 | −24.2 ± 0.6 | 1.95 | every dwarf gone 79 |
 
 (The mixed network as the trolls, with the mix at the dwarf nodes inside its troll
 searches, noise both: −25.3, every dwarf gone in 40 — as without the mix.)
@@ -416,7 +416,7 @@ If stalls do survive in training, expect games of 400-600 plies — ~40-50 games
 instead of ~160, about half the positions from capture-free stalls: to be watched (the
 share of positions after a battle's last capture).
 
-### Check 3 — self-play's root noise
+### Measurement 3 — self-play's root noise
 
 M102 against itself in self-play's conditions (`az_match noise=… sample_plies=10
 opening=0`: the trainer's Dirichlet noise per side, its 10 plies sampled from the visit
@@ -440,10 +440,10 @@ against "both": the dwarfs lose 18.0 instead of 23.6 dwarfs by ply 60, kill 1.95
 of 1.51 trolls, the battles last 167 instead of 91 plies, and the margin is −24.2 instead
 of −25.9 (+1.8 ± 0.75). **But outcomes stay saturated without the dwarfs' noise** (1% of
 battles keep a dwarf, and none with the dwarfs' noise alone): C3 by itself would not give
-the value games in which dwarfs survive. It may be a precondition for D1, though — check
+the value games in which dwarfs survive. It may be a precondition for D1, though — measurement
 2b decides.
 
-### Check 4 — the value by side to move
+### Measurement 4 — the value by side to move
 
 `az_dwarf_value_probe` (new): in positions from run M's actor logs (~750 a kind), one dwarf
 at least 4 king's moves from every troll removed, the value's drop (a dwarf's material:
@@ -481,11 +481,11 @@ with the dwarfs to move, on consecutive plies — so a search's Q there depends 
 parity of its leaves' depth; to be watched in the D1 run, whose self-play may come to
 look like those games.
 
-### Check 5 — older trolls in self-play's conditions
+### Measurement 5 — older trolls in self-play's conditions
 
 M102 against K83 with the trainer's noise on both sides and its sampled plies, 40 pairs:
 M102's dwarfs keep dwarfs in **9 of 40** battles (1.9 left on average), margin **−9.4**
-(against −25.9 against its own trolls in check 3's "both" cell; −18.2 against K83 without
+(against −25.9 against its own trolls in measurement 3's "both" cell; −18.2 against K83 without
 noise); the pair margin +19.7 (+15.8 to +23.6). **All nine are battles in which the
 dwarfs killed every troll** (5.2 trolls killed a battle on average); in the other 31
 every dwarf is lost. Older trolls desaturate the outcomes, but by collapsing, not by our
@@ -493,7 +493,7 @@ dwarfs learning to stay alive — the "exploiting weak trolls" risk of C1, in th
 
 ## 5. The approaches
 
-**Dev** = development and checks (estimates at our pace so far); **train** = extra compute
+**Dev** = development and tests (estimates at our pace so far); **train** = extra compute
 in training; **run** = extra compute in play. Shares are given in recorded positions.
 
 ### Group A — value targets with the same fixed point
@@ -504,7 +504,7 @@ Chess Zero has trained against such a mix.
 - Up: lower variance; `root_value` is already in every recorded position.
 - Down: q is built from the same value; its errors reinforce. **`root_value` is from the
   side to move's view** (the trainer's cutoff code sets `returns[player] = root_value`),
-  the target is the dwarfs' — negate at troll positions, with a check.
+  the target is the dwarfs' — negate at troll positions, with a test.
 - Dev ~2 hours; train 0; run 0.
 
 **A2. KataGo's short-term value heads** (exponential averages of future search values,
@@ -534,7 +534,7 @@ the game has ended).
     b · 0.031 · (λ − λ^(1+d)) for a delay of d plies — ~0.25 · b · 0.031 at d = 6, λ = 0.95.
     B1 mostly rewards delay.
   - It raises the dwarf values' level (toward −0.5), which alone raises their sensitivity
-    through tanh — a confound for the mechanism check.
+    through tanh — a confound for the mechanism's measurement.
   - Materialism while b > 0; two hyperparameters and a schedule; both sides share the
     head (consistent: a troll is 4); games against alpha-beta record every other ply, so
     the horizon is counted in plies.
@@ -544,7 +544,7 @@ the game has ended).
 depth-2 material score of the position (its best move's score, /32). Stockfish's NNUE
 training mixes the game result and the search's evaluation the same way (`lambda`,
 nnue-pytorch).
-- Up: immediate and full-size at both sides to move (check 4's gap would be addressed
+- Up: immediate and full-size at both sides to move (measurement 4's gap would be addressed
   directly); the scores are already computed at every recorded position for kickstarting
   — no extra compute.
 - Down: myopic (2 plies) by construction; the same buffer delay as B1; a bias. The score
@@ -568,10 +568,10 @@ games against past versions of itself, OpenAI 2018; AlphaStar a league). A share
 dwarfs' positions from games against an older network's trolls (K83's), only our dwarfs'
 positions recorded, as for alpha-beta.
 - Up: real outcomes, no bias in targets; dwarf-to-move positions from games whose result
-  varies — **check 5**: against K83's trolls with the trainer's noise M102's dwarfs keep
+  varies — **measurement 5**: against K83's trolls with the trainer's noise M102's dwarfs keep
   dwarfs in 9 of 40 battles, margin −9.4.
 - Down: the value learns a mix of opponents it cannot tell apart; **exploiting weak trolls
-  may not transfer — and check 5 shows just that**: all nine survivals are battles in
+  may not transfer — and measurement 5 shows just that**: all nine survivals are battles in
   which every troll was killed, none a battle in which dwarfs stayed alive beside living
   trolls; a second shared evaluator with its own cache (~0.6 GB at the default)
   and inference threads, and the trainer's batching already caps throughput, so these
@@ -586,21 +586,21 @@ interest, for a value that generalises better). Starts from hexparrot's games wo
 in an outside engine's influence (as C6).
 - Up: no bias; the rules only; both sides recorded; no extra compute.
 - Down: not the real opening; transfer to 8-troll games; the trolls' statistics mix games.
-- **Check 7 first**, at the trainer's settings with an 8-troll baseline. Dev ~½ day
+- **Measurement 7 first**, at the trainer's settings with an 8-troll baseline. Dev ~½ day
   (`ThudGame::NewInitialState(const std::string&)` exists).
 
 **C3. Per-side self-play noise**: ε per side, and α per side by AlphaZero's rule (α ≈ 10 /
 legal moves: ~0.035 for the dwarfs' ~285, ~0.2 for the trolls; Silver et al. 2018 used 0.3
-/ 0.15 / 0.03 for chess, shogi, Go). **Check 3: its rule is met** — without their own
+/ 0.15 / 0.03 for chess, shogi, Go). **Measurement 3: its rule is met** — without their own
 noise the dwarfs lose 18.0 instead of 23.6 dwarfs by ply 60 and score −24.2 instead of
 −25.9 (+1.8 ± 0.75) — **but outcomes stay saturated** (1% of battles keep a dwarf): alone
 it gives the value no games in which dwarfs survive. Up: removes an artefact, no bias;
 per-side settings exist for simulations and temperatures; would remove much of
-self-play's blunders (check 1: the noise-free search repeats only 35% of them); **may be
-what lets D1's dwarfs survive in self-play (check 2b)**. Down: less exploration for the
+self-play's blunders (measurement 1: the noise-free search repeats only 35% of them); **may be
+what lets D1's dwarfs survive in self-play (measurement 2b)**. Down: less exploration for the
 dwarfs. **Built 2026-10-13**: `--player_policy_epsilon` and `--player_policy_alpha` in our
 trainer ("0,0.25": no root noise in the dwarfs' self-play searches; empty: as before);
-`search_settings_check` extended (with "0,0.25" the dwarfs' search has exactly the
+`search_settings_test` extended (with "0,0.25" the dwarfs' search has exactly the
 un-noised prior at its root, the trolls' a noised one, the evaluation search none; the
 control: with no list both are noised) — all pass; in `az_trainer_d1`.
 
@@ -623,7 +623,7 @@ alpha-beta's dwarfs that the trainer already plays (366 in run M), alpha-beta's 
 are discarded. Record them with their outcome as the value target and no policy target.
 - **Reverses the user's rule of 2026-10-07** (§3) — for the value only, nothing imitates
   alpha-beta's moves; the user decides.
-- Up: no extra games; the rules only; exactly the data check 4 found missing —
+- Up: no extra games; the rules only; exactly the data measurement 4 found missing —
   dwarf-to-move positions of games in which dwarfs survive (the trolls-to-move side of
   those games is already recorded, ~26% of the positions, and there the value is right).
 - Down: off-policy — the value learns outcomes of alpha-beta's dwarf play, mixed with our
@@ -640,7 +640,7 @@ are discarded. Record them with their outcome as the value target and no policy 
     from ~21 to ~16 steps;
   - change the alpha-beta share (the actor counts `trajectory.states` towards it: the
     30% would fill with fewer games, for both sides);
-  - corrupt the statistics (per-side losses, `vs_alphabeta`, the overfitting check's
+  - corrupt the statistics (per-side losses, `vs_alphabeta`, the overfitting measure's
     samples, `Trajectory::State::value`).
   So: a separate stream outside the share's and the step's accounting; the policy loss
   averaged over the rows that have a target; C7's positions capped at ~10% of a batch;
@@ -653,9 +653,9 @@ are discarded. Record them with their outcome as the value target and no policy 
 **D1. A higher kickstarting weight for the dwarfs** (per side: the trolls stay at 0.3).
 The teacher shapes the policy that **generates the data**, so a larger teacher share for
 the dwarfs moves self-play toward the play that keeps dwarfs alive (§1.2) — a change of
-distribution, which should then give the value the dwarf-to-move data check 4 found
+distribution, which should then give the value the dwarf-to-move data measurement 4 found
 missing. (This revised, on 2026-10-12, the earlier assessment "treats the symptom".)
-- **Check 2**: the teacher in M102's dwarf prior at play time gains the dwarf side +7.6 /
+- **Measurement 2**: the teacher in M102's dwarf prior at play time gains the dwarf side +7.6 /
   +10.6 / +15.9 points a battle at 0.3 / 0.5 / 0.7 against L102's trolls, all battles
   keeping dwarfs at 0.5 and 0.7, troll kills not lower, our trolls unchanged within the
   noise — in matches without root noise, the dwarfs surviving by stalls.
@@ -667,33 +667,33 @@ missing. (This revised, on 2026-10-12, the earlier assessment "treats the sympto
 - Down:
   - **Its chain is open at the second step**: better dwarf play → self-play keeps dwarfs →
     dwarf-to-move data for the value. Whether teacher-guided dwarfs keep dwarfs under the
-    trainer's root noise is not known — check 3: either side's noise breaks the stalls
-    in which the unmixed network's dwarfs survive. **Check 2b decides before the run**:
+    trainer's root noise is not known — measurement 3: either side's noise breaks the stalls
+    in which the unmixed network's dwarfs survive. **Measurement 2b decides before the run**:
     D1 alone, D1 with C3, or D1 for the policy only (the value then needing C7 or B1′).
-  - **The network must learn it**: at play time check 2 ran a real 2-ply search at every
+  - **The network must learn it**: at play time measurement 2 ran a real 2-ply search at every
     dwarf node; trained, the prior only approximates the teacher (the dwarfs' policy loss
     is 4.92 now, against ln 285 = 5.65 for a uniform prior).
   - **It builds up slowly**: its targets are fixed at insertion (§3) — at 0.7, the
     buffer's mean dwarf weight rises from 0.30 to ~0.66 by step 121. The run tests D1
     mostly, not fully (run K's kickstarting worked through the same delay).
-  - **Defence, not attack**: check 2's gain is mostly dwarfs kept (14.6 left at 0.7), the
+  - **Defence, not attack**: measurement 2's gain is mostly dwarfs kept (14.6 left at 0.7), the
     trolls killed rising only from ~1.4 to ~2.0 — the 2-ply teacher teaches safety;
     attacking has to come from the search and the value. A 2-ply teacher cannot see a
     quiet move that sets up a hurl; the troll-kills gate (§7) watches for that loss.
-  - **Long, stalled games** if it works (check 2: 435 plies at 0.7): fewer games a step,
-    many capture-free positions (check 2b).
+  - **Long, stalled games** if it works (measurement 2: 435 plies at 0.7): fewer games a step,
+    many capture-free positions (measurement 2b).
   - Dependence on the teacher until it is tapered; the prior (now near uniform, ~205
     effective moves of 285) concentrates onto the teacher's best moves, many tied at
     depth 2, among which the search chooses.
 - **Weight: 0.7, capped** (the user, 2026-10-13: "let's keep the 0.7 cap. That needs to be
-  enough. If it's not enough then we need to taper … later than anticipated"). Check 2's
+  enough. If it's not enough then we need to taper … later than anticipated"). Measurement 2's
   rule (the best mix that does not cost troll kills) picks 0.7, the largest tried; the
   effect had not levelled off, and 0.85 or 1.0 might do better still at play time. But as
   a training weight, 1.0 makes the dwarfs' policy target pure 2-ply alpha-beta, and 0.85
   nearly — the imitation the user ruled out on 2026-10-07 ("not imitation first",
   `PLAN.md`, training against alpha-beta) — and its cost (what the visits know beyond 2
-  plies) shows only in training, not in check 2. At 0.7 the visits keep 30% of the
-  target. If 0.7 proves too little, the teacher stays on longer, not stronger. (Check 2 at
+  plies) shows only in training, not in measurement 2. At 0.7 the visits keep 30% of the
+  target. If 0.7 proves too little, the teacher stays on longer, not stronger. (Measurement 2 at
   0.85 and 1.0 is therefore not run; `~/thud-runs/check2_more_2026-10-13.sh` would do it.)
 - **Taper, slow and gated** (the user, 2026-10-13: "I'd rather be safe than sorry";
   approved): not within the first 19 steps; then −0.1 at a time, at most once per buffer
@@ -704,10 +704,16 @@ missing. (This revised, on 2026-10-12, the earlier assessment "treats the sympto
   is under root noise, so that comparison alone might never open), (b) the regression
   gates of §7 hold at that step, and (c) **the search no longer amplifies unsafe moves**:
   the visits' mass on unsafe dwarf moves is no higher than the prior's (from the recorded
-  targets; §2's loop — at a lower weight the loop's gain rises again), and (d) **the
-  value's side-to-move gap has closed** (check 4 on the current network: a far dwarf
+  targets; §2's loop — at a lower weight the loop's gain rises again; **proposed stricter,
+  2026-10-15, for the user to confirm**: the loop's gain after the step, (1 − w′) × R with
+  R the visits' unsafe mass over the prior's at its 95% upper bound, at most 0.8 — R ≤ 2.0
+  for 0.7 → 0.6, ≤ 1.33 for 0.5 → 0.4, ≤ 1.0 for 0.3 → 0.2, ≤ 0.8 without a teacher — so
+  the rule tightens as the teacher fades; R needs a probe not yet built), and (d) **the
+  value's side-to-move gap has closed** (measurement 4 on the current network: a far dwarf
   counts about as much with the dwarfs to move as with the trolls to move — the user,
-  2026-10-15; while the teacher carries the dwarfs' policy the gap costs little, but
+  2026-10-15; **closed** (the user, 2026-10-15): with the dwarfs to move a far dwarf worth
+  at least 80% of its worth with the trolls to move, in two measurements in a row, every
+  10 steps; while the teacher carries the dwarfs' policy the gap costs little, but
   once it is tapered the policy targets come from the search, which relies on that
   value, and an open gap would bring the trap back). 0.7 → 0.3 (the trolls' weight) thus
   takes ≥ 80 steps (~4-5 nights here); later both sides together
@@ -717,7 +723,7 @@ missing. (This revised, on 2026-10-12, the earlier assessment "treats the sympto
   afford a population, hence results and gates.)
 - **Built 2026-10-13**: `--player_kickstart_weight` in our trainer (`thud/az/`; "0.7": the
   dwarfs' positions 0.7, the trolls' the single `kickstart_weight`; empty: as before);
-  `kickstart_check` extended (the same moves played; every dwarf position's target 0.3 ×
+  `kickstart_test` extended (the same moves played; every dwarf position's target 0.3 ×
   the visits + 0.7 × the teacher's; every troll position's unchanged; an empty list
   changes nothing; the configuration round-trips) — all pass; the trainer built as
   `build-shared/az_trainer_d1`, for both the control run (empty list) and the D1 run; a
@@ -728,7 +734,7 @@ missing. (This revised, on 2026-10-12, the earlier assessment "treats the sympto
   (`player_kickstart_weight` "0.7"); the runner `~/thud-runs/night8_2026-10-13.py
   control|d1`. Train 0; run 0.
 
-**D2. The teacher in the search's prior at play time** — check 2's mechanism (`az_match
+**D2. The teacher in the search's prior at play time** — measurement 2's mechanism (`az_match
 teacher_mix_a`). Not a training change; costs ~1.5× the time of a search. An option for
 play only, and a measuring tool.
 
@@ -739,11 +745,11 @@ delays the loss. Dev ~1½ days. Not now.
 ### Group E — how well the value learns small effects
 
 **E1. A larger value-loss weight** (the value loss 0.035 against the policy loss 3.86 and
-the L2 term 0.048). Up: one flag; the trainer's overfitting check shows no value
+the L2 term 0.048). Up: one flag; the trainer's overfitting measure shows no value
 overfitting now (step 102: 0.021 on trained positions, 0.015 on new ones), and each
-position is sampled only ~3 times. Down: check 4 says the data, not the learning, are the
+position is sampled only ~3 times. Down: measurement 4 says the data, not the learning, are the
 limit — the value learnt a dwarf's worth wherever its data showed it; the trunk's
-capacity shifts toward the value; may start to overfit (watch the same check). Dev ~1
+capacity shifts toward the value; may start to overfit (watch the same measure). Dev ~1
 hour.
 
 **E2. A categorical margin head**: 65 bins over the margins −32..32, the value its
@@ -751,11 +757,11 @@ expectation (MuZero's categorical support, KataGo's score distribution, Leela Ch
 win/draw/loss head). Removes tanh's compression (factor 4 in §2); the targets are the
 integer margins, z × 32 — no buffer change (mixing in B1 or B1′ later needs MuZero's
 two-hot encoding). Does not change the fixed point. Dev ~1-2 days (model, loss, inference,
-checks); train small; run small.
+tests); train small; run small.
 
 ## 6. Comparison
 
-| | Lever | Evidence (checks) | Dev | Train | Run | Main risk |
+| | Lever | Evidence (measurements) | Dev | Train | Run | Main risk |
 |---|---|---|---|---|---|---|
 | A1 z + q | variance | the dwarfs' noise is worth ~1.8 points (3) | 2 h | – | – | no effect |
 | A2 short-term heads | variance | – | 1 day | small | – | no effect; buffer change |
@@ -766,12 +772,12 @@ checks); train small; run small.
 | B3 auxiliary heads | representation | – | 1 day | small | – | no effect |
 | C1 older trolls | data | 9 of 40 under noise, all by wiping out the trolls (5) | 1 day | >2× for those games | – | weak-troll exploits; memory |
 | C2 handicap / archive starts | data | – | ½ day | – | – | transfer |
-| C3 per-side noise | data; perhaps D1's precondition | rule met; outcomes stay saturated (3); check 2b | 1-2 h | – | – | alone, no surviving dwarfs |
+| C3 per-side noise | data; perhaps D1's precondition | rule met; outcomes stay saturated (3); measurement 2b | 1-2 h | – | – | alone, no surviving dwarfs |
 | C4 no games against alpha-beta's trolls | data | – | 1 h | saves | – | small |
 | C5 weaker trolls | data | – | 0-1 h | lower | – | weaker trolls |
 | C6 outside engine | data | – | 1 day | Python | – | not ours |
 | C7 alpha-beta's dwarf positions, value only | data | exactly the missing data (4) | 1 day | buffer share | – | off-policy value; the user's rule; mechanics |
-| **D1 dwarfs' teacher weight** | **the play generating the data** | **+7.6 to +15.9 at play time, by stalls, without noise (2); check 2b** | **built** | – | – | survival under noise; learning it; defence only |
+| **D1 dwarfs' teacher weight** | **the play generating the data** | **+7.6 to +15.9 at play time, by stalls, without noise (2); measurement 2b** | **built** | – | – | survival under noise; learning it; defence only |
 | D2 teacher at play time | search | (2) | done | – | 1.5× | play only |
 | D3 moves-left head | search | – | 1½ days | – | – | delay |
 | E1 value-loss weight | learning | the data are the limit (4) | 1 h | – | – | overfitting |
@@ -818,7 +824,7 @@ network must pass both. **The anchor is the top anchor, M102.**
 | Gate | Measure | Fails if |
 |---|---|---|
 | Alpha-beta, per side | our dwarfs against depth 1; our trolls against depth 2's dwarfs; 40 battles each on the anchor's openings | worse than the anchor's by more than 2 standard errors of the paired difference (~3.3 points) |
-| Blunders | the blunder rate against hexparrot (`az_blunder_check`); the standard error clustered by battle (~2.0 percentage points for the difference of two networks) | ≥ 4 points higher than the anchor's |
+| Blunders | the blunder rate against hexparrot (`az_blunder_probe`); the standard error clustered by battle (~2.0 percentage points for the difference of two networks) | ≥ 4 points higher than the anchor's |
 | Troll kills | trolls our dwarfs kill a battle, against hexparrot and alpha-beta depth 1 — what a 2-ply teacher cannot teach (set-ups) | lower than the anchor's by more than 2 standard errors |
 | Short hurls (2-3 squares) | `az_long_capture_probe`'s built positions: the hurl's top-move share and its ratio to a blind prior | lower than the anchor's by more than 2 standard errors (bootstrap over positions) |
 | The trolls' captures | at troll positions with a capture, the prior's top move a capture (K83: 100%) | lower by more than 2 standard errors |
@@ -840,9 +846,9 @@ network must pass both. **The anchor is the top anchor, M102.**
 the control run's and M102's networks:
 
 - the self-play endings, lengths and margins in the trainer's log, and the share of
-  positions after a battle's last capture (stalls); check 3's "both" cell on the new
+  positions after a battle's last capture (stalls); measurement 3's "both" cell on the new
   network (dwarfs lost by ply 60, battles keeping dwarfs);
-- **check 4** (the value by side to move: does the dwarf-to-move gap close? does the
+- **measurement 4** (the value by side to move: does the dwarf-to-move gap close? does the
   value's level still split by side?);
 - blunders in self-play by thirds of the run (the slide) and against hexparrot; the
   dwarfs' prior and visits on unsafe moves (the amplification of §2); the risk probe by
@@ -851,11 +857,11 @@ the control run's and M102's networks:
   killed.
 
 **Controls in code**: no per-player weight (D1), no second stream (C7), b = 0 (B1) each
-reproduce the old targets exactly (D1: `kickstart_check`).
+reproduce the old targets exactly (D1: `kickstart_test`).
 
 ## 8. Recommendation
 
-1. **Check 2b** (done, 2026-10-13): under the trainer's noise teacher-guided dwarfs keep
+1. **Measurement 2b** (done, 2026-10-13): under the trainer's noise teacher-guided dwarfs keep
    no dwarf; with the dwarfs' roots noise-free 70% of the battles keep dwarfs — **the
    test run is D1 together with C3**.
 2. **Then two nights from M102, 19 steps each**: the control run and the D1 run at a
@@ -866,15 +872,15 @@ reproduce the old targets exactly (D1: `kickstart_check`).
    errors, their positive controls; ~½ day). Then about a day of evaluation by §7 —
    against each other and against M102 — the gates included, with the mechanism read off.
 3. **Then, by the mechanism:**
-   - D1 wins and its self-play keeps dwarfs, check 4's gap closing → rerun D1 and the
+   - D1 wins and its self-play keeps dwarfs, measurement 4's gap closing → rerun D1 and the
      control (replication), adopt; taper the dwarfs' weight slowly and gated (§5).
    - D1 wins but the dwarf-to-move gap stays → a further test run for the value: **B1′**
      (the teacher's score in the value target, applied at sampling) or **C7** if the user
      agrees to reverse the rule of 2026-10-07 (~1 day of development each).
-   - D1 does not win → C7 or B1′ next; C1 after them (check 5: its survivals are troll
+   - D1 does not win → C7 or B1′ next; C1 after them (measurement 5: its survivals are troll
      wipe-outs).
-4. **Later**: B1 only with b applied at sampling and sized to a measured signal (check 6);
-   C2 (after check 7); E2 on the GPU. **Not now**: A1-A3, B2, B3, C4-C6, D3, E1.
+4. **Later**: B1 only with b applied at sampling and sized to a measured signal (measurement 6);
+   C2 (after measurement 7); E2 on the GPU. **Not now**: A1-A3, B2, B3, C4-C6, D3, E1.
 
 ## 9. Open questions
 
@@ -909,15 +915,15 @@ unchanged. **The evaluation** (`~/thud-runs/night9_2026-10-14.py`, results in
 +15.42, 36 of 40), C121 +7.20 (+3.95 to +10.45) — the control did not slide this time.
 For the record: the trolls against hexparrot +6.5 / +5.2 / +1.3, against alpha-beta 1
 +30.3 / +30.7 / +30.2; the dwarfs against alpha-beta 2 at the floor (−30.6 / −30.8 /
-−30.9). **Blunders against hexparrot** (`az_blunder_check`): N121 **9.8%** of its dwarf
+−30.9). **Blunders against hexparrot** (`az_blunder_probe`): N121 **9.8%** of its dwarf
 moves (429 of 4,385 — longer battles), C121 21.6% (598 of 2,772), M102 25.4%.
 
-**The mechanism:** the gain is the policy's, not yet the value's. Check 4 on N121 (run N's
+**The mechanism:** the gain is the policy's, not yet the value's. Measurement 4 on N121 (run N's
 positions): a far dwarf still counts with the trolls to move (+0.019) but hardly with the
 dwarfs to move (+0.003 in the games against alpha-beta's dwarfs, +0.010 in self-play) —
 as C121 and M102 on the same positions; the gap has not closed in 19 steps, with only
 3-5% of run N's self-play keeping dwarfs. In self-play's conditions with noise at *both*
-roots (check 3's "both" cell, not run N's own C3 setting) N121 still keeps no dwarf (0 of
+roots (measurement 3's "both" cell, not run N's own C3 setting) N121 still keeps no dwarf (0 of
 80; 22.1 dwarfs lost by ply 60 against M102's 23.6).
 
 **The replication** (2026-10-15; the user: rerun run N only): **run N2**, run N's recipe
@@ -938,7 +944,7 @@ against each other: N2121 against N121 **+0.95 a pair (−2.04 to +3.94)**, 20 w
 drawn, 18 lost, and every per-side difference within 1 standard error — run-to-run
 variation at 19 steps is small against the recipe's effect (+5.5 and +6.1 against the
 control). Blunders against hexparrot: N2121 13.1% of its dwarf moves (462 of 3,532),
-N121 9.8%, C121 21.6%, M102 25.4%. Check 4 has not been run on N2121.
+N121 9.8%, C121 21.6%, M102 25.4%. Measurement 4 has not been run on N2121.
 
 **Next, by §8:** D1 + C3 is replicated; adopting it for the main line is the user's
 decision. It falls under step 3's second branch — it wins, but the dwarf-to-move gap stays
@@ -946,7 +952,7 @@ after 19 steps — whose next step is a test run for the value (B1′, or C7 wit
 word), unless a longer D1 + C3 run comes first (below). Meanwhile the regression gates set
 up and the promotion tests (the ladder; the gates) for N121 or N2121; whether to continue D1
 + C3 for longer, so that self-play's surviving games grow and the value's gap can close, is
-the next question. If it continues: check 4 every ~10 steps beside the share of self-play
+the next question. If it continues: measurement 4 every ~10 steps beside the share of self-play
 games keeping dwarfs — both rising: patience; survival rising but the gap not: the value is
 not learning what it sees (E1, E2); survival staying below ~5%: the data never come (B1′, or
 C7 with the user's word; C4, dropping the games that give the dwarfs' positions −1, as a
@@ -954,9 +960,20 @@ cheap help either way). The gap's closing is a condition of the taper (§5).
 
 **Decided** (the user, 2026-10-15): the longer D1 + C3 run first — run N continued from
 N121, steps 122-161 (`~/thud-runs/runN_d1_cont`, from 14:30), in four segments of 10 steps,
-after each check 4 on the segment's own games (the newest network and N121 on the same
+after each measurement 4 on the segment's own games (the newest network and N121 on the same
 positions) and the share of self-play games keeping dwarfs (run N's last 10 steps: 2.2%
 of 693 games, the dwarfs' margin −23.4), read by the rule above.
+
+**The first segment** (steps 122-131, 2026-10-15 14:30 to ~19:00, slowed by work beside
+it): **12.7% of 472 self-play games kept dwarfs** (2.2% before), the dwarfs' margin −20.4.
+Measurement 4 on the segment's own positions, N131 against N121 on the same positions — a
+far dwarf's worth with the dwarfs to move: self-play positions +0.0163 against +0.0121,
+65% of its worth with the trolls to move (N121 46%); the games against alpha-beta's
+trolls +0.0031 against +0.0019, 18% (N121 10%). Both rising, both below the taper's 80%.
+The placebo (the dwarf moved one square) is ~+0.007 at self-play positions, not ~0 (at the
+games against alpha-beta ~0): part of the measured worth there is a sensitivity to the
+position as such — net of it the self-play ratio is 51% (N121 29%). By the rule above:
+survival and the gap both rising — patience.
 
 ## Review log
 
@@ -975,8 +992,8 @@ the source before being taken over):
 - Group A overstated (off-policy data; policy improvement) — **taken over**, softened.
 - Scale argument: the exploration term ~0.07, not ~1 — **taken over** (factor 3).
 - Blunders 32% of losses; baits rare — **taken over**; draft 2's factor "baits" dropped.
-- Check 3's design; checks 5 and 7 at trainer settings; check 6's power; a value-only
-  retraining check's missing control (dropped); A1's sign; C1's costs; a primary endpoint,
+- Measurement 3's design; measurements 5 and 7 at trainer settings; measurement 6's power; a value-only
+  retraining measurement's missing control (dropped); A1's sign; C1's costs; a primary endpoint,
   a trolls' margin, replication, the evaluation budget; E1 and E2; Go-Exploit — **taken
   over**.
 - Start test runs from L102 too — **not now** (M is the main line).
@@ -988,7 +1005,7 @@ the source before being taken over):
   the statistics (`alpha_zero.cc`: the actor's and the learner's counting, checked) —
   **taken over**; C7's design and cost (1 day) corrected.
 - The buffer already holds our trolls' positions from games where dwarfs survive (~26%) —
-  **taken over**: §2 corrected; check 4 added; C7 made conditional on it.
+  **taken over**: §2 corrected; measurement 4 added; C7 made conditional on it.
 - C7 reverses the user's rule of 2026-10-07 (`PLAN.md`, checked) — **taken over**: for the
   user to decide.
 - The endpoint's power: the dwarfs against alpha-beta 2 at the floor (−31.2, checked); the
@@ -996,33 +1013,33 @@ the source before being taken over):
   the dwarfs, alpha-beta 3's dwarfs for the trolls, exact rules (the precisions are the
   reviewer's estimates, not rechecked).
 - D1: the flattening is rather a concentration; the risk is lost hurl set-ups; the buffer
-  delays it (0.30 → ~0.66); 0.7 unsupported; check 2 no bound — **taken over**: the weight
-  from check 2, else 0.5.
-- Check 3: the same opening in all cells, independent battles, dwarfs lost by ply 60, a
+  delays it (0.30 → ~0.66); 0.7 unsupported; measurement 2 no bound — **taken over**: the weight
+  from measurement 2, else 0.5.
+- Measurement 3: the same opening in all cells, independent battles, dwarfs lost by ply 60, a
   fixed decision rule, C3 as a run of its own — **taken over**.
 - Numbers and wording (H 41-67%, I 80-95%; 98-100%; 10.4%; 7 certain; the baits
-  comparison; the dispersion 0.034; check 1's children's values; the plane ablation dropped
+  comparison; the dispersion 0.034; measurement 1's children's values; the plane ablation dropped
   as not diagnostic; E1's sampling ~3 times and no value overfitting; E2's two-hot; B1′'s
   sign; the hexparrot variant of C2 flagged; "rerun", no seed; one taper trigger) —
   **taken over**.
 
-**The checks** (2026-10-13; §4): check 1 and check 4 located the value's blindness at
-dwarf-to-move positions and traced it to the buffer's data; check 2 measured D1's lever
-(0.7 chosen by its rule); check 3 met its rule for C3, though outcomes stay saturated
+**The measurements** (2026-10-13; §4): measurement 1 and measurement 4 located the value's blindness at
+dwarf-to-move positions and traced it to the buffer's data; measurement 2 measured D1's lever
+(0.7 chosen by its rule); measurement 3 met its rule for C3, though outcomes stay saturated
 without the dwarfs' noise too;
-check 5 looked like support for C1 (review 3: its survivals are troll wipe-outs). The
+measurement 5 looked like support for C1 (review 3: its survivals are troll wipe-outs). The
 recommendation changed accordingly: two nights (control and D1) instead of three, a third
 test run chosen by D1's mechanism.
 
-**Review 3** (the same reviewer, 2026-10-13, on draft 5 with the checks' results; checked
+**Review 3** (the same reviewer, 2026-10-13, on draft 5 with the measurements' results; checked
 at the source — the games replayed, H83 probed, the reviewer's trend script rerun):
 
-- Check 2's survival is survival by stall, in matches without noise, and noise breaks
+- Measurement 2's survival is survival by stall, in matches without noise, and noise breaks
   stalls: D1's chain is untested where it must work — **taken over**: the stall analysis
-  (§4), **check 2b before any night**, D1 with C3 if the dwarfs' noise blocks survival.
-- Check 1's "the search prefers the blunder" conditions on the outcome (the search chose
+  (§4), **measurement 2b before any night**, D1 with C3 if the dwarfs' noise blocks survival.
+- Measurement 1's "the search prefers the blunder" conditions on the outcome (the search chose
   those moves; where it did not, no preference; "25 of 137" was 25 of 79) — **taken
-  over**: the claim dropped, the child's-value result kept, check 4 carries the diagnosis.
+  over**: the claim dropped, the child's-value result kept, measurement 4 carries the diagnosis.
 - Self-play slides within every run (run M's blunders 8.6% → 23.2% by thirds), so the
   control slides — **taken over**: §1.3, §2 (with the reviewer's loop-gain inference,
   marked as such), both final networks compared with M102, an amplification condition in
@@ -1037,11 +1054,11 @@ at the source — the games replayed, H83 probed, the reviewer's trend script re
   clustered or bootstrapped rather than from M100 against M102, a troll-kills gate added
   (the short-hurl gate does not watch D1's risk), the false-alarm rate stated, the anchor
   named — **taken over**.
-- Check 5: all nine survivals are battles with every troll killed — **taken over**; C1
+- Measurement 5: all nine survivals are battles with every troll killed — **taken over**; C1
   ranked after C7 and B1′.
 - §1.2: the alpha-beta depth-1 row was M102's dwarfs against depth 1's trolls; depth 1's
   dwarfs lose every dwarf (−30.0) — **corrected**.
-- Check 4: H83 as the clean control (probed: no gap); the gap not a probe artefact; the
+- Measurement 4: H83 as the clean control (probed: no gap); the gap not a probe artefact; the
   value's level also splits by side — **taken over**. Wording ("at or above its material"
   only for I83-K102; the placebo's range; "mostly a single dwarf"; the pairing; the
   trolls "unchanged within the noise"; the taper's noisy comparison) — **taken over**.

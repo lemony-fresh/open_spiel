@@ -182,7 +182,7 @@ class VPNetModel {
       VPNetModel& other, const std::function<bool(const std::string&)>& include,
       bool widen_inputs = false);
   // Our change (the same): a parameter by name, sharing its storage (writing to it,
-  // under torch::NoGradGuard, changes the network) — for checks and diagnostics.
+  // under torch::NoGradGuard, changes the network) — for tests and diagnostics.
   torch::Tensor Parameter(const std::string& name);
   // Our change (thud/PLAN.md, the GPU readiness checklist: az_grow, 2026-10-15): every
   // parameter and buffer by name (the batch norms' running statistics included), sharing
@@ -215,9 +215,9 @@ class VPNetModel {
   // from the logits of each position's legal moves alone, normalised in double — not
   // upstream's mask and softmax over every distinct action (19,800 in Thud, of which a
   // position has 20 to 400 legal), whose illegal entries come out 0. The same
-  // distribution up to rounding (~1e-7: thud/az/legal_policy_check.cc); the values are
+  // distribution up to rounding (~1e-7: thud/az/legal_policy_test.cc); the values are
   // bit for bit the same. On by default; false is upstream's computation, bit for bit
-  // (identity_check compares with it).
+  // (identity_test compares with it).
   void SetLegalPolicy(bool on) { legal_policy_ = on; }
   bool LegalPolicy() const { return legal_policy_; }
 

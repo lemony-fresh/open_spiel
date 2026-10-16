@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Checks the symmetry augmentation of our copy of OpenSpiel's C++ AlphaZero
+// Tests the symmetry augmentation of our copy of OpenSpiel's C++ AlphaZero
 // (SymmetricTrainInputs in thud/az/vpnet.h; thud/PLAN.md Phase 6) against positions
 // mirrored independently, as text: every 7th position of random games, under each of
 // the 8 symmetries, with a random policy target over some legal moves.
@@ -24,8 +24,8 @@
 //   Control: without the transformation, the observations of mirrored positions
 //   differ (for symmetries 1-7), so the comparisons above can fail.
 //
-//   thud/az/build.sh thud/az/augmentation_check.cc
-//   build-shared/augmentation_check
+//   thud/az/build.sh thud/az/augmentation_test.cc
+//   build-shared/augmentation_test
 //
 // Exits non-zero on any failure.
 
@@ -161,7 +161,7 @@ int main(int argc, char** argv) {
          absl::StrFormat("control: untransformed observations differ from the "
                          "mirrored positions' in %d of %d",
                          differ_untransformed, 7 * positions));
-  std::cout << (failures ? "AUGMENTATION CHECK FAILED" : "augmentation check passed")
+  std::cout << (failures ? "AUGMENTATION TEST FAILED" : "augmentation test passed")
             << std::endl;
   return failures ? 1 : 0;
 }

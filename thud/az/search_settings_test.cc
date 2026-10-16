@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Checks the per-player search settings (thud/PLAN.md, training the dwarfs): the
+// Tests the per-player search settings (thud/PLAN.md, training the dwarfs): the
 // policy softmax temperature (MCTSBot::SetPolicyTemperatures, ApplyPolicyTemperature)
 // and the trainer's player_simulations / player_policy_temperature (InitAZBot). With
 // a deterministic stand-in for the network (a fixed uneven prior, values from a hash
@@ -44,8 +44,8 @@
 //      inside a search, some dwarf searches change (their trolls' replies now weigh
 //      captures).
 //
-//   thud/az/build.sh thud/az/search_settings_check.cc
-//   build-shared/search_settings_check
+//   thud/az/build.sh thud/az/search_settings_test.cc
+//   build-shared/search_settings_test
 
 #include <algorithm>
 #include <cmath>
