@@ -37,6 +37,7 @@
 #   git clone -b thud https://github.com/lemony-fresh/open_spiel.git ~/thud-openspiel
 #   ~/thud-openspiel/thud/setup_machine.sh 2>&1 | tee ~/setup.log
 #   [--skip-apt] (no sudo: the packages are there) [--skip-checks] [--gpu-smoke-only]
+#   [--no-bashrc] (leave ~/.bashrc alone: a test clone, or a shell set up by hand)
 #
 # SMOKE_DEVICE=cpu:0 runs step 8's steps on the CPU (without its CUDA check): the smoke
 # test's own check, on a machine without a GPU.
@@ -44,12 +45,13 @@
 set -uo pipefail
 repo=$(cd "$(dirname "$0")/.." && pwd)
 cd "$repo"
-skip_apt=0 skip_checks=0 smoke_only=0
+skip_apt=0 skip_checks=0 smoke_only=0 no_bashrc=0
 for a in "$@"; do
   case $a in
     --skip-apt) skip_apt=1 ;;
     --skip-checks) skip_checks=1 ;;
     --gpu-smoke-only) smoke_only=1 ;;
+    --no-bashrc) no_bashrc=1 ;;
     *) echo "Unknown option $a" >&2; exit 2 ;;
   esac
 done
@@ -137,7 +139,9 @@ python3 -c 'import torch, absl, numpy' 2> /dev/null || {
 python3 -c 'import torch; print("torch", torch.__version__, "CUDA build:", torch.version.cuda)'
 
 step "3. the shell environment in ~/.bashrc"
-if ! grep -q "$repo/venv/bin/activate" ~/.bashrc 2> /dev/null; then
+if [ "$no_bashrc" -eq 1 ]; then
+  echo "left alone (--no-bashrc)"
+elif ! grep -q "$repo/venv/bin/activate" ~/.bashrc 2> /dev/null; then
   cat >> ~/.bashrc <<EOF
 # thud-openspiel (thud/setup_machine.sh; CLAUDE.md, Shell environment)
 export PYTHONPATH=\$PYTHONPATH:$repo
