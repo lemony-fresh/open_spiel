@@ -15,9 +15,18 @@
 #ifndef THUD_AZ_REPLAY_BUFFER_H_
 #define THUD_AZ_REPLAY_BUFFER_H_
 
+#include <nop/serializer.h>
+#include <nop/utility/stream_reader.h>
+
+#include <algorithm>
+#include <cstdint>
+#include <filesystem>
+#include <fstream>
 #include <string>
 #include <utility>
 
+#include "open_spiel/abseil-cpp/absl/strings/str_format.h"
+#include "open_spiel/spiel_utils.h"
 #include "open_spiel/utils/serializable_circular_buffer.h"
 
 namespace open_spiel::thud_az {
@@ -50,9 +59,48 @@ class ReplayBuffer : public SerializableCircularBuffer<T> {
     this->total_added_ += 1;
   }
 
+  // Upstream's LoadBuffer, checked (thud/PLAN.md, the GPU readiness checklist: restarting
+  // after a crash or a preemption): upstream's ignores the status of each read, so a file
+  // cut short — written in place by a run killed while saving — loads without an error:
+  // only the positions before the cut, with total_added_ still the file's, which breaks
+  // Add's slot arithmetic (found 2026-10-15, thud/az/replay_buffer_check.cc). Ours stops
+  // on a read that fails or a count of positions that does not match the file's.
   void LoadBuffer(const std::string& path) {
-    SerializableCircularBuffer<T>::LoadBuffer(path);
+    nop::Deserializer<nop::StreamReader<std::ifstream>> deserializer{path};
+    auto read = [&](auto* value, const char* what) {
+      const auto status = deserializer.Read(value);
+      if (!status) {
+        SpielFatalError(absl::StrFormat("Cannot load the buffer %s: reading %s failed (%s)",
+                                        path, what, status.GetErrorMessage()));
+      }
+    };
+    // Ensure this buffer's max size equals the max size of the saved buffer.
+    int max_size;
+    read(&max_size, "its size");
+    if (max_size != this->max_size_) {  // Upstream's message.
+      SpielFatalError(absl::StrFormat("Cannot load data from a buffer with max"
+                                      "size %d into a buffer with max size %d.",
+                                      max_size, this->max_size_));
+    }
+    read(&(this->total_added_), "its count of positions added");
+    read(&(this->data_), "its positions");
+    const int64_t expected = std::min<int64_t>(this->total_added_, this->max_size_);
+    if (static_cast<int64_t>(this->data_.size()) != expected) {
+      SpielFatalError(absl::StrFormat("Cannot load the buffer %s: %d positions read, %d "
+                                      "expected (the file cut short?)",
+                                      path, this->data_.size(), expected));
+    }
     for (T& element : this->data_) element = T(element);  // One at a time.
+  }
+
+  // Upstream's file, written under a temporary name and renamed into place (thud/PLAN.md,
+  // the GPU readiness checklist: restarting after a crash or a preemption): a run
+  // killed while saving keeps the previous buffer whole. Upstream's writer has closed
+  // its stream when it returns.
+  void SaveBuffer(const std::string& path) const {
+    const std::string temporary = path + ".tmp";
+    SerializableCircularBuffer<T>::SaveBuffer(temporary);
+    std::filesystem::rename(temporary, path);
   }
 };
 

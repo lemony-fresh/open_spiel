@@ -26,6 +26,8 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
+#include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <limits>
 #include <memory>
@@ -37,6 +39,7 @@
 
 #include "open_spiel/abseil-cpp/absl/algorithm/container.h"
 #include "open_spiel/abseil-cpp/absl/random/uniform_real_distribution.h"
+#include "open_spiel/abseil-cpp/absl/strings/match.h"
 #include "open_spiel/abseil-cpp/absl/strings/str_cat.h"
 #include "open_spiel/abseil-cpp/absl/strings/str_format.h"
 #include "open_spiel/abseil-cpp/absl/strings/str_join.h"
@@ -77,6 +80,34 @@ struct StartInfo {
   int64_t total_trajectories;
 };
 
+// Our change (restarting after a crash or a preemption): whether a line of
+// learner.jsonl is a whole JSON object — its strings closed, its braces and brackets
+// balanced, ending with '}'. A run killed while writing its record leaves the line cut
+// short, and upstream's json::FromString stops the program on a line that does not parse.
+bool IsWholeJsonObject(const std::string& line) {
+  int depth = 0;
+  bool in_string = false, escaped = false;
+  for (char c : line) {
+    if (in_string) {
+      if (escaped) {
+        escaped = false;
+      } else if (c == '\\') {
+        escaped = true;
+      } else if (c == '"') {
+        in_string = false;
+      }
+      continue;
+    }
+    if (c == '"') in_string = true;
+    if (c == '{' || c == '[') ++depth;
+    if (c == '}' || c == ']') {
+      if (--depth < 0) return false;
+    }
+  }
+  const size_t last = line.find_last_not_of(" \t\r");
+  return depth == 0 && !in_string && last != std::string::npos && line[last] == '}';
+}
+
 StartInfo StartInfoFromLearnerJson(const std::string& path) {
   StartInfo start_info;
   file::File learner_file(path + "/learner.jsonl", "r");
@@ -84,16 +115,26 @@ StartInfo StartInfoFromLearnerJson(const std::string& path) {
       absl::StrSplit(learner_file.ReadContents(), '\n');
   std::string last_learner_line;
 
-  // Get the last non-empty line in learner.jsonl.
+  // Get the last non-empty line in learner.jsonl. Our change (restarting after a crash
+  // or a preemption): the last one that parses — a run killed while writing its record
+  // leaves a truncated line.
+  absl::optional<json::Value> parsed;
   for (int i = learner_lines.size() - 1; i >= 0; i--) {
     if (!learner_lines[i].empty()) {
-      last_learner_line = learner_lines[i];
-      break;
+      if (IsWholeJsonObject(learner_lines[i])) parsed = json::FromString(learner_lines[i]);
+      if (parsed.has_value() && parsed->IsObject()) {
+        last_learner_line = learner_lines[i];
+        break;
+      }
+      std::cerr << "learner.jsonl: skipping a line that does not parse (a run killed "
+                   "while logging?): "
+                << learner_lines[i].substr(0, 80) << std::endl;
+      parsed.reset();
     }
   }
+  SPIEL_CHECK_TRUE(parsed.has_value());
 
-  json::Object last_learner_json = json::FromString(
-      last_learner_line).value().GetObject();
+  json::Object last_learner_json = parsed->GetObject();
 
   start_info.start_time = absl::Now() - absl::Seconds(
       last_learner_json["time_rel"].GetDouble());
@@ -141,7 +182,9 @@ Trajectory PlayGame(Logger* logger, int game_num, const open_spiel::Game& game,
                     open_spiel::Player opponent_player,
                     const AlphaBetaPlayer* teacher, double teacher_weight,
                     double teacher_temperature,
-                    const std::vector<double>& teacher_weights) {
+                    const std::vector<double>& teacher_weights,
+                    std::vector<std::unique_ptr<MCTSBot>>* fast_bots,
+                    double full_share) {
   std::unique_ptr<open_spiel::State> state = game.NewInitialState();
   std::vector<std::string> history;
   Trajectory trajectory;
@@ -171,7 +214,13 @@ Trajectory PlayGame(Logger* logger, int game_num, const open_spiel::Game& game,
       }
     } else {
       open_spiel::Player player = state->CurrentPlayer();
-      std::unique_ptr<SearchNode> root = (*bots)[player]->MCTSearch(*state);
+      // Our change (playout cap randomisation): a full search, recorded, with
+      // probability full_share, else a fast one, not recorded. With the cap off no
+      // random number is drawn, so the games are as before.
+      const bool full = fast_bots == nullptr || fast_bots->empty() || full_share >= 1 ||
+                        absl::uniform_real_distribution<double>(0.0, 1.0)(*rng) < full_share;
+      std::unique_ptr<SearchNode> root =
+          (full ? (*bots)[player] : (*fast_bots)[player])->MCTSearch(*state);
       open_spiel::ActionsAndProbs policy;
       policy.reserve(root->children.size());
       for (const SearchNode& c : root->children) {
@@ -185,62 +234,64 @@ Trajectory PlayGame(Logger* logger, int game_num, const open_spiel::Game& game,
       } else {
         action = open_spiel::SampleAction(policy, *rng).first;
       }
-      // Our change (thud/PLAN.md, policy target pruning): the policy target is
-      // the visit counts with KataGo's pruning, if on; the move above was still
-      // chosen from the unpruned counts, as before.
-      open_spiel::ActionsAndProbs target;
-      if (pruning_k > 0) {
-        for (const auto& [a, n] : PrunedRootVisits(*root, uct_c, pruning_k)) {
-          target.emplace_back(a, std::pow(n, 1.0 / temperature));
-        }
-        NormalizePolicy(&target);
-      }
-
       double root_value = root->total_reward / root->explore_count;
-      if (pruning_k <= 0) target = std::move(policy);
-      // Our change (kickstarting): the teacher's share of the target; the move above
-      // was chosen from the search's visits alone. Per player to move, if
-      // teacher_weights has an entry for it (approach D1).
-      const double weight = player >= 0 && player < teacher_weights.size()
-                                ? teacher_weights[player]
-                                : teacher_weight;
-      if (teacher != nullptr && weight > 0) {
-        std::unordered_map<open_spiel::Action, double> taught;
-        for (const auto& [a, p] : TeacherPolicy(*state, *teacher, teacher_temperature)) {
-          taught[a] = p;
+      if (full) {  // Our change (playout cap randomisation): only full searches.
+        // Our change (thud/PLAN.md, policy target pruning): the policy target is
+        // the visit counts with KataGo's pruning, if on; the move above was still
+        // chosen from the unpruned counts, as before.
+        open_spiel::ActionsAndProbs target;
+        if (pruning_k > 0) {
+          for (const auto& [a, n] : PrunedRootVisits(*root, uct_c, pruning_k)) {
+            target.emplace_back(a, std::pow(n, 1.0 / temperature));
+          }
+          NormalizePolicy(&target);
         }
-        for (auto& [a, p] : target) {
-          p = (1 - weight) * p + weight * taught[a];
-        }
-      }
-      trajectory.states.push_back(Trajectory::State{
-          state->ObservationTensor(), player, state->LegalActions(), action,
-          std::move(target), root_value});
-      // Our change (thud/PLAN.md, Instrumentation): the network's own prior
-      // (before root noise: the evaluator's, cached since the search's first
-      // evaluation), its entropy, the KL divergence of the root's visit counts
-      // from it, and whether its likeliest move is the most visited.
-      if (prior_source != nullptr && root->explore_count > 0) {
-        std::unordered_map<open_spiel::Action, double> prior;
-        double entropy = 0;
-        open_spiel::Action prior_top = open_spiel::kInvalidAction;
-        for (const auto& [a, p] : prior_source->Prior(*state)) {
-          prior[a] = p;
-          if (p > 0) entropy -= p * std::log(p);
-          if (prior_top == open_spiel::kInvalidAction || p > prior[prior_top]) {
-            prior_top = a;
+
+        if (pruning_k <= 0) target = std::move(policy);
+        // Our change (kickstarting): the teacher's share of the target; the move above
+        // was chosen from the search's visits alone. Per player to move, if
+        // teacher_weights has an entry for it (approach D1).
+        const double weight = player >= 0 && player < teacher_weights.size()
+                                  ? teacher_weights[player]
+                                  : teacher_weight;
+        if (teacher != nullptr && weight > 0) {
+          std::unordered_map<open_spiel::Action, double> taught;
+          for (const auto& [a, p] : TeacherPolicy(*state, *teacher, teacher_temperature)) {
+            taught[a] = p;
+          }
+          for (auto& [a, p] : target) {
+            p = (1 - weight) * p + weight * taught[a];
           }
         }
-        double kl = 0;
-        for (const SearchNode& c : root->children) {
-          if (c.explore_count == 0) continue;
-          const double v = static_cast<double>(c.explore_count) / root->explore_count;
-          kl += v * std::log(v / std::max(prior[c.action], 1e-30));
+        trajectory.states.push_back(Trajectory::State{
+            state->ObservationTensor(), player, state->LegalActions(), action,
+            std::move(target), root_value});
+        // Our change (thud/PLAN.md, Instrumentation): the network's own prior
+        // (before root noise: the evaluator's, cached since the search's first
+        // evaluation), its entropy, the KL divergence of the root's visit counts
+        // from it, and whether its likeliest move is the most visited.
+        if (prior_source != nullptr && root->explore_count > 0) {
+          std::unordered_map<open_spiel::Action, double> prior;
+          double entropy = 0;
+          open_spiel::Action prior_top = open_spiel::kInvalidAction;
+          for (const auto& [a, p] : prior_source->Prior(*state)) {
+            prior[a] = p;
+            if (p > 0) entropy -= p * std::log(p);
+            if (prior_top == open_spiel::kInvalidAction || p > prior[prior_top]) {
+              prior_top = a;
+            }
+          }
+          double kl = 0;
+          for (const SearchNode& c : root->children) {
+            if (c.explore_count == 0) continue;
+            const double v = static_cast<double>(c.explore_count) / root->explore_count;
+            kl += v * std::log(v / std::max(prior[c.action], 1e-30));
+          }
+          Trajectory::State& recorded = trajectory.states.back();
+          recorded.prior_entropy = entropy;
+          recorded.prior_kl = kl;
+          recorded.prior_top_agrees = prior_top == root->BestChild().action;
         }
-        Trajectory::State& recorded = trajectory.states.back();
-        recorded.prior_entropy = entropy;
-        recorded.prior_kl = kl;
-        recorded.prior_top_agrees = prior_top == root->BestChild().action;
       }
       std::string action_str = state->ActionToString(player, action);
       history.push_back(action_str);
@@ -315,6 +366,37 @@ std::vector<double> KickstartWeights(const AlphaZeroConfig& config) {
   return weights;
 }
 
+bool HasLearningRateSchedule(const AlphaZeroConfig& config) {
+  return config.lr_warmup_steps > 0 || !config.lr_schedule.empty();
+}
+
+double LearningRateFactor(const AlphaZeroConfig& config, int step) {
+  double factor = 1;
+  if (config.lr_warmup_steps > 0 && step >= config.lr_warmup_start &&
+      step < config.lr_warmup_start + config.lr_warmup_steps) {
+    factor = static_cast<double>(step - config.lr_warmup_start + 1) / config.lr_warmup_steps;
+  }
+  if (!config.lr_schedule.empty()) {
+    int from = std::numeric_limits<int>::min();
+    double scheduled = 1;
+    for (absl::string_view entry : absl::StrSplit(config.lr_schedule, ',')) {
+      const std::vector<std::string> parts = absl::StrSplit(entry, ':');
+      int at;
+      double f;
+      if (parts.size() != 2 || !absl::SimpleAtoi(parts[0], &at) ||
+          !absl::SimpleAtod(parts[1], &f) || f <= 0 || at <= from) {
+        SpielFatalError(absl::StrCat("lr_schedule: expected STEP:FACTOR,... with steps "
+                                     "increasing and factors above 0, got \"",
+                                     config.lr_schedule, "\""));
+      }
+      from = at;
+      if (at <= step) scheduled = f;
+    }
+    factor *= scheduled;
+  }
+  return factor;
+}
+
 int AlphaBetaDepth(const AlphaZeroConfig& config, open_spiel::Player player) {
   const std::vector<double> depths = PerPlayerValues(config.alphabeta_depth);
   SPIEL_CHECK_TRUE(depths.size() == 1 || depths.size() == 2);
@@ -363,6 +445,24 @@ std::unique_ptr<MCTSBot> InitAZBot(const AlphaZeroConfig& config,
   return bot;
 }
 
+std::vector<std::unique_ptr<MCTSBot>> FastBots(const AlphaZeroConfig& config,
+                                               const open_spiel::Game& game,
+                                               std::shared_ptr<Evaluator> evaluator) {
+  std::vector<std::unique_ptr<MCTSBot>> bots;
+  if (config.playout_cap_full_share >= 1) return bots;
+  SPIEL_CHECK_GT(config.playout_cap_full_share, 0);
+  SPIEL_CHECK_GT(config.playout_cap_fast_simulations, 0);
+  AlphaZeroConfig fast = config;
+  fast.max_simulations = config.playout_cap_fast_simulations;
+  fast.player_simulations = "";  // The fast searches' simulations for both players.
+  for (int player = 0; player < 2; ++player) {
+    // As an evaluation search: no root noise, no forced playouts; the player's policy
+    // temperature kept.
+    bots.push_back(InitAZBot(fast, game, evaluator, /*evaluation=*/true, player));
+  }
+  return bots;
+}
+
 // An actor thread runner that generates games and returns trajectories.
 void actor(const open_spiel::Game& game, const AlphaZeroConfig& config, int num,
            ThreadedQueue<Trajectory>* trajectory_queue,
@@ -381,6 +481,12 @@ void actor(const open_spiel::Game& game, const AlphaZeroConfig& config, int num,
   bots.reserve(2);
   for (int player = 0; player < 2; player++) {
     bots.push_back(InitAZBot(config, game, vp_eval, false, player));  // Our change.
+  }
+  // Our change (playout cap randomisation): the fast searches, if the cap is on.
+  std::vector<std::unique_ptr<MCTSBot>> fast_bots = FastBots(config, game, vp_eval);
+  if (!fast_bots.empty()) {
+    logger->Print("Playout caps: a full search on %g of the moves, else %d simulations",
+                  config.playout_cap_full_share, config.playout_cap_fast_simulations);
   }
   // Our change (thud/PLAN.md, training against alpha-beta): games against OpenSpiel's
   // alpha-beta search for a share of the positions this actor records (a game against
@@ -424,7 +530,8 @@ void actor(const open_spiel::Game& game, const AlphaZeroConfig& config, int num,
                  opponent == open_spiel::kInvalidPlayer ? nullptr
                                                         : alphabeta[opponent].get(),
                  opponent, teacher.get(), config.kickstart_weight,
-                 config.kickstart_temperature, kickstart_weights);
+                 config.kickstart_temperature, kickstart_weights, &fast_bots,
+                 config.playout_cap_full_share);
     positions += trajectory.states.size();
     if (opponent != open_spiel::kInvalidPlayer) {
       alphabeta_positions += trajectory.states.size();
@@ -837,6 +944,7 @@ void learner(const open_spiel::Game& game, const AlphaZeroConfig& config,
 
     VPNetModel::LossInfo losses, new_loss, trained_loss;
     int64_t growing_buffer_size = 0;  // Added: the positions the learner sampled from.
+    double step_learning_rate = 0;  // Added: the learning rate of this step.
     const bool compare_losses = !trained_sample.empty();  // Added.
     {  // Extra scope to return the device for use for inference asap.
       DeviceManager::DeviceLoan learn_model =
@@ -893,6 +1001,19 @@ void learner(const open_spiel::Game& game, const AlphaZeroConfig& config,
                    : replay_buffer.Sample(r, num);
       };
       std::uniform_int_distribution<int> symmetry(0, thud::kNumSymmetries - 1);
+      // Added: the value-loss weight and the learning-rate schedule (AlphaZeroConfig).
+      learn_model->SetValueLossWeight(config.value_loss_weight);
+      if (HasLearningRateSchedule(config)) {
+        learn_model->SetLearningRate(learn_model->BaseLearningRate() *
+                                     LearningRateFactor(config, step));
+      }
+      step_learning_rate = learn_model->LearningRate();
+      if (HasLearningRateSchedule(config) || config.value_loss_weight != 1) {
+        logger.Print("Learning rate %g (the network's %g x %g), value-loss weight %g",
+                     step_learning_rate, learn_model->BaseLearningRate(),
+                     HasLearningRateSchedule(config) ? LearningRateFactor(config, step) : 1.0,
+                     config.value_loss_weight);
+      }
       for (int i = 0; i < batches; i++) {
         std::vector<VPNetModel::TrainInputs> batch =
             sample(&rng, config.train_batch_size);
@@ -956,6 +1077,10 @@ void learner(const open_spiel::Game& game, const AlphaZeroConfig& config,
                      {"l2reg", losses.L2()},
                      {"sum", losses.Total()},
                  })},
+        // Added: this step's learning rate and value-loss weight (the losses above
+        // are unweighted).
+        {"learning_rate", step_learning_rate},
+        {"value_loss_weight", config.value_loss_weight},
     };
     if (compare_losses) {  // Added: see new_sample above.
       record.emplace("loss_before_learning",
@@ -1096,6 +1221,23 @@ bool AlphaZero(AlphaZeroConfig config, StopToken* stop, bool resuming) {
                           /*total_trajectories=*/0};
   if (resuming) {
     start_info = StartInfoFromLearnerJson(config.path);
+    // Our change (restarting after a crash or a preemption): a log a killed run left in
+    // the middle of a line gets its line ended, so that the records appended now start
+    // on lines of their own (else the first would join the fragment and be lost).
+    for (const auto& entry : std::filesystem::directory_iterator(config.path)) {
+      const std::string name = entry.path().filename().string();
+      if (name != "learner.jsonl" && !(absl::StartsWith(name, "log-") &&
+                                       absl::EndsWith(name, ".txt"))) {
+        continue;
+      }
+      std::ifstream in(entry.path(), std::ios::binary | std::ios::ate);
+      if (in.tellg() <= 0) continue;
+      in.seekg(-1, std::ios::end);
+      if (in.get() != '\n') {
+        std::ofstream(entry.path(), std::ios::app) << '\n';
+        std::cerr << "Ended a log's unfinished last line: " << name << std::endl;
+      }
+    }
   }
 
   DeviceManager device_manager;

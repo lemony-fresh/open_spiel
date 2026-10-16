@@ -154,6 +154,10 @@ class ResOutputBlockImpl : public torch::nn::Module {
  public:
   ResOutputBlockImpl(const ResOutputBlockConfig& config);
   std::vector<torch::Tensor> forward(torch::Tensor x, torch::Tensor mask);
+  // Our change (the legal policy, thud/PLAN.md: the batching path): the value, and
+  // the policy logits only at (rows[i], actions[i]) — no mask, no other action.
+  std::vector<torch::Tensor> ValueAndPolicyAt(torch::Tensor x, torch::Tensor rows,
+                                              torch::Tensor actions);
   // Our change (thud/PLAN.md, the feature probe): the policy head's rectified
   // planes (policy_filters of them), the input of its linear layer.
   torch::Tensor PolicyPlanes(torch::Tensor x);
@@ -194,6 +198,10 @@ class ResConvPolicyOutputBlockImpl : public torch::nn::Module {
                                int policy_planes,
                                const std::vector<int64_t>& policy_map);
   std::vector<torch::Tensor> forward(torch::Tensor x, torch::Tensor mask);
+  // Our change (the legal policy, thud/PLAN.md: the batching path): the value, and
+  // the policy logits only at (rows[i], actions[i]) — no mask, no other action.
+  std::vector<torch::Tensor> ValueAndPolicyAt(torch::Tensor x, torch::Tensor rows,
+                                              torch::Tensor actions);
   // The planes the policy logits are taken from, for checks.
   torch::Tensor PolicyPlanes(torch::Tensor x);
 
@@ -226,6 +234,10 @@ class MLPOutputBlockImpl : public torch::nn::Module {
  public:
   MLPOutputBlockImpl(const int nn_width, const int policy_linear_out_features);
   std::vector<torch::Tensor> forward(torch::Tensor x, torch::Tensor mask);
+  // Our change (the legal policy, thud/PLAN.md: the batching path): the value, and
+  // the policy logits only at (rows[i], actions[i]) — no mask, no other action.
+  std::vector<torch::Tensor> ValueAndPolicyAt(torch::Tensor x, torch::Tensor rows,
+                                              torch::Tensor actions);
 
  private:
   torch::nn::Linear value_linear1_;
@@ -241,6 +253,12 @@ class ModelImpl : public torch::nn::Module {
  public:
   ModelImpl(const ModelConfig& config, const std::string& device);
   std::vector<torch::Tensor> forward(torch::Tensor x, torch::Tensor mask);
+  // Our change (the legal policy, thud/PLAN.md: the batching path): the value and the
+  // policy logits only at the positions' legal moves, (rows[i], actions[i]) — what
+  // VPNetModel::Inference turns into the priors without the full-width mask and
+  // softmax forward() computes over every distinct action.
+  std::vector<torch::Tensor> ValueAndPolicyAt(torch::Tensor x, torch::Tensor rows,
+                                              torch::Tensor actions);
   // Our change (thud/PLAN.md, the feature probe), for "resnet" only: from one
   // pass, the torso's output, the policy head's planes, and the value and the
   // policy forward() returns — so a caller can check the activations are the

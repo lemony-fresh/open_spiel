@@ -32,10 +32,26 @@
 // Cores a GPU needs ≈ the GPU's evaluations a second / part 2's simulations a
 // second per core (a simulation asks for one evaluation).
 //
+// The throughput sweep (2026-10-15; thud/PLAN.md, the GPU readiness checklist): part 2
+// with a real network, `net=DIR:STEP` (instead of the tiny one), on `devices` (one copy
+// per entry, as the trainer's --devices: cuda:0,cuda:0), over the grid of searching
+// threads (`batched_threads`, the trainer's actors) x `batch` (its inference_batch_size)
+// x `inference_threads`, each a list; then a line naming the fastest. `parts=2` skips
+// part 1. The searches are self-play's on fixed positions, not whole games: a measure of
+// the machine settings, not of a run's speed.
+//
 //   thud/az/build.sh thud/experiments/az_search_cost.cc
 //   OMP_NUM_THREADS=1 build-shared/az_search_cost [positions=200 sims=100
 //     max_threads=10 batch=32 batched_threads=8,32,64 inference_threads=2
-//     cache_shards=1 scratch=/tmp/az_search_cost]
+//     cache_shards=1 scratch=/tmp/az_search_cost parts=1,2 net=DIR:STEP devices=/cpu:0]
+//   OMP_NUM_THREADS=4 build-shared/az_search_cost parts=2 net=RUN_DIR:-1 \
+//     batched_threads=32,64,128 batch=16,32,64 inference_threads=1,2,4 devices=cuda:0
+//
+// `legal_policy=0` computes the priors as upstream does, over every distinct action
+// (VPNetModel::SetLegalPolicy; default 1, ours: the legal moves alone), to measure what
+// the legal policy gains. `game=chess` (any game OpenSpiel's AlphaZero takes) with
+// `nn_model`, `nn_width` and `nn_depth` (default the tiny mlp, 8 x 1) measures part 2 for
+// another game, on a network built fresh.
 //
 // Prints one JSON line per measurement.
 
@@ -52,6 +68,7 @@
 #include <vector>
 
 #include "open_spiel/abseil-cpp/absl/strings/str_format.h"
+#include "open_spiel/abseil-cpp/absl/strings/str_join.h"
 #include "open_spiel/abseil-cpp/absl/strings/str_split.h"
 #include "open_spiel/spiel.h"
 #include "thud/az/device_manager.h"
@@ -114,16 +131,26 @@ int main(int argc, char** argv) {
   const int num_positions = std::stoi(get("positions", "200"));
   const int sims = std::stoi(get("sims", "100"));
   const int max_threads = std::stoi(get("max_threads", "10"));
-  const int batch = std::stoi(get("batch", "32"));
-  const int inference_threads = std::stoi(get("inference_threads", "2"));
+  auto ints = [&](const std::string& k, const std::string& d) {
+    std::vector<int> out;
+    for (const std::string& t : std::vector<std::string>(absl::StrSplit(get(k, d), ','))) {
+      out.push_back(std::stoi(t));
+    }
+    return out;
+  };
+  const std::vector<int> batches = ints("batch", "32");
+  const std::vector<int> inference_threads_list = ints("inference_threads", "2");
   const int cache_shards = std::stoi(get("cache_shards", "1"));
   const std::string scratch = get("scratch", "/tmp/az_search_cost");
-  std::vector<int> batched_threads;
-  for (const std::string& t :
-       std::vector<std::string>(absl::StrSplit(get("batched_threads", "8,32,64"), ','))) {
-    batched_threads.push_back(std::stoi(t));
-  }
-  std::shared_ptr<const open_spiel::Game> game = open_spiel::LoadGame("thud");
+  const std::vector<int> batched_threads = ints("batched_threads", "8,32,64");
+  const std::vector<int> parts = ints("parts", "1,2");
+  auto part = [&](int p) { return std::find(parts.begin(), parts.end(), p) != parts.end(); };
+  const std::string net = get("net", "");
+  const bool legal_policy = get("legal_policy", "1") == "1";
+  const std::string nn_model = get("nn_model", "mlp");
+  const int nn_width = std::stoi(get("nn_width", "8")), nn_depth = std::stoi(get("nn_depth", "1"));
+  const std::vector<std::string> device_names = absl::StrSplit(get("devices", "/cpu:0"), ',');
+  std::shared_ptr<const open_spiel::Game> game = open_spiel::LoadGame(get("game", "thud"));
 
   // Positions of random games: every 7th move (odd, so both sides to move).
   std::mt19937 rng(20261004);
@@ -149,7 +176,7 @@ int main(int argc, char** argv) {
   // 1. The free stand-in: per side on one core, then threads.
   auto free_eval = std::make_shared<FreeEvaluator>();
   const char* names[2] = {"dwarfs", "trolls"};
-  for (int p = 0; p < 2; ++p) {
+  for (int p = 0; p < 2 && part(1); ++p) {
     const double seconds =
         SearchAll(side[p], 1, [&](int t) { return bot_with(free_eval, 100 + t); });
     std::cout << absl::StrFormat(
@@ -160,7 +187,7 @@ int main(int argc, char** argv) {
                      1e6 * seconds / (side[p].size() * sims))
               << std::endl;
   }
-  for (int threads = 1; threads <= max_threads; threads *= 2) {
+  for (int threads = 1; threads <= max_threads && part(1); threads *= 2) {
     const double seconds =
         SearchAll(positions, threads, [&](int t) { return bot_with(free_eval, 200 + t); });
     std::cout << absl::StrFormat(
@@ -171,27 +198,64 @@ int main(int argc, char** argv) {
               << std::endl;
   }
 
-  // 2. A tiny real network behind the batching evaluator.
-  std::filesystem::create_directories(scratch);
-  if (!open_spiel::thud_az::torch_az::CreateGraphDef(*game, 1e-3, 1e-4, scratch,
-                                                     "vpnet.pb", "mlp", 8, 1)) {
-    std::cerr << "CreateGraphDef failed" << std::endl;
-    return 1;
+  // 2. A network behind the batching evaluator: the tiny one, or `net`.
+  if (!part(2)) return 0;
+  std::string dir = scratch;
+  int step = -2;  // None: the tiny network is used as it is created.
+  if (net.empty()) {
+    std::filesystem::create_directories(scratch);
+    if (!open_spiel::thud_az::torch_az::CreateGraphDef(*game, 1e-3, 1e-4, scratch, "vpnet.pb",
+                                                       nn_model, nn_width, nn_depth)) {
+      std::cerr << "CreateGraphDef failed" << std::endl;
+      return 1;
+    }
+  } else {
+    dir = net.substr(0, net.rfind(':'));
+    step = std::stoi(net.substr(net.rfind(':') + 1));
   }
+  const std::string what = net.empty() ? "tiny network, batched" : "network, batched";
+  double best = 0;
+  std::string best_line;
   for (int threads : batched_threads) {
-    open_spiel::thud_az::torch_az::DeviceManager devices;
-    devices.AddDevice(
-        open_spiel::thud_az::torch_az::VPNetModel(*game, scratch, "vpnet.pb", "/cpu:0"));
-    auto eval = std::make_shared<open_spiel::thud_az::torch_az::VPNetEvaluator>(
-        &devices, batch, inference_threads, /*cache_size=*/1 << 18, cache_shards);
-    const double seconds =
-        SearchAll(positions, threads, [&](int t) { return bot_with(eval, 300 + t); });
-    std::cout << absl::StrFormat(
-                     "{\"part\": \"tiny network, batched\", \"threads\": %d, \"batch\": %d, "
-                     "\"inference_threads\": %d, \"cache_shards\": %d, \"simulations_per_s\": %.0f}",
-                     threads, batch, inference_threads, cache_shards,
-                     positions.size() * sims / seconds)
-              << std::endl;
+    for (int batch : batches) {
+      for (int inference_threads : inference_threads_list) {
+        open_spiel::thud_az::torch_az::DeviceManager devices;
+        for (const std::string& d : device_names) {
+          open_spiel::thud_az::torch_az::VPNetModel model(*game, dir, "vpnet.pb", d);
+          if (step != -2) model.LoadCheckpoint(step);
+          model.SetLegalPolicy(legal_policy);
+          devices.AddDevice(std::move(model));
+        }
+        auto eval = std::make_shared<open_spiel::thud_az::torch_az::VPNetEvaluator>(
+            &devices, batch, inference_threads, /*cache_size=*/1 << 18, cache_shards);
+        const double seconds =
+            SearchAll(positions, threads, [&](int t) { return bot_with(eval, 300 + t); });
+        const double rate = positions.size() * sims / seconds;
+        const std::string line = absl::StrFormat(
+            "{\"part\": \"%s\", \"threads\": %d, \"batch\": %d, "
+            "\"inference_threads\": %d, \"cache_shards\": %d, \"simulations_per_s\": %.0f%s}",
+            what, threads, batch, inference_threads, cache_shards, rate,
+            (net.empty() && device_names.size() == 1 && device_names[0] == "/cpu:0"
+                 ? std::string()
+                 : absl::StrFormat(", \"net\": \"%s\", \"devices\": \"%s\"", net,
+                                   absl::StrJoin(device_names, ","))) +
+                (legal_policy ? "" : ", \"legal_policy\": false") +
+                (game->GetType().short_name == "thud" && nn_model == "mlp" && nn_width == 8 &&
+                         nn_depth == 1
+                     ? ""
+                     : absl::StrFormat(", \"game\": \"%s\", \"nn\": \"%s %d x %d\"",
+                                       game->GetType().short_name, net.empty() ? nn_model : "net",
+                                       nn_width, nn_depth)));
+        std::cout << line << std::endl;
+        if (rate > best) {
+          best = rate;
+          best_line = line;
+        }
+      }
+    }
+  }
+  if (batched_threads.size() * batches.size() * inference_threads_list.size() > 1) {
+    std::cout << "{\"fastest\": " << best_line << "}" << std::endl;
   }
   return 0;
 }

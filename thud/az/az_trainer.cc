@@ -112,6 +112,22 @@ ABSL_FLAG(bool, policy_target_pruning, false,
           "KataGo's forced playouts and policy target pruning in self-play: the "
           "policy target leaves out the playouts root noise forced; false as "
           "upstream.");
+// Added (thud/PLAN.md, the GPU readiness checklist): a learning-rate schedule and the
+// value-loss weight (AlphaZeroConfig in thud/az/alpha_zero.h).
+ABSL_FLAG(int, lr_warmup_steps, 0,
+          "Learning-rate warm-up: the rate rises linearly to the network's own over "
+          "this many learning steps (0: none).");
+ABSL_FLAG(int, lr_warmup_start, 1, "The learning step the warm-up starts at.");
+ABSL_FLAG(std::string, lr_schedule, "",
+          "Step-wise learning-rate factors, STEP:FACTOR,... (each from its step on, "
+          "times the network's rate); empty: none.");
+ABSL_FLAG(double, playout_cap_full_share, 1,
+          "Playout cap randomisation (KataGo): the share of the network's moves searched "
+          "in full and recorded; the rest fast, not recorded (1: all in full).");
+ABSL_FLAG(int, playout_cap_fast_simulations, 0,
+          "The fast searches' simulations (no root noise), if playout_cap_full_share < 1.");
+ABSL_FLAG(double, value_loss_weight, 1,
+          "The value loss's weight in each learning step (1: upstream's).");
 ABSL_FLAG(int, replay_buffer_size, 1 << 16,
           "How many states to store in the replay buffer.");
 ABSL_FLAG(double, replay_buffer_reuse, 3,
@@ -234,6 +250,18 @@ int main(int argc, char** argv) {
     config.symmetry_augmentation = absl::GetFlag(FLAGS_symmetry_augmentation);
     config.policy_target_pruning = absl::GetFlag(FLAGS_policy_target_pruning);
     config.replay_buffer_start_size = absl::GetFlag(FLAGS_replay_buffer_start_size);
+    config.lr_warmup_steps = absl::GetFlag(FLAGS_lr_warmup_steps);
+    config.lr_warmup_start = absl::GetFlag(FLAGS_lr_warmup_start);
+    config.lr_schedule = absl::GetFlag(FLAGS_lr_schedule);
+    config.value_loss_weight = absl::GetFlag(FLAGS_value_loss_weight);
+    config.playout_cap_full_share = absl::GetFlag(FLAGS_playout_cap_full_share);
+    config.playout_cap_fast_simulations = absl::GetFlag(FLAGS_playout_cap_fast_simulations);
+    if (config.playout_cap_full_share < 1) {  // Stops here, not in an actor.
+      SPIEL_CHECK_GT(config.playout_cap_full_share, 0);
+      SPIEL_CHECK_GT(config.playout_cap_fast_simulations, 0);
+    }
+    // Stops here, not in the learner after the first games, on a malformed schedule.
+    open_spiel::thud_az::torch_az::LearningRateFactor(config, 1);
     open_spiel::thud_az::UntriedMoveValueFromString(
         config.untried_move_value);  // Fails early if unknown.
     config.temperature = absl::GetFlag(FLAGS_temperature);

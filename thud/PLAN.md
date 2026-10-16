@@ -658,6 +658,9 @@ the search and trainer*, run C'.
 | 2026-10-15 | The hybrid head (convolutional for the trolls, linear for the dwarfs; 2026-10-03) superseded: since runs L and M the convolutional head serves both sides, the dwarfs included (L102 against K102 +10.72; against hexparrot L102 −21.4, K102 −37.1) | user | the head table above; *the long-capture probe* |
 | 2026-10-15 | Tests kept complete and run by one command: every feature with a check (the new ones: `grow_check`, `teacher_mix_check`, `trainer_check.sh`, `az_match_check.sh`, the playthrough replay, the sanitized checks), all built without `-DNDEBUG` and run by `thud/run_checks.sh` (quick ~20 s, `--full` ~3 min); git hooks run them — pre-commit the quick ones when a commit changes code, pre-push all when the pushed commits do; the *Tests* list tracks each check, its control, and every gap | user | *Cloud GPU options*, *Tests* |
 | 2026-10-15 | After the replication: **a longer D1 + C3 run first** (run N continued from N121, 40 steps to 161, check 4 and the share of self-play games keeping dwarfs every 10 steps), not yet a value test run (B1′, or C7 reversing the rule of 2026-10-07) — the cheapest way to learn whether the value's gap closes as our own dwarfs survive more | user (Claude proposed) | *How we evaluate networks* (the dwarfs' training signal); the design's §10 |
+| 2026-10-15 | The GPU checklist's stable features built and checked while run N continues: a learning-rate schedule and a value-loss weight, a watchdog with crash-safe saving, a transfer script, a setup script, the throughput sweep; the batching path profiled (the trainer paused briefly for exclusive measurements, the user's permission) | user | *Cloud GPU options* |
+| 2026-10-15 | The legal policy on by default (the priors from the legal moves' logits alone; equal to ~1e-7, every compared search identical); upstream's computation kept behind the switch, for identity_check | user (Claude proposed) | *Cloud GPU options*, the batching path |
+| 2026-10-15 | Upstream: the json.h comment fix not opened; the LoadBuffer fix as its own PR after #1637 is merged | user | *Upstreaming*, further candidates |
 
 **Considered and set aside** (with the reason): the Python AlphaZero (a layout bug, and
 slow; fallback note below); a 32 x 2 network (its convolutions see 11 x 11 squares);
@@ -1532,22 +1535,22 @@ first session, with no patch at all.**
   | Feature | Why on the GPU | State | To do |
   |---|---|---|---|
   | *Setup* | | | |
-  | A build on the rented machine: LibTorch with CUDA (the pip wheel, as here), `build-torch/`, `build-shared/`, our programs | nothing runs without it | **missing** — our scripts build for this aarch64 CPU; a CUDA build never tried | *before renting*: a setup script (packages, clone, LibTorch wheel, the builds, then `thud/run_checks.sh --full`), dry-run on a cheap x86 CPU box |
-  | The checks on the new machine (`thud/run_checks.sh --full`: every check, *Tests* below; the tic-tac-toe control) | correctness before any spending | **done** (here, 2026-10-15: 22 checks, ~3 min, none needs a run folder — the networks they read are made by `make_test_network`) | run them there first (the order above) |
-  | The trainer on a GPU (`--devices=cuda:0`; several copies, `cuda:0,cuda:0`) | the network on the GPU | **built, untested** (upstream's device handling; no GPU here) | on the machine: a 2-step smoke run |
+  | A build on the rented machine: LibTorch with CUDA (the pip wheel, as here), `build-torch/`, `build-shared/`, our programs | nothing runs without it | **built, partly tested** (2026-10-15): `thud/setup_machine.sh` — install.sh's packages and dependencies, the venv with torch 2.10.0 (on x86_64 PyPI's CUDA wheel), `~/.bashrc`, `build/` and `build-shared/`, our programs, hexparrot at its commit, every check, and with a GPU a CUDA smoke test; each step skipped when done; `build.sh` and `checks.mk` now link LibTorch's CUDA libraries when the wheel has them (without, a CUDA device fails: "no CUDA backend"). Not yet run on a fresh clone; never on x86 or with CUDA | *before renting*: the dry run on a fresh clone here; on a cheap x86 box if one is at hand |
+  | The checks on the new machine (`thud/run_checks.sh --full`: every check, *Tests* below; the tic-tac-toe control) | correctness before any spending | **done** (here, 2026-10-15: 28 checks, ~4 min, none needs a run folder — the networks they read are made by `make_test_network`) | run them there first (the order above) |
+  | The trainer on a GPU (`--devices=cuda:0`; several copies, `cuda:0,cuda:0`) | the network on the GPU | **built, untested on a GPU** (upstream's device handling; no GPU here); the setup script's step 8 runs it there: 2 steps on `cuda:0` and on `cuda:0,cuda:0`, the learner on `cuda:0` | on the machine: step 8 (`--gpu-smoke-only`) |
   | Our tools on a GPU: `az_match devices=LIST` (one copy of each network per entry, e.g. `cuda:0,cuda:0`) | matches at GPU speed | **built, untested on a GPU** (2026-10-15): the default reproduces the old binary exactly (pairs and request counts, one thread); two CPU copies play identical games (since 2026-10-15 a permanent check, `az_match_check.sh` 4, with the control that the summary records the copies); `cuda:0` here reaches Torch and fails as this CPU-only LibTorch must ("no CUDA backend") | on the machine: one short match |
   | — `az_restructure device=` | distillation at GPU speed | **built, untested on a GPU** (2026-10-15): the default writes byte-identical checkpoints (the input-plane surgery on convK83) | on the machine |
   | — `az_grow device=` | growth on the GPU | **built, untested on a GPU** | on the machine |
   | — the probes (`az_dwarf_value_probe`, `az_blunder_check`, `az_risk_probe`, `az_long_capture_probe`, `az_input_plane_trace`, `az_feature_probe`, …) | — | **missing**: they hard-code `/cpu:0` — cheap enough on the CPU | only if one proves slow |
   | *Throughput* | | | |
-  | `az_search_cost`: the search's CPU cost, the batching cap | how many cores a GPU needs | **done** (here: the search ~3.3 µs a simulation; the batching path caps at ~25,000-40,000 simulations/s) | rerun there |
-  | The batching path's overhead (~140 µs a simulation, ~40x the search: queues, futures, the 19,800 actions a position) | likely the GPU phase's real limit | **missing** — not profiled; the profiler is ready (`perf` 7.0.14, installed by the user 2026-10-15, `kernel.perf_event_paranoid=1` until WSL restarts; records call graphs) | *before renting*: profile in a gap between experiments (beside them the timings are wrong), then fix; the largest single gain |
-  | A throughput sweep (actors x inference threads x batch with the real network) | the machine settings, group 1 | **missing** — by hand so far | *before renting*: a script |
+  | `az_search_cost`: the search's CPU cost, the batching cap | how many cores a GPU needs | **done** (here: the search ~3.3 µs a simulation; with a tiny network the batching path capped at ~25,000-40,000 simulations/s, ~52,000 with the legal policy) | rerun there |
+  | The batching path's overhead | possibly the GPU phase's limit (an extrapolation: below) | **profiled and one cause fixed** (2026-10-15, `perf`, the trainer paused 38 s): with the tiny network of `az_search_cost` (nearly free to evaluate), half the inference threads' time went to the policy over all 19,800 distinct actions — the mask and the softmax — not to queues or locks (< 2%), the searching threads mostly waiting on the 2 inference threads (~25% of the cores busy). **The legal policy** (`VPNetModel::SetLegalPolicy`, on by default): the logits of the legal moves alone, normalised in double — the priors within ~1e-7, the values bit for bit, all 120 compared searches identical (`legal_policy_check`); measured (the trainer paused 62 s): the tiny network 2.4x (Thud) and 1.5x (chess), **our real network on this CPU +1% (M102), chess at 64 x 4 ±0**: with real networks here the network's own forward passes dominate — the bottleneck on this CPU, as before. Whether the bookkeeping limits a GPU is unmeasured | on the machine: the sweep with the legal policy on and off (`legal_policy=`) |
+  | A throughput sweep (actors x inference threads x batch with the real network) | the machine settings, group 1 | **built** (2026-10-15): `az_search_cost parts=2 net=RUN:STEP devices=... batched_threads=LIST batch=LIST inference_threads=LIST` — a line per setting, then the fastest; checked here on a test network (the format, the grid) | on the machine |
   | *Training: settings exposed* | | | |
   | The trainer's settings: `uct_c`, the untried-move rule and reduction, simulations (per player), policy temperatures (per player), root noise α and ε (per player), temperature and its drop, the learning rate, weight decay, batch size, batches per step, the buffer (size, reuse, growing start), symmetry augmentation, policy target pruning, alpha-beta's share and depth (per player), kickstarting's weight (per player), depth and temperature, network size and model, actors, inference threads, batch and cache | the tuning groups 1-5 | **done** — each with a check (`untried_move_check`, `conv_policy_check`, `augmentation_check`, `pruning_check`, `growing_buffer_check`, `search_settings_check`, `alphabeta_training_check`, `kickstart_check`), used in runs, and since 2026-10-15 all on at once end to end (`trainer_check.sh`) | — |
-  | A learning-rate schedule (warm-up, decay) | long runs, bigger batches | **missing** — a constant rate; `az_fresh_optimizer` changes it between runs | *before renting* (small) |
-  | A value-loss weight (E1 of the design) | the value learns small effects poorly | **missing** | *before renting* (small) |
-  | Playout cap randomisation (3b) | recommended for the GPU | **missing** | *before renting* (moderate) |
+  | A learning-rate schedule (warm-up, decay) | long runs, bigger batches | **done** (2026-10-15): `--lr_warmup_steps`, `--lr_warmup_start` (a linear warm-up), `--lr_schedule=STEP:FACTOR,...` (AlphaZero's and KataGo's step-wise factors), on the network's own rate (vpnet.pb), the rate logged per step (`learning_rate` in learner.jsonl); `learning_settings_check` (the factors by hand, the config's round trip and old configs' defaults, the rate set, a step at rate 0 moving no parameter) and `trainer_check.sh` (the rates of 3 steps); found on the way: a checkpoint restores its optimizer's rate (so without a schedule a run trains at its checkpoint's rate), and `az_grow`'s default rate now the source's vpnet.pb's | — |
+  | A value-loss weight (E1 of the design) | the value learns small effects poorly | **done** (2026-10-15): `--value_loss_weight` (the losses reported unweighted); `learning_settings_check`: at weight 0 the value head's own parameters exactly unchanged, at 1 they move, weight 2 moves the trunk differently | — |
+  | Playout cap randomisation (3b) | recommended for the GPU | **done** (2026-10-15): `--playout_cap_full_share` (each of the network's moves searched in full and recorded with that probability) and `--playout_cap_fast_simulations` (the rest: no root noise, no forced playouts, not recorded; KataGo, arXiv 1902.10565, 3.1); `playout_cap_check` (off: the old games exactly; on at a quarter: 25.4% of 6,150 moves recorded, every one a full search; the fast bots without noise) and `trainer_check.sh` (half in full) | the setting to use: by test runs on the GPU (stage 3b) |
   | Tapers by results (kickstarting per side, the alpha-beta share), gated | long unattended runs | **missing** — by hand, run to run | *before renting* (moderate; with the gates) |
   | The alpha-beta share per side; kickstarting's temperature per side | finer scaffolds | **missing** | if needed (small) |
   | A faster alpha-beta of our own (captures first, a table of positions, iterative deepening) | a depth-3 teacher; alpha-beta then sets the pace on the CPU beside the GPU | **missing** | before deeper teachers |
@@ -1566,11 +1569,11 @@ first session, with no patch at all.**
   | *Evaluation and monitoring* | | | |
   | `az_match` (networks, alpha-beta, MCTS, hexparrot; self-play's conditions; the teacher in a prior) | matches | **done** | the device option (above) |
   | The ladder (`ladder.py`), the watcher (`watch_run.py`), the probes, the evaluation queues (`night9`-style) | evaluation | **done** | — |
-  | The regression gates (standard errors, positive controls) | safe promotions and tapers | **missing** — being set up (2026-10-15) | *before renting* |
+  | The regression gates (standard errors, positive controls) | safe promotions and tapers | **built** (2026-10-15): `thud/experiments/regression_gates.py` — the design's seven measures, paired with the anchor on the same openings or positions (alpha-beta per side, blunders with a battle-clustered bootstrap, troll kills, short hurls, the trolls' captures; long hurls monitored); its blunder count equals `az_blunder_check`'s on 4 networks; on real data N121 passes against M102, the positive controls fail (K83 short hurls, G'64 blunders, G'64 against I83 the trolls' captures); `regression_gates_check.py` on made inputs (itself: all pass at 0; each control fails its gate alone). The measurements it reads are matches and probes run by hand or a queue | a queue that measures a network (the matches and probes) and runs the gates |
   | *Robustness and logistics* | | | |
   | Resuming a run after an interruption | preemption, crashes | **done** (run C; run N after a Windows restart, 2026-10-14; since 2026-10-15 `trainer_check.sh` 2: the step follows on, the logs appended) | — |
-  | Restarting a run by itself after a crash or a preemption (a watchdog) | spot instances | **missing** | *before renting* (small) |
-  | Moving runs to and from the machine (buffers ~4.5 GB, checkpoints, logs) | start from our networks, bring results home | **missing** — never done | *before renting*: a script (rsync), tried with a run folder |
+  | Restarting a run by itself after a crash or a preemption (a watchdog) | spot instances | **done** (2026-10-15): `thud/az/watchdog.sh` (restarts on a crash or kill, resumes from config.json; gives up after 5 restarts without progress; a stop asked of it passed on as SIGINT), and crash-safe saving in our copy: the buffer and the checkpoints written under a temporary name and renamed; the resume skipping a truncated last record of learner.jsonl and ending the logs' unfinished lines; our `LoadBuffer` refusing a cut-off file (upstream's loads it without an error, half the positions lost: an upstream bug, *Upstreaming*). `watchdog_check.sh`: kills during a buffer write and a checkpoint write, a truncated record — the run finishes with every step once; the control: a half-written buffer refused; the stop; giving up | after a machine restart: start the watchdog again (cron `@reboot`) |
+  | Moving runs to and from the machine (buffers ~4.5 GB, checkpoints, logs) | start from our networks, bring results home | **built, checked locally** (2026-10-15): `thud/transfer_run.sh FROM TO [--state-only]` (rsync, resumable; every file's SHA-256 compared; the copy's config.json path set to its folder; a running run refused); `transfer_check.sh` between local folders: the copy resumes into itself, the original untouched, `--state-only`, an interrupted copy completed. Over ssh untested (no second machine) | the first real transfer: a state-only push of a run |
   | A time and cost budget per run (timeouts) | money | **done** (the runners' timeouts) | — |
 
   **Tests** (the user, 2026-10-15: unit tests for the growth, "pretty complete" tests of
@@ -1578,7 +1581,7 @@ first session, with no patch at all.**
   implemented and what's tested and what's missing, even if small subfeatures are
   missing"). `thud/run_checks.sh` builds what is out of date (`thud/checks.mk`, into
   `build-checks/`, **without `-DNDEBUG`**) and runs the quick checks (~20 s, four at once)
-  or with `--full` all 22 (~3 min; times alone on an idle machine); none needs a run folder — the networks the checks read
+  or with `--full` all 28 (~4 min; times alone on an idle machine); none needs a run folder — the networks the checks read
   are small untrained ones from `thud/az/make_test_network.cc`. **The hooks**:
   `.githooks/pre-commit` runs the quick checks when a commit changes code (the game, `thud/az/`,
   `thud/experiments/`, the checks, the hooks; docs alone go through), `.githooks/pre-push`
@@ -1597,17 +1600,23 @@ first session, with no patch at all.**
   | `input_planes_check` | full, 65 s | the planes inside the network: net surgery keeps the outputs, each plane reaches exactly its positions, learning reaches exactly the planes present | judged against the next plane's positions it must fail |
   | `conv_policy_check` | full, 148 s | the convolutional policy head: each logit at its own plane and square, the masking, learning, checkpoints | rows and columns swapped must fail; a fresh network's outputs must differ from a reloaded one's |
   | `augmentation_check` | quick, 0.2 s | the 8 symmetries of observations, moves and policy targets | positions mirrored independently, as text |
-  | `identity_check` | full, 88 s | our AlphaZero copy computes as upstream's: outputs, a learning step, searches with and without noise, rollouts | another network, seed, step must differ |
+  | `identity_check` | full, 88 s | our AlphaZero copy computes as upstream's, bit for bit: outputs (ours with the legal policy off, `SetLegalPolicy(false)`), a learning step, searches with and without noise, rollouts | another network, seed, step must differ |
+  | `legal_policy_check` (new) | full, 44 s | the legal policy, our default, against upstream's computation, for the three models, batches of 1 and 32: the values bit for bit, the priors within 1e-6 (measured ~1e-7) summing to 1; reported: searches with it on and off (all 120 identical) | another network's priors must differ |
+  | `learning_settings_check` (new) | quick, 0.8 s | the learning-rate schedule's factors, the config's round trip and old configs' defaults, `SetLearningRate`, the rate a checkpoint restores, the value-loss weight, the saves under temporary names | a step at the network's rate must move the parameters; weight 1 must move the value head |
+  | `watchdog_check.sh` (new) | full, 90 s | the watchdog and crash-safe saving: kills during a buffer write and a checkpoint write, a truncated record — the run finishes, every step once; the stop; giving up | a half-written buffer must be refused |
+  | `transfer_check.sh` (new) | full, 24 s | `transfer_run.sh` between local folders: checksums, the copy's path, the copy resumes into itself, the original untouched, `--state-only`, a running run refused, an interrupted copy completed | the original's config.json must still point at the original |
+  | `playout_cap_check` (new) | quick, 1.3 s | playout cap randomisation: off plays the old games; on records about the share, every recorded position a full search; the fast bots | off, every move must be recorded |
+  | `regression_gates_check.py` (new) | quick, 0.9 s | the gates' arithmetic on made inputs: a network against itself; the blunder rule by hand; positions that do not match skipped | each made regression must fail its gate alone; lower long hurls only monitored |
   | `untried_move_check` | full, 107 s | the untried-move rules: the formula, and their effect on searches | upstream's rule must spread the dwarfs' searches |
   | `pruning_check` | quick, 13 s | forced playouts and policy target pruning | k 0 must leave 3x more children short |
   | `search_settings_check` | quick, 0.3 s | per-player simulations, policy temperatures, root noise α and ε (InitAZBot) | temperatures {1, 1} must change nothing, {2, 1} must spread a sharp prior; with no list both sides noised |
-  | `growing_buffer_check`, `replay_buffer_check`, `az_buffer_truncate self_test` | quick, < 1 s | the growing buffer's size; our replay buffer against upstream's (contents, samples, saved bytes, memory); truncating a buffer | upstream's ratchet must show |
+  | `growing_buffer_check`, `replay_buffer_check`, `az_buffer_truncate self_test` | quick, < 1 s | the growing buffer's size; our replay buffer against upstream's (contents, samples, saved bytes, memory; since 2026-10-15 a file cut short: ours refuses it); truncating a buffer | upstream's ratchet must show; upstream's must load the cut file without an error (its bug) |
   | `instrumentation_check` | quick, 0.2 s | how a game's end is classified, every ending | a position one move short |
   | `alphabeta_training_check` | quick, 0.2 s | games against alpha-beta: only our network's positions recorded, its moves AlphaBetaPlayer's, per-side depths, the log line, the configuration's round trip | another seed must change a move; self-play must record both sides |
   | `kickstart_check` | full, 131 s | the teacher's scores and policy, the mixed targets, the weight per player | depth 1 must score the position's moves alike; the mixed target must differ from the unmixed |
   | `teacher_mix_check` (new) | quick, 0.3 s | `az_match teacher_mix_a`: the mix per player, exactly; the values unchanged; the cache | the teacher must differ from the prior at both nodes |
   | `grow_check` (new) | quick, 2.4 s | Net2Net (`net2net.h`): the mapping; the function kept for wider, deeper, both, the linear head, no growth; every tensor accounted for; copies stay equal under training without noise, part with it; a grown network reloads | three: no division; a batch norm's statistics left uncopied; new blocks not the identity — each must exceed 10x the tolerance |
-  | `trainer_check.sh` (new) | quick, 26 s | the trainer end to end with every feature of ours on (two device copies, batching, augmentation, pruning, 2 learner batches, alpha-beta games, kickstarting and noise per player): checkpoints, buffer, logs, config; resuming (the step follows on, logs appended); training on from an `az_grow` network; `az_restructure` (a new head, frozen trunk); `az_fresh_optimizer` | the tools' own fatal checks (az_grow's control among them) |
+  | `trainer_check.sh` (new) | quick, 26 s | the trainer end to end with every feature of ours on (two device copies, batching, augmentation, pruning, 2 learner batches, alpha-beta games, kickstarting and noise per player, a learning-rate warm-up and schedule, a value-loss weight): checkpoints, buffer, logs, config; resuming (the step follows on, the rates the schedule's, logs appended); training on from an `az_grow` network; `az_restructure` (a new head, frozen trunk); `az_fresh_optimizer` | the tools' own fatal checks (az_grow's control among them) |
   | `az_match_check.sh` (new) | full, 97 s | `az_match`: reproducible; the record (openings, sides, the summary's arithmetic); `noise=`, `sample_plies=` and players without a network (alpha-beta, MCTS, hexparrot) the same whichever thread; `devices=`; `teacher_mix_a=` | each option must change the games; another seed too; the summary must record the devices |
   | `sanitized` (in `run_checks.sh`) | full, 10 s | `replay_buffer_check`, `features_check`, `az_buffer_truncate` under AddressSanitizer and UBSan | the binaries must carry ASan's instrumentation (and ASan was seen catching a heap overflow here) |
 
@@ -1631,7 +1640,11 @@ first session, with no patch at all.**
     learner's statistics' numbers (checked once by hand, 2026-10-03).
   - *Sanitizers on the LibTorch programs*: only the three checks without LibTorch run
     sanitized; ThreadSanitizer was never run on the trainer's or az_match's threads.
-  - *CUDA*: nothing here (no GPU); the device code runs with CPU copies only.
+  - *CUDA*: nothing here (no GPU); the device code runs with CPU copies only. The setup
+    script's smoke test (step 8) covers it on the machine.
+  - *The setup script* (`thud/setup_machine.sh`): not yet run on a fresh clone; never on
+    x86, with apt, or with a CUDA wheel. *`transfer_run.sh` over ssh*: untested (no second
+    machine; between local folders it is checked).
   - *The warnings*: `-Wno-everything` remains in `build.sh` and `checks.mk` (to be narrowed,
     CLAUDE.md); without it the game's header warns once — `ThudState`'s defaulted copy
     assignment is deleted, as in 25 upstream games: harmless, left as upstream writes it.
@@ -1656,7 +1669,18 @@ first session, with no patch at all.**
   `net2net.h` (byte-identical checkpoints), `TeacherMixEvaluator` into
   `thud/experiments/teacher_mix.h` (identical games and summary). Found on the way: the
   playthrough instruction in CLAUDE.md and Phase 4 (regenerate and diff) could never pass —
-  a new playthrough plays new random moves; corrected to upstream's replay.
+  a new playthrough plays new random moves; corrected to upstream's replay. Later the
+  same day, with the GPU checklist's features: `learning_settings_check` first compared
+  outputs after a step at rate 0, which move through the batch norms' running statistics
+  at any rate (now the parameters); `watchdog_check`'s killer was too slow to catch a
+  checkpoint being written (now a larger network and a tight poll), and its control's
+  test was malformed; `transfer_check`'s stand-in trainer exited at once. **The checks
+  found four defects in the code** (none in the game): upstream's `json::FromString`
+  stops the program on a line that does not parse, so the first tolerant resume died on
+  a truncated record (now only whole lines are parsed); the record after a fragment
+  joined it and was lost (now the logs' unfinished lines are ended); upstream's
+  `LoadBuffer` loads a cut-off file without an error (ours now refuses it); `az_grow`'s
+  default learning rate was the optimizer's, which a schedule scales (now vpnet.pb's).
 
   **How we tune the algorithm settings** (group 3; decided with the user, 2026-10-05: on
   the GPU, not here): (1) a cheap filter first, search only — a fixed strong network
@@ -4409,6 +4433,33 @@ files has changed upstream since our copy (checked against upstream `master`, 20
    Google account and the GitHub username, covers commits with the noreply address. Next:
    upstream's CI (`check-changes`) and the maintainers' review; merged in batches, at
    least every two weeks.
+
+### Further upstream candidates (2026-10-15)
+
+Found while building the GPU checklist's features; each checked in upstream's own code
+(`upstream/master`, 48401890).
+
+1. **`json::FromString`'s comment** (`open_spiel/utils/json.h:161`) says it returns
+   `nullopt` on a parse failure; `ParseError` in `json.cc` deliberately stops the program
+   instead (its own comment says so). A PR fixing the comment was prepared (branch
+   `json-fromstring-doc`, worktree `~/open_spiel-json-doc`, one commit with the noreply
+   identity, the description in `~/open_spiel-json-doc_PR.md`); **the user decided not to
+   open it** (2026-10-15). Nothing pushed.
+2. **`SerializableCircularBuffer::LoadBuffer` ignores its reads' status**
+   (`open_spiel/utils/serializable_circular_buffer.h:55-64`): a file cut short — which
+   upstream's AlphaZero leaves when killed while it overwrites the buffer in place
+   (`alpha_zero.cc:403`; a second Ctrl-C exits at once, `alpha_zero_torch_example.cc:90`)
+   — loads without an error, only the positions before the cut, its count of positions
+   added still the file's, which breaks the slots' order (`replay_buffer_check`, part 5,
+   on upstream's class). A clear bug; no issue or PR upstream. **Decided (the user):** a
+   PR of its own after #1637 is merged (#1637 changes the same function), with the
+   checks of our `ReplayBuffer::LoadBuffer` and a test.
+3. **The legal policy** (our `VPNetModel::SetLegalPolicy`): upstream's AlphaZero masks and
+   normalises the policy over every distinct action (`model.cc:210-211, 259-260, 335`,
+   `vpnet.cc:161, 199-214`) — a general design whose cost grows with the action count
+   (Thud 19,800, chess 4,674, Go 362, Hex 121). An optimisation, not a fix; measured here
+   only with networks cheap to evaluate (chess, a tiny network: +49%), none with a real
+   one on this CPU (chess 64 x 4: ±0). Revisit after GPU measurements.
 
 ## Deferred decisions
 

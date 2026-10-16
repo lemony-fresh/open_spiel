@@ -271,7 +271,15 @@ as `vs_alphabeta`), `--kickstart_weight`, `--kickstart_depth` and
 a softmax of alpha-beta's move scores, a teacher; actors log the settings),
 `--player_kickstart_weight` and `--player_policy_alpha` / `--player_policy_epsilon`
 (2026-10-13: the teacher's weight and the root noise per player to move; empty: as
-before; built as `az_trainer_d1`); since 2026-10-05 a replay buffer that moves
+before; built as `az_trainer_d1`), `--lr_warmup_steps`, `--lr_warmup_start`,
+`--lr_schedule=STEP:FACTOR,...` and `--value_loss_weight` (2026-10-15: a learning-rate
+schedule on the network's own rate, logged per step, and the value loss's weight; off by
+default), `--playout_cap_full_share` and `--playout_cap_fast_simulations` (2026-10-15:
+KataGo's playout cap randomisation; off by default); since 2026-10-15 crash-safe saving (the buffer and the checkpoints written under
+a temporary name and renamed, a truncated last record skipped on resume, a cut-off buffer
+refused) and **the legal policy by default** (`VPNetModel::SetLegalPolicy`: the priors
+from the legal moves' logits alone, equal to upstream's mask-and-softmax over all 19,800
+actions to ~1e-7; `SetLegalPolicy(false)` is upstream's, bit for bit); since 2026-10-05 a replay buffer that moves
 positions into their slots and compacts itself after loading (`thud/az/replay_buffer.h`)
 and actor and evaluator logs that append; and since 2026-10-03
 logging per-side losses, self-play margins and endings and search statistics —
@@ -333,7 +341,7 @@ here.)
 date — the game in `build/` and `build-shared/`, the checks and the programs the
 end-to-end checks run in `build-checks/` (`thud/checks.mk`: incremental, **without
 `-DNDEBUG`**, so these differ from `build.sh`'s binaries) — and runs the quick checks
-(~20 s), or with `--full` every check (~3 min: `thud_test`, the hexparrot cross-check,
+(~20 s), or with `--full` every check (~4 min: `thud_test`, the hexparrot cross-check,
 the playthrough diff — against a temporary file, never over the baseline — the
 sanitized checks, every check program, `thud/az/trainer_check.sh` and
 `thud/experiments/az_match_check.sh`); `--list` names them, `NAME ...` runs only those;
@@ -342,6 +350,17 @@ git hooks run them**: `.githooks/pre-commit` the quick checks when a commit chan
 (docs alone go through at once), `.githooks/pre-push` every check when the pushed commits
 change code, after its upstream guard (`core.hooksPath` is set in this clone). What each
 check covers, and what no check covers yet: `thud/PLAN.md`, *Tests*.
+
+**For another machine** (2026-10-15; `thud/PLAN.md`, the GPU readiness checklist):
+`thud/setup_machine.sh` sets a fresh clone up — packages, the venv with torch, the
+builds, our programs, hexparrot, every check, and with a GPU a CUDA smoke test (rerun it
+after a failure: done steps are skipped); `thud/transfer_run.sh FROM TO [--state-only]`
+moves a run folder (rsync, checksums at both ends, the copy's `config.json` path set to
+its folder); `thud/az/watchdog.sh RUN_DIR -- TRAINER ARGS` keeps a run going through
+crashes and kills. `az_search_cost parts=2 net=RUN:STEP` with lists of
+`batched_threads`, `batch` and `inference_threads` is the throughput sweep, and
+`thud/experiments/regression_gates.py` the regression gates (from a candidate's and the
+anchor's matches and probes).
 
 ---
 

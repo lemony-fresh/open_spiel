@@ -28,6 +28,12 @@
 //      upstream's holds more (the control: libnop's spare capacity).
 //   4. Memory: in ours every slot's vectors hold exactly their sizes; in upstream's
 //      the slots keep larger storage (the control: the check sees the ratchet).
+//   5. A file cut short (2026-10-15; a run killed while writing its buffer in place):
+//      ours refuses to load the saved file cut to 99.9% and to half (each load in a
+//      child process, which must stop with an error); upstream's loads them without
+//      an error — the control, and the reason ours checks — keeping only the positions
+//      before the cut, its count of positions added still the file's. The file whole
+//      loads in a child too (the control that the child can succeed).
 //
 // Needs only headers and libopen_spiel.so (no LibTorch), so it builds small:
 //   clang++ -std=gnu++20 -O2 -I. -Iopen_spiel -Iopen_spiel/abseil-cpp \
@@ -35,7 +41,11 @@
 //     thud/az/replay_buffer_check.cc -Lbuild-shared -lopen_spiel \
 //     -Wl,-rpath,$PWD/build-shared -o build-shared/replay_buffer_check
 
+#include <sys/wait.h>
+#include <unistd.h>
+
 #include <cstdint>
+#include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <iterator>
@@ -199,6 +209,39 @@ int main(int argc, char** argv) {
             << " needed" << std::endl;
   check(our_held == our_needed, "4. ours holds exactly what its positions need");
   check(up_held > up_needed, "4. control: upstream's slots keep larger storage");
+
+  // 5. A file cut short.
+  const std::string saved = dir + "/replay_buffer_check_ours.data";
+  const std::string cut = dir + "/replay_buffer_check_cut.data";
+  // Loads `path` into a fresh buffer of ours in a child process; its exit status.
+  auto load_in_child = [&](const std::string& path) {
+    std::cout.flush();
+    const pid_t pid = fork();
+    if (pid == 0) {
+      open_spiel::thud_az::ReplayBuffer<TrainInputs> fresh(kSize);
+      fresh.LoadBuffer(path);
+      _exit(0);
+    }
+    int status = 0;
+    waitpid(pid, &status, 0);
+    return WIFEXITED(status) ? WEXITSTATUS(status) : 128 + WTERMSIG(status);
+  };
+  check(load_in_child(saved) == 0, "5. control: the whole file loads in a child process");
+  const auto size = std::filesystem::file_size(saved);
+  for (double fraction : {0.999, 0.5}) {
+    std::filesystem::copy_file(saved, cut, std::filesystem::copy_options::overwrite_existing);
+    std::filesystem::resize_file(cut, static_cast<uintmax_t>(size * fraction));
+    const int status = load_in_child(cut);
+    open_spiel::SerializableCircularBuffer<TrainInputs> theirs(kSize);
+    theirs.LoadBuffer(cut);
+    check(status != 0, "5. ours refuses the file cut to " + std::to_string(fraction) +
+                           " (the child's exit " + std::to_string(status) + ")");
+    check(theirs.Size() < kSize && theirs.TotalAdded() == ours.TotalAdded(),
+          "5. control: upstream's loads it without an error, " +
+              std::to_string(theirs.Size()) + " of " + std::to_string(kSize) +
+              " positions, its count still " + std::to_string(theirs.TotalAdded()));
+  }
+  std::filesystem::remove(cut);
   std::cout << (failures ? "FAILED" : "ALL PASSED") << std::endl;
   return failures ? 1 : 0;
 }

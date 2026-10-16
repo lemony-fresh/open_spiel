@@ -83,6 +83,25 @@ struct AlphaZeroConfig {
   // positions stored, the buffer growing towards replay_buffer_size; 0 samples
   // every position stored, as upstream.
   int replay_buffer_start_size;
+  // Added (thud/PLAN.md, the GPU readiness checklist: a learning-rate schedule): the
+  // learning rate of step s is the network's own (vpnet.pb) x LearningRateFactor(s) —
+  // a linear warm-up over lr_warmup_steps steps from step lr_warmup_start (its first
+  // step at 1 / lr_warmup_steps), times the factor of the last entry of lr_schedule,
+  // "STEP:FACTOR,..." (from that step on; AlphaZero's and KataGo's step-wise decay),
+  // whose step is at most s. 0 and "": the rate as it is, upstream's behaviour.
+  int lr_warmup_steps = 0;
+  int lr_warmup_start = 1;
+  std::string lr_schedule;
+  // Added (thud/DESIGN_dwarf_signal.md, E1): the value loss's weight in a learning
+  // step (VPNetModel::SetValueLossWeight); 1 is upstream's.
+  double value_loss_weight = 1;
+  // Added (thud/PLAN.md, the GPU readiness checklist: playout cap randomisation; KataGo,
+  // arXiv 1902.10565, section 3.1): each of the network's moves in self-play is searched
+  // in full (max_simulations or the player's, root noise, recorded for training) with
+  // probability playout_cap_full_share, else fast (playout_cap_fast_simulations, no
+  // noise, no forced playouts, not recorded). 1: every move in full, upstream's.
+  double playout_cap_full_share = 1;
+  int playout_cap_fast_simulations = 0;
   int checkpoint_freq;
   int evaluation_window;
 
@@ -165,6 +184,12 @@ struct AlphaZeroConfig {
         {"symmetry_augmentation", symmetry_augmentation},
         {"policy_target_pruning", policy_target_pruning},
         {"replay_buffer_start_size", replay_buffer_start_size},
+        {"lr_warmup_steps", lr_warmup_steps},
+        {"lr_warmup_start", lr_warmup_start},
+        {"lr_schedule", lr_schedule},
+        {"value_loss_weight", value_loss_weight},
+        {"playout_cap_full_share", playout_cap_full_share},
+        {"playout_cap_fast_simulations", playout_cap_fast_simulations},
         {"checkpoint_freq", checkpoint_freq},
         {"evaluation_window", evaluation_window},
         {"uct_c", uct_c},
@@ -223,6 +248,26 @@ struct AlphaZeroConfig {
     replay_buffer_start_size = config_json.count("replay_buffer_start_size")
                                    ? config_json.at("replay_buffer_start_size").GetInt()
                                    : 0;
+    // A run from before the schedule and the value-loss weight trained without them.
+    lr_warmup_steps = config_json.count("lr_warmup_steps")
+                          ? config_json.at("lr_warmup_steps").GetInt()
+                          : 0;
+    lr_warmup_start = config_json.count("lr_warmup_start")
+                          ? config_json.at("lr_warmup_start").GetInt()
+                          : 1;
+    lr_schedule = config_json.count("lr_schedule")
+                      ? config_json.at("lr_schedule").GetString()
+                      : "";
+    value_loss_weight = config_json.count("value_loss_weight")
+                            ? config_json.at("value_loss_weight").GetDouble()
+                            : 1;
+    playout_cap_full_share = config_json.count("playout_cap_full_share")
+                                 ? config_json.at("playout_cap_full_share").GetDouble()
+                                 : 1;
+    playout_cap_fast_simulations =
+        config_json.count("playout_cap_fast_simulations")
+            ? config_json.at("playout_cap_fast_simulations").GetInt()
+            : 0;
     checkpoint_freq = config_json.at("checkpoint_freq").GetInt();
     evaluation_window = config_json.at("evaluation_window").GetInt();
     uct_c = config_json.at("uct_c").GetDouble();
@@ -302,6 +347,13 @@ int AlphaBetaDepth(const AlphaZeroConfig& config, open_spiel::Player player);
 // than two entries.
 std::vector<double> KickstartWeights(const AlphaZeroConfig& config);
 
+// Added (the learning-rate schedule): the factor on the network's learning rate at
+// learning step `step` (AlphaZeroConfig: lr_warmup_steps, lr_warmup_start, lr_schedule).
+// Stops on a malformed lr_schedule or a factor that is not positive.
+double LearningRateFactor(const AlphaZeroConfig& config, int step);
+// Whether the config asks for a schedule at all (else the rate is left alone).
+bool HasLearningRateSchedule(const AlphaZeroConfig& config);
+
 // A game an actor played, as the learner receives it. Moved here from alpha_zero.cc
 // (our change), with PlayGame below, so that checks can play games as the actors do.
 struct Trajectory {
@@ -342,7 +394,16 @@ Trajectory PlayGame(open_spiel::Logger* logger, int game_num, const open_spiel::
                     open_spiel::Player opponent_player = open_spiel::kInvalidPlayer,
                     const AlphaBetaPlayer* teacher = nullptr, double teacher_weight = 0,
                     double teacher_temperature = 1,
-                    const std::vector<double>& teacher_weights = {});
+                    const std::vector<double>& teacher_weights = {},
+                    std::vector<std::unique_ptr<MCTSBot>>* fast_bots = nullptr,
+                    double full_share = 1);
+
+// Added (playout cap randomisation): the fast searches' bots, one per player — the
+// trainer's search with playout_cap_fast_simulations, no root noise and no forced
+// playouts, the policy temperatures kept; empty if the cap is off.
+std::vector<std::unique_ptr<MCTSBot>> FastBots(const AlphaZeroConfig& config,
+                                               const open_spiel::Game& game,
+                                               std::shared_ptr<Evaluator> evaluator);
 
 // Added (kickstarting): the teacher's policy over `state`'s legal moves — the softmax
 // of teacher.Scores(state) over `temperature` points.

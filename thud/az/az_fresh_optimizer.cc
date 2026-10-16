@@ -19,9 +19,10 @@
 // Builds the network from `to`/vpnet.pb (its structure and learning rate), loads the
 // weights alone from `from`'s checkpoint, and saves them with the new, fresh Adam
 // optimizer as `to`'s checkpoint `step`. Prints the learning rate a full load of the
-// source checkpoint would leave (LibTorch may restore an optimizer's options with its
-// state — not shown either way on 2026-10-11, the source's file and checkpoint having
-// the same rate; a fresh optimizer makes it moot). Checks, fatal on failure: the saved checkpoint, loaded in full into a new
+// source checkpoint would leave (LibTorch restores an optimizer's options with its state:
+// not shown either way on 2026-10-11, the source's file and checkpoint having the same
+// rate; shown since by learning_settings_check, 2026-10-15 — which is why a new rate
+// needs a fresh optimizer). Checks, fatal on failure: the saved checkpoint, loaded in full into a new
 // network, gives exactly the source's outputs on positions of random games, and has
 // `to`'s learning rate.
 //

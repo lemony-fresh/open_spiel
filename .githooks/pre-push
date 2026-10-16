@@ -5,7 +5,7 @@
 #
 # 1. Refuses any push to the UPSTREAM OpenSpiel repository that would carry our
 #    project-private files. Pushes to our own fork are unaffected by this part.
-# 2. Runs all our checks (thud/run_checks.sh --full, ~3 min) before any push whose
+# 2. Runs all our checks (thud/run_checks.sh --full, ~4 min) before any push whose
 #    commits change code (the game, our AlphaZero copy and tools, the checks, the
 #    hooks); a failing check stops the push. Added 2026-10-15 (the user: commit hooks
 #    for the unit tests); the checks run on the working tree.

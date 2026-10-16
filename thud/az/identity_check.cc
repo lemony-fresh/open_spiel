@@ -17,7 +17,9 @@
 // network, positions, settings and seeds it compares:
 //
 //   1. network outputs: upstream's VPNetModel and ours, loaded from the same checkpoint,
-//      on every position — values and priors must be equal;
+//      on every position — values and priors must be equal (ours computing the priors
+//      as upstream does, SetLegalPolicy(false); our default, the priors from the legal
+//      moves' logits alone, equal to rounding: thud/az/legal_policy_check.cc);
 //   2. searches: upstream's MCTSBot and ours (PUCT, the trainer's settings) on every
 //      position, without root noise and with it — every root child's visits and total
 //      value must be equal. Ours runs with UntriedMoveValue::kUpstream: its default
@@ -134,6 +136,7 @@ int main(int argc, char** argv) {
   up::torch_az::VPNetModel up_model(*game, dir, "vpnet.pb", "/cpu:0");
   up_model.LoadCheckpoint(step);
   ours::torch_az::VPNetModel our_model(*game, dir, "vpnet.pb", "/cpu:0");
+  our_model.SetLegalPolicy(false);  // As upstream computes the priors.
   our_model.LoadCheckpoint(step);
   up::torch_az::VPNetModel up_other(*game, dir, "vpnet.pb", "/cpu:0");
   up_other.LoadCheckpoint(other_step);
@@ -156,6 +159,7 @@ int main(int argc, char** argv) {
   std::filesystem::create_directories(tmp);
   std::filesystem::copy_file(dir + "/vpnet.pb", tmp + "/vpnet.pb");
   ours::torch_az::VPNetModel our_saver(*game, tmp, "vpnet.pb", "/cpu:0");
+  our_saver.SetLegalPolicy(false);  // As upstream computes the priors.
   our_saver.LoadCheckpoint(absl::StrCat(dir, "/checkpoint-", step));
   our_saver.SaveCheckpoint(1);
   up::torch_az::VPNetModel up_loader(*game, tmp, "vpnet.pb", "/cpu:0");
@@ -169,6 +173,7 @@ int main(int argc, char** argv) {
     up::torch_az::VPNetModel up_learner(*game, dir, "vpnet.pb", "/cpu:0");
     up_learner.LoadCheckpoint(step);
     ours::torch_az::VPNetModel our_learner(*game, dir, "vpnet.pb", "/cpu:0");
+    our_learner.SetLegalPolicy(false);  // As upstream computes the priors.
     our_learner.LoadCheckpoint(step);
     std::vector<up::torch_az::VPNetModel::TrainInputs> up_batch;
     std::vector<ours::torch_az::VPNetModel::TrainInputs> our_batch;

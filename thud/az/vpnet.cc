@@ -25,7 +25,10 @@
 #include <torch/types.h>
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
+#include <filesystem>
+#include <limits>
 #include <fstream>  // For ifstream/ofstream.
 #include <string>
 #include <vector>
@@ -254,11 +257,29 @@ double VPNetModel::LearningRate() {
       .lr();
 }
 
+void VPNetModel::SetLearningRate(double learning_rate) {
+  for (auto& group : model_optimizer_.param_groups()) {
+    static_cast<torch::optim::AdamOptions&>(group.options()).lr(learning_rate);
+  }
+}
+
 std::string VPNetModel::SaveCheckpoint(int step) {
   std::string full_path = absl::StrCat(path_, "/checkpoint-", step);
 
-  torch::save(model_, absl::StrCat(full_path, ".pt"));
-  torch::save(model_optimizer_, absl::StrCat(full_path, "-optimizer.pt"));
+  // Our change (thud/PLAN.md, the GPU readiness checklist: restarting after a crash or
+  // a preemption): each file written under a temporary name and renamed into place, so
+  // that a run killed while saving keeps the previous checkpoint whole (a rename within
+  // one file system replaces the file at once).
+  for (const std::string& suffix : {".pt", "-optimizer.pt"}) {
+    const std::string file = absl::StrCat(full_path, suffix);
+    const std::string temporary = absl::StrCat(file, ".tmp");
+    if (suffix == std::string(".pt")) {
+      torch::save(model_, temporary);
+    } else {
+      torch::save(model_optimizer_, temporary);
+    }
+    std::filesystem::rename(temporary, file);
+  }
 
   return full_path;
 }
@@ -304,6 +325,7 @@ std::vector<torch::Tensor> VPNetModel::Activations(
 
 std::vector<VPNetModel::InferenceOutputs> VPNetModel::Inference(
     const std::vector<InferenceInputs>& inputs) {
+  if (legal_policy_) return InferenceAtLegalMoves(inputs);  // Our change.
   int inference_batch_size = inputs.size();
 
   // Format the data outside of torch. Random assignments can be very slow on
@@ -372,6 +394,71 @@ std::vector<VPNetModel::InferenceOutputs> VPNetModel::Inference(
     output.push_back({value, state_policy});
   }
 
+  return output;
+}
+
+// Our change (SetLegalPolicy): the network's input as Inference builds it; then, instead of
+// a mask over every distinct action, the (position, action) pairs of the legal moves —
+// the model computes the logits there alone (ModelImpl::ValueAndPolicyAt), and each
+// position's are normalised here (a softmax in double, from their largest).
+std::vector<VPNetModel::InferenceOutputs> VPNetModel::InferenceAtLegalMoves(
+    const std::vector<InferenceInputs>& inputs) {
+  const int batch_size = inputs.size();
+  std::vector<float> raw_observations(batch_size * flat_input_size_);
+  std::vector<int64_t> rows, actions;
+  for (int batch = 0; batch < batch_size; ++batch) {
+    ModelInput(inputs[batch].observations,
+               raw_observations.data() + batch * flat_input_size_);
+    for (Action action : inputs[batch].legal_actions) {
+      rows.push_back(batch);
+      actions.push_back(action);
+    }
+  }
+  torch::Tensor torch_inputs =
+      torch::from_blob(raw_observations.data(), {batch_size, flat_input_size_})
+          .clone()
+          .to(torch_device_);
+  auto index = [&](std::vector<int64_t>& values) {
+    if (values.empty()) return torch::empty({0}, torch::kInt64).to(torch_device_);
+    return torch::from_blob(values.data(), {static_cast<int64_t>(values.size())},
+                            torch::TensorOptions().dtype(torch::kInt64))
+        .clone()
+        .to(torch_device_);
+  };
+
+  model_->eval();
+  torch::NoGradGuard no_grad;
+  std::vector<torch::Tensor> torch_outputs =
+      model_->ValueAndPolicyAt(torch_inputs, index(rows), index(actions));
+  torch::Tensor value_cpu = torch_outputs[0].to(torch::kCPU).contiguous();
+  torch::Tensor logits_cpu = torch_outputs[1].to(torch::kCPU).contiguous();
+  auto value_acc = value_cpu.accessor<float, 2>();
+  const float* logits = logits_cpu.data_ptr<float>();
+
+  std::vector<InferenceOutputs> output;
+  output.reserve(batch_size);
+  size_t first = 0;
+  std::vector<double> exps;
+  for (int batch = 0; batch < batch_size; ++batch) {
+    const std::vector<Action>& legal = inputs[batch].legal_actions;
+    double largest = -std::numeric_limits<double>::infinity();
+    for (size_t i = 0; i < legal.size(); ++i) {
+      largest = std::max(largest, static_cast<double>(logits[first + i]));
+    }
+    exps.resize(legal.size());
+    double sum = 0;
+    for (size_t i = 0; i < legal.size(); ++i) {
+      exps[i] = std::exp(static_cast<double>(logits[first + i]) - largest);
+      sum += exps[i];
+    }
+    ActionsAndProbs state_policy;
+    state_policy.reserve(legal.size());
+    for (size_t i = 0; i < legal.size(); ++i) {
+      state_policy.push_back({legal[i], exps[i] / sum});
+    }
+    first += legal.size();
+    output.push_back({static_cast<double>(value_acc[batch][0]), std::move(state_policy)});
+  }
   return output;
 }
 
@@ -454,8 +541,10 @@ VPNetModel::LossInfo VPNetModel::Losses(const std::vector<TrainInputs>& inputs,
       model_->losses(torch_train_inputs, torch_train_legal_mask,
                      torch_policy_targets, torch_value_targets);
 
-  torch::Tensor total_loss =
-      torch_outputs[0] + torch_outputs[1] + torch_outputs[2];
+  torch::Tensor total_loss =  // Our change: the value loss weighted (SetValueLossWeight).
+      value_loss_weight_ == 1
+          ? torch_outputs[0] + torch_outputs[1] + torch_outputs[2]
+          : torch_outputs[0] + value_loss_weight_ * torch_outputs[1] + torch_outputs[2];
 
   total_loss.backward();
 

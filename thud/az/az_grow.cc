@@ -40,7 +40,8 @@
 // noise > 0 the differences are reported, not required to vanish.
 //
 // Output: `to` (must not exist) with vpnet.pb (the new size, `learning_rate`, by default
-// the source's) and checkpoint-STEP (with a fresh optimizer), which the trainer, az_match
+// the source's vpnet.pb rate — not its optimizer's, which a learning-rate schedule may
+// have scaled) and checkpoint-STEP (with a fresh optimizer), which the trainer, az_match
 // and the probes read like any run's.
 //
 //   thud/az/build.sh thud/az/az_grow.cc
@@ -165,7 +166,7 @@ int main(int argc, char** argv) {
   VPNetModel source(*game, from_dir, "vpnet.pb", device);
   source.LoadCheckpoint(from_step);
   const double learning_rate =
-      std::stod(get("learning_rate", absl::StrFormat("%.17g", source.LearningRate())));
+      std::stod(get("learning_rate", absl::StrFormat("%.17g", source.BaseLearningRate())));
   const int extra_planes = source.TakesInputPlanes() ? open_spiel::thud_az::kNumFeaturePlanes : 0;
   std::filesystem::create_directories(to);
   SPIEL_CHECK_TRUE(open_spiel::thud_az::torch_az::CreateGraphDef(

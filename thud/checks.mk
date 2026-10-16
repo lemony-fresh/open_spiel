@@ -41,8 +41,11 @@ TORCH_FLAGS := $(COMMON) -Wno-everything -DOPEN_SPIEL_BUILD_WITH_LIBTORCH \
   -isystem $(TORCH)/include -isystem $(TORCH)/include/torch/csrc/api/include
 LINK := -L$(LIB) -lopen_spiel -Wl,-rpath,$(LIB) \
   -Wl,--start-group $(wildcard $(LIB)/abseil-cpp/absl/*/libabsl_*.a) -Wl,--end-group
+# LibTorch's CUDA libraries too when the wheel has them (as thud/az/build.sh).
+TORCH_CUDA := $(wildcard $(TORCH)/lib/libtorch_cuda.so $(TORCH)/lib/libc10_cuda.so)
 TORCH_LINK := $(LINK) -Wl,--no-as-needed $(TORCH)/lib/libtorch.so \
-  $(TORCH)/lib/libtorch_cpu.so $(TORCH)/lib/libc10.so -Wl,--as-needed -Wl,-rpath,$(TORCH)/lib
+  $(TORCH)/lib/libtorch_cpu.so $(TORCH)/lib/libc10.so $(TORCH_CUDA) -Wl,--as-needed \
+  -Wl,-rpath,$(TORCH)/lib
 
 # Our copy of the C++ AlphaZero, linked into every LibTorch program (as build.sh does).
 COPIES := $(addprefix $(OUT)/obj/az/,mcts.o alpha_zero.o model.o vpnet.o vpevaluator.o)
@@ -50,10 +53,11 @@ COPIES := $(addprefix $(OUT)/obj/az/,mcts.o alpha_zero.o model.o vpnet.o vpevalu
 UPSTREAM := $(addprefix $(OUT)/obj/upstream/,model.o vpnet.o vpevaluator.o)
 
 TORCH_CHECKS := alphabeta_training_check augmentation_check conv_policy_check grow_check \
+  learning_settings_check legal_policy_check playout_cap_check \
   growing_buffer_check input_planes_check instrumentation_check kickstart_check \
   pruning_check search_settings_check untried_move_check make_test_network
 TORCH_PROGRAMS := az_trainer az_grow az_restructure az_fresh_optimizer
-EXPERIMENT_PROGRAMS := az_match teacher_mix_check
+EXPERIMENT_PROGRAMS := az_match teacher_mix_check az_search_cost
 PLAIN_CHECKS := features_check replay_buffer_check
 PLAIN_EXPERIMENTS := az_buffer_truncate
 

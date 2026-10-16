@@ -20,7 +20,7 @@
 # each with its time. Each check's output is kept in build-checks/last/NAME.log.
 #
 #   thud/run_checks.sh            # the quick checks (~20 s): what the pre-commit hook runs
-#   thud/run_checks.sh --full     # every check (~3 min): what the pre-push hook runs
+#   thud/run_checks.sh --full     # every check (~4 min): what the pre-push hook runs
 #   thud/run_checks.sh NAME ...   # only these (--list shows the names)
 #   [--jobs N]                    # checks at once (default 4; 1 beside an experiment)
 #
@@ -66,6 +66,9 @@ checks=(
   "instrumentation_check|quick|0.2|$bin/instrumentation_check"
   "search_settings_check|quick|0.3|$bin/search_settings_check"
   "teacher_mix_check|quick|0.3|$bin/teacher_mix_check"
+  "learning_settings_check|quick|0.8|$bin/learning_settings_check"
+  "playout_cap_check|quick|1.3|$bin/playout_cap_check"
+  "regression_gates_check|quick|0.9|python3 thud/experiments/regression_gates_check.py"
   "features_check|quick|3|$bin/features_check"
   "replay_buffer_check|quick|0.5|$bin/replay_buffer_check $logs"
   "az_buffer_truncate|quick|0|$bin/az_buffer_truncate self_test"
@@ -79,6 +82,9 @@ checks=(
   "kickstart_check|full|131|$bin/kickstart_check"
   "conv_policy_check|full|148|$bin/conv_policy_check"
   "az_match_check|full|97|thud/experiments/az_match_check.sh $bin"
+  "watchdog_check|full|90|thud/az/watchdog_check.sh $bin"
+  "transfer_check|full|24|thud/transfer_check.sh $bin"
+  "legal_policy_check|full|44|$bin/legal_policy_check"
 )
 
 # Two checks that are commands of their own, run as checks above.
@@ -146,13 +152,19 @@ done
 [ ${#selected[@]} -gt 0 ] || { echo "No check named ${names[*]} (--list)" >&2; exit 2; }
 
 start=$(date +%s)
-echo "Building (the game, build-shared/, build-checks/) ..."
+# Compile jobs by the memory available, 1.5 GB each (a LibTorch source peaks at ~1.2 GB):
+# beside a trainer -j10 would fill memory, and the out-of-memory killer picks the trainer.
+available_mb=$(awk '/^MemAvailable:/ {print int($2 / 1024)}' /proc/meminfo)
+make_jobs=$(( available_mb / 1536 ))
+[ "$make_jobs" -gt 10 ] && make_jobs=10
+[ "$make_jobs" -lt 1 ] && make_jobs=1
+echo "Building (the game, build-shared/, build-checks/; $make_jobs jobs for ${available_mb} MB available) ..."
 build_log=$repo/build-checks/build.log
 mkdir -p "$repo/build-checks"
 {
-  nice -n 19 make -C build -j10 thud_test pyspiel &&
-    nice -n 19 make -C build-shared -j10 open_spiel &&
-    make -f thud/checks.mk -j10
+  nice -n 19 make -C build -j"$make_jobs" thud_test pyspiel &&
+    nice -n 19 make -C build-shared -j"$make_jobs" open_spiel &&
+    make -f thud/checks.mk -j"$make_jobs"
 } > "$build_log" 2>&1 || { echo "BUILD FAILED (build-checks/build.log):"; tail -20 "$build_log"; exit 1; }
 
 # The networks the checks read (made once; make_test_network is deterministic).

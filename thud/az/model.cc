@@ -222,6 +222,21 @@ std::vector<torch::Tensor> ResOutputBlockImpl::forward(torch::Tensor x,
   return {value_output, policy_logits};
 }
 
+std::vector<torch::Tensor> ResOutputBlockImpl::ValueAndPolicyAt(torch::Tensor x,
+                                                                torch::Tensor rows,
+                                                                torch::Tensor actions) {
+  torch::Tensor value_output = torch::relu(value_batch_norm_(value_conv_(x)));
+  value_output = value_output.view({-1, value_observation_size_});
+  value_output = torch::relu(value_linear1_(value_output));
+  value_output = torch::tanh(value_linear2_(value_output));
+
+  torch::Tensor policy_logits =
+      torch::relu(policy_batch_norm_(policy_conv_(x)));
+  policy_logits = policy_logits.view({-1, policy_observation_size_});
+  policy_logits = policy_linear_(policy_logits);
+  return {value_output, policy_logits.index({rows, actions})};
+}
+
 ResConvPolicyOutputBlockImpl::ResConvPolicyOutputBlockImpl(
     const ResOutputBlockConfig& config, int policy_planes,
     const std::vector<int64_t>& policy_map)
@@ -318,6 +333,20 @@ std::vector<torch::Tensor> ResConvPolicyOutputBlockImpl::forward(
   return {value_output, policy_logits};
 }
 
+std::vector<torch::Tensor> ResConvPolicyOutputBlockImpl::ValueAndPolicyAt(
+    torch::Tensor x, torch::Tensor rows, torch::Tensor actions) {
+  torch::Tensor value_output = torch::relu(value_batch_norm_(value_conv_(x)));
+  value_output = value_output.view({-1, value_observation_size_});
+  value_output = torch::relu(value_linear1_(value_output));
+  value_output = torch::tanh(value_linear2_(value_output));
+
+  // Each legal move's entry read from the planes directly — its plane and square,
+  // policy_map_[action] — with no logits for the other actions.
+  torch::Tensor planes = PolicyPlanes(x).flatten(/*start_dim=*/1);
+  torch::Tensor entries = policy_map_.to(x.device()).index_select(0, actions);
+  return {value_output, planes.index({rows, entries})};
+}
+
 MLPBlockImpl::MLPBlockImpl(const int in_features, const int out_features)
     : linear_(torch::nn::LinearOptions(
                          /*in_features=*/in_features,
@@ -365,6 +394,17 @@ std::vector<torch::Tensor> MLPOutputBlockImpl::forward(torch::Tensor x,
                                -(1 << 16) * torch::ones_like(policy_logits));
 
   return {value_output, policy_logits};
+}
+
+std::vector<torch::Tensor> MLPOutputBlockImpl::ValueAndPolicyAt(torch::Tensor x,
+                                                                torch::Tensor rows,
+                                                                torch::Tensor actions) {
+  torch::Tensor value_output = torch::relu(value_linear1_(x));
+  value_output = torch::tanh(value_linear2_(value_output));
+
+  torch::Tensor policy_logits = torch::relu(policy_linear1_(x));
+  policy_logits = policy_linear2_(policy_logits);
+  return {value_output, policy_logits.index({rows, actions})};
 }
 
 ModelImpl::ModelImpl(const ModelConfig& config, const std::string& device)
@@ -510,6 +550,29 @@ std::vector<torch::Tensor> ModelImpl::losses(torch::Tensor inputs,
 
   return {policy_loss, value_loss, l2_regularization_loss, policy_loss_each,
           value_loss_each};
+}
+
+std::vector<torch::Tensor> ModelImpl::ValueAndPolicyAt(torch::Tensor x, torch::Tensor rows,
+                                                       torch::Tensor actions) {
+  if (this->nn_model_ == "resnet" || this->nn_model_ == "resnet_conv_policy") {
+    x = layers_[0]->as<ResInputBlock>()->forward(x);
+    for (int i = 1; i <= num_torso_blocks_; i++) {
+      x = layers_[i]->as<ResTorsoBlock>()->forward(x);
+    }
+    return this->nn_model_ == "resnet"
+               ? layers_[num_torso_blocks_ + 1]->as<ResOutputBlock>()->ValueAndPolicyAt(
+                     x, rows, actions)
+               : layers_[num_torso_blocks_ + 1]
+                     ->as<ResConvPolicyOutputBlock>()
+                     ->ValueAndPolicyAt(x, rows, actions);
+  } else if (this->nn_model_ == "mlp") {
+    for (int i = 0; i < num_torso_blocks_ + 1; i++) {
+      x = layers_[i]->as<MLPBlock>()->forward(x);
+    }
+    return layers_[num_torso_blocks_ + 1]->as<MLPOutputBlockImpl>()->ValueAndPolicyAt(
+        x, rows, actions);
+  }
+  throw std::runtime_error("Unknown nn_model: " + this->nn_model_);
 }
 
 std::vector<torch::Tensor> ModelImpl::forward_(torch::Tensor x,

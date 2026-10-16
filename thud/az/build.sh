@@ -49,6 +49,14 @@ fi
 copies=()
 for f in "$repo"/thud/az/{mcts,alpha_zero,model,vpnet,vpevaluator}.cc; do copies+=("$f"); done
 
+# LibTorch's CUDA libraries, when the wheel has them (an x86 machine with a GPU): linked
+# like the CPU ones, kept even though nothing names them, since loading them is what
+# registers the CUDA backend (without, a cuda device fails with "no CUDA backend").
+cuda_libs=()
+for f in "$torch"/lib/libtorch_cuda.so "$torch"/lib/libc10_cuda.so; do
+  [ -f "$f" ] && cuda_libs+=("$f")
+done
+
 nice -n 19 clang++ -std=gnu++20 -O3 -DNDEBUG -Wno-everything \
   -DOPEN_SPIEL_BUILD_WITH_LIBNOP -DOPEN_SPIEL_BUILD_WITH_LIBTORCH \
   -DOPEN_SPIEL_BUILD_WITH_PYTHON -DOPEN_SPIEL_ENABLE_JAX -DOPEN_SPIEL_ENABLE_PYTORCH \
@@ -60,5 +68,6 @@ nice -n 19 clang++ -std=gnu++20 -O3 -DNDEBUG -Wno-everything \
   -L"$lib" -lopen_spiel -Wl,-rpath,"$lib" \
   -Wl,--start-group "$lib"/abseil-cpp/absl/*/libabsl_*.a -Wl,--end-group \
   -Wl,--no-as-needed "$torch/lib/libtorch.so" "$torch/lib/libtorch_cpu.so" \
-  "$torch/lib/libc10.so" -Wl,--as-needed -Wl,-rpath,"$torch/lib"
+  "$torch/lib/libc10.so" ${cuda_libs[@]+"${cuda_libs[@]}"} -Wl,--as-needed \
+  -Wl,-rpath,"$torch/lib"
 echo "Built $lib/$name"

@@ -274,10 +274,14 @@ N121 +0.95 (−2.04 to +3.94)**, every per-side difference within 1 standard err
 runs of one recipe differ far less than the recipe's effect. Adopting D1 + C3 is the
 user's decision (the design's §8, step 3's second branch: the value's gap stays).
 **Tests** (2026-10-15, the user): every feature has a check, all run by
-`thud/run_checks.sh` (quick ~20 s, `--full` 22 checks ~3 min, built without `-DNDEBUG`),
+`thud/run_checks.sh` (quick ~20 s, `--full` 28 checks ~4 min, built without `-DNDEBUG`),
 and git hooks run them — pre-commit the quick ones for commits that change code, pre-push
 all of them (`PLAN.md`, *Tests*: each check, its control, every gap); committed and pushed
-(`d75336f1`). **Running since 2026-10-15 14:30:** **the longer D1 + C3 run** (the user, 2026-10-15: the longer run first, 40 steps): run N continued from N121, steps 122-161, in `~/thud-runs/runN_d1_cont` (a copy of run N's state, so N121's own buffer stays for a later test run), by `~/thud-runs/night11_2026-10-15.py`: four segments of 10 steps, after each check 4 on the segment's own games (the newest network and N121 on the same positions) and the share of self-play games keeping dwarfs (run N's last 10 steps: 2.2% of 693, the dwarfs' margin −23.4); ~24 minutes a step,
+(`d75336f1`). **The GPU checklist's features** (the same afternoon, beside the run): a
+learning-rate schedule, a value-loss weight, playout caps, crash-safe saving with a
+watchdog, transfer and setup scripts, the throughput sweep, the legal policy (on by
+default), the regression gates — each with its check (28 in all); still missing: the
+gated tapers, the Net2Net live test (after the run), the setup script's dry run. **Running since 2026-10-15 14:30:** **the longer D1 + C3 run** (the user, 2026-10-15: the longer run first, 40 steps): run N continued from N121, steps 122-161, in `~/thud-runs/runN_d1_cont` (a copy of run N's state, so N121's own buffer stays for a later test run), by `~/thud-runs/night11_2026-10-15.py`: four segments of 10 steps, after each check 4 on the segment's own games (the newest network and N121 on the same positions) and the share of self-play games keeping dwarfs (run N's last 10 steps: 2.2% of 693, the dwarfs' margin −23.4); ~24 minutes a step,
 done ~07:00-08:00 on 2026-10-16. Progress in `stage1_matches/progress.log`.
 **Done** (2026-10-07 16:28 to 2026-10-08 05:34): the night of matches against players
 without a network, run I and its evaluation (`~/thud-runs/night2_2026-10-07.py`).
@@ -3120,7 +3124,49 @@ instrumentation, and the pattern agreed for later, are in `PLAN.md` Phase 5).
   summary, the segment's log copy, check 4: ~15 s); the copied checkpoint checked equal to
   step 121's by content (the files differ only in their archives' folder name).
 
+- **2026-10-15, ~15:45-18:30: the GPU checklist's features, beside run N's continuation.**
+  The user: work on all of them, compiling and testing may slow the main run; profiling
+  needs the CPU alone, so pause the main run if it does not take long (it was paused
+  twice by SIGSTOP, 38 s and 62 s, the trainer resumed by a trap either way). Built and
+  checked (`PLAN.md`, the checklist and *Tests*):
+  - **a learning-rate schedule** (`--lr_warmup_steps`, `--lr_warmup_start`,
+    `--lr_schedule`) and **a value-loss weight** (`--value_loss_weight`),
+    `learning_settings_check`; found: a checkpoint restores its optimizer's learning rate
+    (an open question since run L, now shown), so `az_grow`'s default rate is now the
+    source's vpnet.pb's (a schedule would have been applied twice);
+  - **crash-safe saving and a watchdog** (`thud/az/watchdog.sh`, `watchdog_check.sh`:
+    kills during a buffer and a checkpoint write, a truncated record). The checks found
+    three defects on the way: upstream's `json::FromString` stops the program on a bad
+    line (contrary to its comment; a PR fixing the comment was prepared and, the user's
+    decision, not opened); a record after a fragment joined it and was lost; upstream's
+    `LoadBuffer` loads a cut-off buffer without an error, losing positions silently —
+    a clear upstream bug, a PR after #1637 (the user: option 2);
+  - **a transfer script** (`thud/transfer_run.sh`, `transfer_check.sh`; ssh untested), a
+    **setup script** (`thud/setup_machine.sh`, not yet run on a fresh clone), our builds
+    linking LibTorch's CUDA libraries when present;
+  - **the throughput sweep** (`az_search_cost` with a real network and lists);
+  - **the batching path profiled**: with the tiny network half the inference time went to
+    the policy over all 19,800 actions — **the legal policy** (the legal moves' logits
+    alone; equal to ~1e-7, all compared searches identical; on by default, the user)
+    gains 2.4x there but nothing with real networks on this CPU (M102 +1%, chess 64 x 4
+    ±0): the network dominates here. **A mistake of mine, reported to the user:** I first
+    said the bookkeeping was half the evaluation time "on this machine" — true only for
+    the tiny network; whether it limits a GPU is an extrapolation, to be measured there;
+  - **the regression gates** (`thud/experiments/regression_gates.py`,
+    `regression_gates_check.py`): the blunder count reimplemented from the games equals
+    `az_blunder_check`'s exactly (M102 647 of 2,544, N121 429 of 4,385, C121, N2121); N121
+    passes every game-based gate against M102; the positive controls fail as they must
+    (K83 the short hurls, G'64 the blunders, G'64 against I83 the trolls' captures); M102
+    against itself passes everything;
+  - **playout cap randomisation** (`--playout_cap_full_share`,
+    `--playout_cap_fast_simulations`): off plays the old games exactly; at a quarter in
+    full 25.4% of 6,150 moves recorded, every one a full search (`playout_cap_check`;
+    `trainer_check.sh` with half in full).
+  The full suite passed on the trainer and buffer changes (25 checks, 1,181 s one at a
+  time beside the trainer); the checks added since pass on their own.
+  Meanwhile run N continued: steps 124-126 kept dwarfs in 8-12% of self-play games
+  (2.2% over run N's last 10 steps).
+
 **Next step:** as recorded in `## Current status` — the longer run's four segments and
-their check 4, then its evaluation; the regression gates and the promotion tests; the
-GPU checklist's missing items (the batching path's profile, the Net2Net live test) in
-gaps between runs.
+their check 4, then its evaluation; the setup script's dry run on a fresh clone; the
+promotion tests with the gates; the Net2Net live test after the run.

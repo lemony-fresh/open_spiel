@@ -21,14 +21,17 @@
 #      (--devices=/cpu:0,/cpu:0), batched inference, symmetry augmentation, policy target
 #      pruning, two learner batches a step, games against alpha-beta (depth 1 for both
 #      sides), kickstarting per player (0.7, 0.3; depth 1), root noise per player (off
-#      at the dwarfs' roots), simulations and policy temperatures per player — runs 2
+#      at the dwarfs' roots), simulations and policy temperatures per player, a
+#      learning-rate warm-up and schedule, a value-loss weight of 2, playout caps (half
+#      the moves in full) — runs 2
 #      steps and exits 0; writes checkpoints 1, 2 and the latest, the buffer, and
 #      learner.jsonl with steps 1 and 2 (losses finite, per side); config.json records
 #      the settings; the actors log them.
 #   2. Resuming (the trainer given the run's config.json, max_steps 3): step 3 follows
 #      step 2 (not 1 again), the total games only grow, games against alpha-beta (half of
-#      them) were played and counted, the actors' and the learner's logs are appended to,
-#      not overwritten.
+#      them) were played and counted, each step's learning rate is the schedule's (the
+#      network's 0.001 x 0.5, 1, 0.5) and its value-loss weight 2, the actors' and the
+#      learner's logs are appended to, not overwritten.
 #   3. az_grow (8 x 1 -> 12 x 2, noise 0.01; its own checks of the function, the control
 #      and the reload are fatal) on the latest network, then a run folder from it — the
 #      config's new size, the buffer, learner.jsonl and the grown checkpoint as the
@@ -85,6 +88,8 @@ steps() { python3 -c "import json,sys; print(' '.join(str(json.loads(l)['step'])
   --symmetry_augmentation --policy_target_pruning --alphabeta_share=0.5 \
   --alphabeta_depth=1,1 --kickstart_weight=0.3 --player_kickstart_weight=0.7,0.3 \
   --kickstart_depth=1 --player_policy_epsilon=0,0.25 --untried_move_value=sibling_mean_minus_reduction \
+  --lr_warmup_steps=2 --lr_schedule=3:0.5 --value_loss_weight=2 \
+  --playout_cap_full_share=0.5 --playout_cap_fast_simulations=4 \
   > "$tmp/fresh.log" 2>&1
 status=$?
 check "1. a fresh run with every feature on exits 0" [ "$status" -eq 0 ]
@@ -110,13 +115,17 @@ c = json.load(open(sys.argv[1]))
 want = {"devices": "/cpu:0,/cpu:0", "learner_batches": 2, "symmetry_augmentation": True,
         "policy_target_pruning": True, "alphabeta_share": 0.5, "alphabeta_depth": "1,1",
         "player_kickstart_weight": "0.7,0.3", "player_policy_epsilon": "0,0.25",
-        "player_simulations": "8,6", "nn_width": 8, "nn_depth": 1}
+        "player_simulations": "8,6", "nn_width": 8, "nn_depth": 1, "lr_warmup_steps": 2,
+        "lr_schedule": "3:0.5", "value_loss_weight": 2, "playout_cap_full_share": 0.5,
+        "playout_cap_fast_simulations": 4}
 bad = {k: (c.get(k), v) for k, v in want.items() if c.get(k) != v}
 if bad: print(bad)
 sys.exit(1 if bad else 0)
 EOF
 check "1. the actors log the kickstarting settings" \
   grep -q "Kickstarting: weight 0.3 (per player 0.7, 0.3), depth 1" "$run/log-actor-0.txt"
+check "1. the actors log the playout caps" \
+  grep -q "Playout caps: a full search on 0.5 of the moves, else 4 simulations" "$run/log-actor-0.txt"
 
 # 2. Resuming.
 actor_lines=$(wc -l < "$run/log-actor-0.txt")
@@ -131,6 +140,17 @@ EOF
 "$bin/az_trainer" "$run/config.json" > "$tmp/resume.log" 2>&1
 check "2. resuming exits 0" [ $? -eq 0 ]
 check "2. step 3 follows step 2" [ "$(steps "$run/learner.jsonl")" = "1 2 3" ]
+# The network's rate is make_test_network's 0.001: a warm-up of 2 steps, then 0.5 from 3.
+check "2. the learning rate by the schedule (5e-4, 1e-3, 5e-4) and the value-loss weight 2" \
+  python3 - "$run/learner.jsonl" <<'EOF'
+import json, sys
+d = [json.loads(l) for l in open(sys.argv[1])]
+rates = [x["learning_rate"] for x in d]
+ok = all(abs(a - b) < 1e-12 for a, b in zip(rates, [5e-4, 1e-3, 5e-4])) and len(rates) == 3
+ok &= all(x["value_loss_weight"] == 2 for x in d)
+if not ok: print(rates)
+sys.exit(0 if ok else 1)
+EOF
 games_after=$(tail -1 "$run/learner.jsonl" | python3 -c "import json,sys; print(json.load(sys.stdin)['total_trajectories'])")
 check "2. the total games only grow ($games_before -> $games_after)" [ "$games_after" -gt "$games_before" ]
 # Each game is against alpha-beta with probability 0.5: none in 11+ games is 1 in 2,000.

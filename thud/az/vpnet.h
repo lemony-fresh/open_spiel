@@ -200,6 +200,26 @@ class VPNetModel {
   // (PATH.pt), the optimizer left as it is; and the optimizer's learning rate.
   void LoadWeights(const std::string& path);
   double LearningRate();
+  // Our change (thud/PLAN.md, the GPU readiness checklist: a learning-rate schedule):
+  // the optimizer's learning rate set for the next steps, and the rate the network's
+  // file (vpnet.pb) gives — the base a schedule multiplies, whatever a loaded optimizer
+  // holds.
+  void SetLearningRate(double learning_rate);
+  double BaseLearningRate() const { return model_config_.learning_rate; }
+  // Our change (the value-loss weight; thud/DESIGN_dwarf_signal.md, E1): a learning
+  // step minimises policy + weight x value + L2 (upstream: weight 1). The losses
+  // reported (LossInfo) stay unweighted, comparable across weights.
+  void SetValueLossWeight(double weight) { value_loss_weight_ = weight; }
+  double ValueLossWeight() const { return value_loss_weight_; }
+  // Our change (the legal policy; thud/PLAN.md, the batching path): Inference's priors
+  // from the logits of each position's legal moves alone, normalised in double — not
+  // upstream's mask and softmax over every distinct action (19,800 in Thud, of which a
+  // position has 20 to 400 legal), whose illegal entries come out 0. The same
+  // distribution up to rounding (~1e-7: thud/az/legal_policy_check.cc); the values are
+  // bit for bit the same. On by default; false is upstream's computation, bit for bit
+  // (identity_check compares with it).
+  void SetLegalPolicy(bool on) { legal_policy_ = on; }
+  bool LegalPolicy() const { return legal_policy_; }
 
   std::string SaveCheckpoint(int step);
   void LoadCheckpoint(int step);
@@ -209,6 +229,8 @@ class VPNetModel {
 
  private:
   LossInfo Losses(const std::vector<TrainInputs>& inputs, bool learn);
+  // Our change: Inference with the legal policy (SetLegalPolicy).
+  std::vector<InferenceOutputs> InferenceAtLegalMoves(const std::vector<InferenceInputs>& inputs);
   // Our change: writes the network's input for `observation` to out[0, flat_input_size_).
   void ModelInput(const std::vector<float>& observation, float* out) const;
   // Our change: adds each position's losses to `info` by side to move, if the
@@ -248,6 +270,8 @@ class VPNetModel {
   int side_to_move_index_;
   // Our change (Freeze): leaf modules kept in evaluation mode while learning.
   std::vector<std::shared_ptr<torch::nn::Module>> frozen_modules_;
+  double value_loss_weight_ = 1;  // Our change: SetValueLossWeight.
+  bool legal_policy_ = true;  // Our change: SetLegalPolicy.
 };
 
 // Our change, for training on randomly turned and mirrored positions: `inputs` as
