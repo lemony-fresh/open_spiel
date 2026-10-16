@@ -6,9 +6,9 @@
 # 1. Refuses any push to the UPSTREAM OpenSpiel repository that would carry our
 #    project-private files. Pushes to our own fork are unaffected by this part.
 # 2. Runs all our checks (thud/run_checks.sh --full, ~4 min) before any push whose
-#    commits change code (the game, our AlphaZero copy and tools, the scripts in thud/, the checks, the
-#    hooks); a failing check stops the push. Added 2026-10-15 (the user: commit hooks
-#    for the unit tests); the checks run on the working tree.
+#    commits change code (the game, our AlphaZero copy and tools, the scripts in thud/,
+#    the checks, the hooks); a failing check stops the push. Added 2026-10-15 (the user:
+#    commit hooks for the unit tests); the checks run on the working tree.
 #
 # The file this primarily protects is thud/THUD_RULES.md, which quotes the
 # official Thud rules verbatim. Thud is commercially published, and while game
