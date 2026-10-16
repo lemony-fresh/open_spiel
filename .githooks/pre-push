@@ -6,7 +6,7 @@
 # 1. Refuses any push to the UPSTREAM OpenSpiel repository that would carry our
 #    project-private files. Pushes to our own fork are unaffected by this part.
 # 2. Runs all our checks (thud/run_checks.sh --full, ~4 min) before any push whose
-#    commits change code (the game, our AlphaZero copy and tools, the checks, the
+#    commits change code (the game, our AlphaZero copy and tools, the scripts in thud/, the checks, the
 #    hooks); a failing check stops the push. Added 2026-10-15 (the user: commit hooks
 #    for the unit tests); the checks run on the working tree.
 #
@@ -28,7 +28,7 @@ refs=$(cat)  # git's lines: local_ref local_sha remote_ref remote_sha; read by b
 
 # 2. The checks, if the pushed commits change code.
 run_checks() {
-  code='^(open_spiel/games/thud/|thud/az/|thud/experiments/|thud/checks\.mk$|thud/run_checks\.sh$|\.githooks/)'
+  code='^(open_spiel/games/thud/|thud/az/|thud/experiments/|thud/[^/]*\.(sh|mk|py)$|\.githooks/)'
   changed=''
   while read -r _local_ref local_sha _remote_ref remote_sha; do
     [ -z "$local_sha" ] || [ "$local_sha" = "$zero" ] && continue
