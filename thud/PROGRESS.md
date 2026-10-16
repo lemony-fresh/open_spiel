@@ -274,13 +274,13 @@ N121 +0.95 (−2.04 to +3.94)**, every per-side difference within 1 standard err
 runs of one recipe differ far less than the recipe's effect. Adopting D1 + C3 is the
 user's decision (the design's §8, step 3's second branch: the value's gap stays).
 **Tests** (2026-10-15, the user): every feature has a test, all run by
-`thud/run_tests.sh` (quick ~20 s, `--full` 30 tests ~4 min, built without `-DNDEBUG`),
+`thud/run_tests.sh` (quick ~20 s, `--full` 31 tests ~4 min, built without `-DNDEBUG`),
 and git hooks run them — pre-commit the quick ones for commits that change code, pre-push
 all of them (`PLAN.md`, *Tests*: each test, its control, every gap); committed and pushed
 (`d75336f1`). **The GPU checklist's features** (the same afternoon, beside the run): a
 learning-rate schedule, a value-loss weight, playout caps, crash-safe saving with a
 watchdog, transfer and setup scripts, the throughput sweep, the legal policy (on by
-default), the regression gates — each with its test (30 in all); still missing: the
+default), the regression gates — each with its test (31 in all); still missing: the
 gated tapers, the Net2Net live test (after the run), the setup script's dry run. **Running since 2026-10-15 14:30:** **the longer D1 + C3 run** (the user, 2026-10-15: the longer run first, 40 steps): run N continued from N121, steps 122-161, in `~/thud-runs/runN_d1_cont` (a copy of run N's state, so N121's own buffer stays for a later test run), by `~/thud-runs/night11_2026-10-15.py`: four segments of 10 steps, after each measurement 4 on the segment's own games (the newest network and N121 on the same positions) and the share of self-play games keeping dwarfs (run N's last 10 steps: 2.2% of 693, the dwarfs' margin −23.4); ~24 minutes a step,
 done ~07:00-08:00 on 2026-10-16 (slower while work runs beside it). Progress in
 `stage1_matches/progress.log`. **The first segment** (to step 131): 12.7% of 472
@@ -296,8 +296,7 @@ without a network, run I and its evaluation (`~/thud-runs/night2_2026-10-07.py`)
 Deferred: MCTS-10,000 and -100,000, alpha-beta depth 4 (informative once our networks
 beat the lower rungs).
 **Next (2026-10-16):** the three test trims recorded in `PLAN.md`, *Tests* (then
-measure the full set), and the push; the dry run's outcome (`~/setup-test.log`); the user
-to confirm the stricter taper condition (c), then its probe; the longer run's segments read as the design's §10 says — survival and the gap
+measure the full set), and the push; the dry run's outcome (`~/setup-test.log`); the longer run's segments read as the design's §10 says — survival and the gap
 both rising: patience; survival rising but the gap not: E1, E2; survival below ~5%: B1′,
 or C7 with the user's word — then its evaluation (against N121 and the players without a
 network); the regression
@@ -3210,6 +3209,14 @@ the push's and the rename's tests ran (memory beside the trainer), to resume.
   `build-tests/bin/` (they still said `build.sh` and `build-shared/`). A mistake of
   mine, ~20 minutes: editing `run_tests.sh` while it ran broke that run (bash reads a
   script as it goes); rerun, all 30 passed.
+
+- **2026-10-15, ~20:00-20:30: the taper's condition (c) decided and measured.** The user:
+  use the stricter rule (the loop's gain after a step at most 0.8), revisit once in use;
+  and a note in CLAUDE.md — important information at the end of a reply, never in its
+  middle. Built `az_unsafe_targets` (the arithmetic in `unsafe_targets.h`, tested by
+  `unsafe_targets_test`): N131's R = 0.70 (upper 0.85) — the search reduces unsafe moves;
+  M102 on the same positions 0.87 without noise, 1.05 with its own (ε 0.25): the noise made
+  the amplification (the design's §10).
 
 **Next step:** as recorded in `## Current status` — tomorrow, after the user's token
 limit resets: the three test trims and the push; the dry run's outcome; the longer run.

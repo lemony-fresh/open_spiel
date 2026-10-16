@@ -704,8 +704,8 @@ missing. (This revised, on 2026-10-12, the earlier assessment "treats the sympto
   is under root noise, so that comparison alone might never open), (b) the regression
   gates of §7 hold at that step, and (c) **the search no longer amplifies unsafe moves**:
   the visits' mass on unsafe dwarf moves is no higher than the prior's (from the recorded
-  targets; §2's loop — at a lower weight the loop's gain rises again; **proposed stricter,
-  2026-10-15, for the user to confirm**: the loop's gain after the step, (1 − w′) × R with
+  targets; §2's loop — at a lower weight the loop's gain rises again; **decided stricter**
+  (the user, 2026-10-15, to revisit once in use): the loop's gain after the step, (1 − w′) × R with
   R the visits' unsafe mass over the prior's at its 95% upper bound, at most 0.8 — R ≤ 2.0
   for 0.7 → 0.6, ≤ 1.33 for 0.5 → 0.4, ≤ 1.0 for 0.3 → 0.2, ≤ 0.8 without a teacher — so
   the rule tightens as the teacher fades; R needs a probe not yet built), and (d) **the
@@ -974,6 +974,14 @@ The placebo (the dwarf moved one square) is ~+0.007 at self-play positions, not 
 games against alpha-beta ~0): part of the measured worth there is a sensitivity to the
 position as such — net of it the self-play ratio is 51% (N121 29%). By the rule above:
 survival and the gap both rising — patience.
+
+**Condition (c) measured** (2026-10-15, `az_unsafe_targets`, 200 dwarf positions of the
+segment's self-play, 100 simulations): **N131: R = 0.70** (upper end 0.85; prior 0.081,
+visits 0.057) — at C3's settings (no noise at the dwarfs' roots) the search reduces unsafe
+moves; a step 0.7 → 0.6 would be allowed (gain 0.34). M102 on the same positions: R = 0.87
+(1.02) without noise, **1.05 (1.13) with its own noise (ε 0.25)** — the noise is what
+made the search amplify unsafe moves (§2 had inferred ~1.3 from M102's own training,
+without measuring it); and the teacher halved the prior's unsafe mass (0.16 → 0.08).
 
 ## Review log
 

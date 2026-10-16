@@ -71,6 +71,7 @@ tests=(
   "regression_gates_test|quick|0.9|python3 thud/experiments/regression_gates_test.py"
   "ladder_test|quick|0.7|python3 thud/experiments/ladder_test.py"
   "position_edits_test|quick|1.5|$bin/position_edits_test"
+  "unsafe_targets_test|quick|1.0|$bin/unsafe_targets_test"
   "features_test|quick|3|$bin/features_test"
   "replay_buffer_test|quick|0.5|$bin/replay_buffer_test $logs"
   "az_buffer_truncate|quick|0|$bin/az_buffer_truncate self_test"

@@ -16,6 +16,11 @@ build a connection — the user asked for it more often than Claude first did: s
 times in a reply, in short replies too, though not in every sentence. In the docs
 (`thud/`, commit messages) the user stays "the user" or "they".
 
+**Important information goes at the end of a reply, never in its middle** (the user,
+2026-10-15): results, decisions needed, questions and anything the user must act on
+belong in the final message of a turn, after the work, not in the text between tool
+calls, where long output buries them.
+
 ---
 
 ## Session start

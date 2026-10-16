@@ -57,9 +57,9 @@ TORCH_TESTS := alphabeta_training_test augmentation_test conv_policy_test grow_t
   growing_buffer_test input_planes_test instrumentation_test kickstart_test \
   pruning_test search_settings_test untried_move_test make_test_network
 TORCH_PROGRAMS := az_trainer az_grow az_restructure az_fresh_optimizer
-EXPERIMENT_PROGRAMS := az_match teacher_mix_test az_search_cost az_dwarf_value_probe
+EXPERIMENT_PROGRAMS := az_match teacher_mix_test az_search_cost az_dwarf_value_probe az_unsafe_targets
 PLAIN_TESTS := features_test replay_buffer_test
-PLAIN_EXPERIMENTS := az_buffer_truncate position_edits_test
+PLAIN_EXPERIMENTS := az_buffer_truncate position_edits_test unsafe_targets_test
 
 # The tests without LibTorch again under AddressSanitizer and UndefinedBehaviorSanitizer
 # (CLAUDE.md, Conventions: memory handling; -DNDEBUG_SANITIZER keeps abseil's hash tables
