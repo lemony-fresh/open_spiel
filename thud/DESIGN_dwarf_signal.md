@@ -1003,6 +1003,15 @@ value does not learn what it sees** (E1, the value-loss weight, built 2026-10-15
 The margin's return to −23.4 at higher survival wants a look (the trolls improving too?):
 the evaluation of N161 against N121 and the players without a network comes first.
 
+**N161's evaluation** (2026-10-17, `~/thud-runs/night12_2026-10-16.py`,
+`~/thud-runs/eval_2026-10-17/`; 40 pairs, as N121's): **N161 beats N121 by +4.12 a pair
+(+1.26 to +6.99)**, 30 won, 1 drawn, 9 lost; M102 by +11.22. Against the players without a
+network as N121: alpha-beta 1 +17.4 (N121 +20.8; its dwarfs −12.7 against −9.5), alpha-beta
+2 −13.8 (−14.6; its trolls +16.2 against +15.9), hexparrot −4.6 (−3.8). **The regression
+gates against M102 all pass**, the blunders down to 5.9% of the dwarfs' moves (N121 9.8%,
+M102 25.4%). Condition (c): R = 0.65 (upper 0.79) — the search no longer amplifies unsafe
+moves, even without a teacher; the taper waits on condition (d), the value's gap.
+
 ## Review log
 
 **Review 1** (an adversarial reviewer agent, 2026-10-12, on draft 2; findings checked at

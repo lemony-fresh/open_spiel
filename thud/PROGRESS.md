@@ -295,12 +295,11 @@ tests, measurements, probes; two new tests) and the two faster tests (below).
 without a network, run I and its evaluation (`~/thud-runs/night2_2026-10-07.py`).
 Deferred: MCTS-10,000 and -100,000, alpha-beta depth 4 (informative once our networks
 beat the lower rungs).
-**Waiting since 2026-10-16 22:29:** `~/thud-runs/night12_2026-10-16.py` — from 2026-10-17
-02:00 after 20 minutes without input (or `~/thud-runs/night12.go`), on mains: the push (its
-hook runs every test), then N161's evaluation (against N121, M102, alpha-beta 1 and 2,
-hexparrot), the probes and the regression gates (N161 against M102), into
-`~/thud-runs/eval_2026-10-17/`. **Next:** its results; then a value-loss-weight test run
-(E1) if they confirm the value's gap; the Net2Net live test in the next gap; the longer run's segments read as the design's §10 says — survival and the gap
+**N161's evaluation is done** (night12, 2026-10-17 03:58-06:20, after the push: 31
+tests passed in its hook): N161 beats N121 by +4.12 (+1.26 to +6.99) and M102 by +11.22;
+the regression gates against M102 all pass (blunders 5.9%); condition (c) R = 0.65 (upper
+0.79). `az_capture_targets` in `build-shared/` was a stale build from before the input
+planes and aborted; rebuilt and rerun by hand. **Next:** a value-loss-weight test run (E1) from N161, for the value's gap; the Net2Net live test in the next gap; the longer run's segments read as the design's §10 says — survival and the gap
 both rising: patience; survival rising but the gap not: E1, E2; survival below ~5%: B1′,
 or C7 with the user's word — then its evaluation (against N121 and the players without a
 network); the regression
