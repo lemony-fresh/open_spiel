@@ -169,6 +169,16 @@ mkdir -p "$repo/build-tests"
     nice -n 19 make -C build-shared -j"$make_jobs" open_spiel &&
     make -f thud/tests.mk -j"$make_jobs"
 } > "$build_log" 2>&1 || { echo "BUILD FAILED (build-tests/build.log):"; tail -20 "$build_log"; exit 1; }
+# With --full, the programs our runs use too (thud/build_programs.sh), so that a push
+# carries none that fails to build; not while one of them runs (it refuses: a note).
+if [ "$mode" = full ] && [ ${#names[@]} -eq 0 ]; then
+  thud/build_programs.sh >> "$build_log" 2>&1
+  case $? in
+    0) ;;
+    2) echo "Note: the programs in build-shared/ not rebuilt — one of them is running." ;;
+    *) echo "BUILD FAILED: the programs (thud/build_programs.sh; build-tests/build.log)"; exit 1 ;;
+  esac
+fi
 
 # The networks the tests read (made once; make_test_network is deterministic).
 if [ ! -f "$nets/peaked/checkpoint-1.pt" ] || [ "$bin/make_test_network" -nt "$nets/peaked/vpnet.pb" ]; then

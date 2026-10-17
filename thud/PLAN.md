@@ -1538,7 +1538,7 @@ first session, with no patch at all.**
   | Feature | Why on the GPU | State | To do |
   |---|---|---|---|
   | *Setup* | | | |
-  | A build on the rented machine: LibTorch with CUDA (the pip wheel, as here), `build-torch/`, `build-shared/`, our programs | nothing runs without it | **built, partly tested** (2026-10-15): `thud/setup_machine.sh` — install.sh's packages and dependencies, the venv with torch 2.10.0 (on x86_64 PyPI's CUDA wheel), `~/.bashrc`, `build/` and `build-shared/`, our programs, hexparrot at its commit, every test, and with a GPU a CUDA smoke test; each step skipped when done; `build.sh` and `tests.mk` now link LibTorch's CUDA libraries when the wheel has them (without, a CUDA device fails: "no CUDA backend"). Not yet run on a fresh clone; never on x86 or with CUDA | *before renting*: the dry run on a fresh clone here; on a cheap x86 box if one is at hand |
+  | A build on the rented machine: LibTorch with CUDA (the pip wheel, as here), `build-torch/`, `build-shared/`, our programs | nothing runs without it | **built, partly tested** (2026-10-15): `thud/setup_machine.sh` — install.sh's packages and dependencies, the venv with torch 2.10.0 (on x86_64 PyPI's CUDA wheel), `~/.bashrc`, `build/` and `build-shared/`, our programs, hexparrot at its commit, every test, and with a GPU a CUDA smoke test; each step skipped when done; `build.sh`, `tests.mk` and `programs.mk` link LibTorch's CUDA libraries when the wheel has them (without, a CUDA device fails: "no CUDA backend"); our programs since 2026-10-17 by `thud/build_programs.sh` (`programs.mk`, incremental). The dry run on a fresh clone here passed every step (2026-10-15, `~/setup-test`); never on x86 or with CUDA | *before renting*: on a cheap x86 box if one is at hand |
   | The tests on the new machine (`thud/run_tests.sh --full`: every test, *Tests* below; the tic-tac-toe control) | correctness before any spending | **done** (here, 2026-10-15: 28 tests, ~4 min, none needs a run folder — the networks they read are made by `make_test_network`) | run them there first (the order above) |
   | The trainer on a GPU (`--devices=cuda:0`; several copies, `cuda:0,cuda:0`) | the network on the GPU | **built, untested on a GPU** (upstream's device handling; no GPU here); the setup script's step 8 runs it there: 2 steps on `cuda:0` and on `cuda:0,cuda:0`, the learner on `cuda:0` | on the machine: step 8 (`--gpu-smoke-only`) |
   | Our tools on a GPU: `az_match devices=LIST` (one copy of each network per entry, e.g. `cuda:0,cuda:0`) | matches at GPU speed | **built, untested on a GPU** (2026-10-15): the default reproduces the old binary exactly (pairs and request counts, one thread); two CPU copies play identical games (since 2026-10-15 a permanent test, `az_match_test.sh` 4, with the control that the summary records the copies); `cuda:0` here reaches Torch and fails as this CPU-only LibTorch must ("no CUDA backend") | on the machine: one short match |
@@ -1584,7 +1584,10 @@ first session, with no patch at all.**
   implemented and what's tested and what's missing, even if small subfeatures are
   missing"). `thud/run_tests.sh` builds what is out of date (`thud/tests.mk`, into
   `build-tests/`, **without `-DNDEBUG`**) and runs the quick tests (~20 s, four at once)
-  or with `--full` all 31 (~4 min; times alone on an idle machine); none needs a run folder — the networks the tests read
+  or with `--full` all 31 (150 s on an idle machine, 2026-10-17) and then brings the
+  programs our runs use up to date (`thud/build_programs.sh`, `thud/programs.mk`, into
+  `build-shared/`: a stale `az_capture_targets` had aborted a night's probe; while one of
+  them runs it builds nothing and says so); none needs a run folder — the networks the tests read
   are small untrained ones from `thud/az/make_test_network.cc`. **The hooks**:
   `.githooks/pre-commit` runs the quick tests when a commit changes code (the game, `thud/az/`,
   `thud/experiments/`, the tests, the hooks; docs alone go through), `.githooks/pre-push`
@@ -1659,10 +1662,10 @@ first session, with no patch at all.**
     sanitized; ThreadSanitizer was never run on the trainer's or az_match's threads.
   - *CUDA*: nothing here (no GPU); the device code runs with CPU copies only. The setup
     script's smoke test (step 8) covers it on the machine.
-  - *The setup script* (`thud/setup_machine.sh`): not yet run on a fresh clone; never on
-    x86, with apt, or with a CUDA wheel. *`transfer_run.sh` over ssh*: untested (no second
+  - *The setup script* (`thud/setup_machine.sh`): run on a fresh clone here (2026-10-15,
+    every step passed); never on x86, with apt, or with a CUDA wheel. *`transfer_run.sh` over ssh*: untested (no second
     machine; between local folders it is tested).
-  - *The warnings*: `-Wno-everything` remains in `build.sh` and `tests.mk` (to be narrowed,
+  - *The warnings*: `-Wno-everything` remains in `build.sh`, `tests.mk` and `programs.mk` (to be narrowed,
     CLAUDE.md); without it the game's header warns once — `ThudState`'s defaulted copy
     assignment is deleted, as in 25 upstream games: harmless, left as upstream writes it.
   - `az_restructure` into another width or depth stops by design (the checklist above).

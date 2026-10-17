@@ -312,9 +312,13 @@ its replay buffer, `az_grow`, which grows a network wider or deeper computing th
 `az_match devices=`, `az_restructure device=` and `az_grow device=` choose where the
 networks run)
 are built by
-`thud/az/build.sh MAIN.cc` (`replay_buffer_test`, `az_buffer_truncate` and `features_test`, which need
-no LibTorch, by the command in their headers), which also links Abseil's static libraries (the flag parsing
-`libopen_spiel.so` does not re-export) and runs at `nice 19`.
+**`thud/build_programs.sh`** (2026-10-17: `thud/programs.mk`, incremental, a second when
+nothing changed; it refuses while one of them runs, since a run's next segment would start
+the new binary): **every queue in `~/thud-runs/` runs it before it starts**, and
+`run_tests.sh --full` (so the pre-push hook) does too. One-offs can still use
+`thud/az/build.sh MAIN.cc`, which also links Abseil's static libraries (the flag parsing
+`libopen_spiel.so` does not re-export) and runs at `nice 19`. The tests build in
+`build-tests/` (below).
 
 **Now that JAX and PyTorch are in the venv, the next cmake run in `build/` adds their
 Python tests** (OpenSpiel detects both when `OPEN_SPIEL_ENABLE_JAX`/`_PYTORCH` are

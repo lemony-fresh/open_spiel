@@ -23,8 +23,8 @@
 #      picks another, e.g. https://download.pytorch.org/whl/cpu);
 #   3. the shell lines of CLAUDE.md (the venv, PYTHONPATH) in ~/.bashrc;
 #   4. build/ (pyspiel, thud_test) and build-shared/ (libopen_spiel.so with LibTorch);
-#   5. our programs into build-shared/ (thud/az/build.sh): the trainer and the tools a
-#      GPU run uses;
+#   5. our programs into build-shared/ (thud/build_programs.sh, thud/programs.mk): the
+#      trainer and every tool;
 #   6. hexparrot/thudgame at the commit our references use (thud/experiments/
 #      perft_reference.py), for the cross-check and matches against it;
 #   7. every test: thud/run_tests.sh --full;
@@ -167,18 +167,8 @@ if [ ! -f build-shared/Makefile ]; then
 fi
 nice -n 19 make -C build-shared -j"$(jobs)" open_spiel || fail "make build-shared/"
 
-step "5. our programs into build-shared/"
-for main in thud/az/az_trainer.cc thud/az/az_grow.cc thud/az/az_restructure.cc \
-    thud/az/az_fresh_optimizer.cc thud/experiments/az_match.cc \
-    thud/experiments/az_dwarf_value_probe.cc thud/experiments/az_blunder_probe.cc \
-    thud/experiments/az_search_cost.cc; do
-  name=$(basename "$main" .cc)
-  # Rebuilt when it or any source of our AlphaZero copy is newer than the program.
-  newest=$(ls -t "$main" thud/az/*.cc thud/az/*.h thud/experiments/*.h | head -1)
-  if [ ! -x "build-shared/$name" ] || [ "$newest" -nt "build-shared/$name" ]; then
-    thud/az/build.sh "$main" || fail "building $name"
-  fi
-done
+step "5. our programs into build-shared/ (thud/build_programs.sh)"
+thud/build_programs.sh || fail "building our programs"
 
 step "6. hexparrot/thudgame (thud/experiments/perft_reference.py)"
 hexparrot=$(python3 -c "import sys; sys.path.insert(0, 'thud/experiments'); \

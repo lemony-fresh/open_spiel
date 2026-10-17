@@ -289,8 +289,10 @@ self-play rose from 2.2% to 23-27% (steps 141-151), 22.7% at 161; the dwarfs' ma
 positions), then reopened (47%; 3% in the games against alpha-beta) — the design's §10:
 the value does not learn what it sees. **The setup script's dry run** on a fresh
 clone passed every step (2026-10-15 17:49-19:55, `~/setup-test`, log `~/setup-test.log`:
-install.sh, the venv and torch, the builds, our programs, hexparrot, its 28 tests). **Committed, not pushed:** `0dc07a2f` (the rename to
-tests, measurements, probes; two new tests) and the two faster tests (below).
+install.sh, the venv and torch, the builds, our programs, hexparrot, its 28 tests).
+**Pushed** by night12 (2026-10-17, through `11098c23`); **committed, not pushed:** N161's
+evaluation (docs) and the programs' Makefile (2026-10-17: `thud/programs.mk`, run by
+`thud/build_programs.sh`, which every queue runs first).
 **Done** (2026-10-07 16:28 to 2026-10-08 05:34): the night of matches against players
 without a network, run I and its evaluation (`~/thud-runs/night2_2026-10-07.py`).
 Deferred: MCTS-10,000 and -100,000, alpha-beta depth 4 (informative once our networks
@@ -299,7 +301,8 @@ beat the lower rungs).
 tests passed in its hook): N161 beats N121 by +4.12 (+1.26 to +6.99) and M102 by +11.22;
 the regression gates against M102 all pass (blunders 5.9%); condition (c) R = 0.65 (upper
 0.79). `az_capture_targets` in `build-shared/` was a stale build from before the input
-planes and aborted; rebuilt and rerun by hand. **Next:** a value-loss-weight test run (E1) from N161, for the value's gap; the Net2Net live test in the next gap; the longer run's segments read as the design's §10 says — survival and the gap
+planes and aborted; rebuilt and rerun by hand — so since 2026-10-17 `thud/build_programs.sh`
+brings every program up to date in a second when nothing changed. **Next:** a value-loss-weight test run (E1) from N161, for the value's gap; the Net2Net live test in the next gap; the longer run's segments read as the design's §10 says — survival and the gap
 both rising: patience; survival rising but the gap not: E1, E2; survival below ~5%: B1′,
 or C7 with the user's word — then its evaluation (against N121 and the players without a
 network); the regression
@@ -3231,4 +3234,23 @@ the push's and the rename's tests ran (memory beside the trainer), to resume.
   The user: notes in CLAUDE.md — replies as long as needed, no longer. `night12` set up
   to start after 02:00 and 20 minutes without input (the user needs the laptop until then).
 
-**Next step:** as recorded in `## Current status` — night12's results.
+- **2026-10-17: N161's evaluation; the programs' Makefile.** night12 started at 03:58
+  after 20 minutes without input, pushed (`cf3d1a95..11098c23`; the hook's 31 tests
+  passed) and evaluated N161 (the design's §10): +4.12 (+1.26 to +6.99) against N121,
+  +11.22 against M102, every regression gate against M102 passed (blunders 5.9%);
+  condition (c) R = 0.65, upper end 0.79 (allowed: the loop's gain after a step 0.79 x 0.4
+  = 0.32); the taper waits on (d), and the value's gap is not closing, so next is E1. A
+  stale `az_capture_targets` (6 input planes against the network's 56) aborted; rebuilt and
+  rerun by hand. Hence, the user agreeing: **`thud/programs.mk`**, the run programs built
+  incrementally into `build-shared/` (objects in `build-shared/obj-programs/`, `-MMD`
+  dependencies, every program relinked when `libopen_spiel.so` changes), and
+  **`thud/build_programs.sh`**, which first rebuilds the game's library when a source of
+  the game is newer (CMake's `make -q` always answers "out of date", so a `find -newer`)
+  and refuses (exit 2) while a program of ours from `build-shared/` runs. Measured: all 22
+  programs from scratch 40 s at 8 jobs; nothing to do 0.04 s; with a dummy
+  `build-shared/` program running and a source touched it refused and replaced nothing.
+  `run_tests.sh --full` (so the pre-push hook) runs it after the tests' build, a running
+  program only a note; `setup_machine.sh`'s step 5 uses it instead of its `build.sh`
+  loop; CLAUDE.md says every queue runs it first. The full suite: 31 passed, 150 s.
+
+**Next step:** as recorded in `## Current status` — E1, the value-loss weight, from N161.
