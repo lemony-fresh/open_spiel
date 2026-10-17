@@ -281,22 +281,26 @@ all of them (`PLAN.md`, *Tests*: each test, its control, every gap); committed a
 learning-rate schedule, a value-loss weight, playout caps, crash-safe saving with a
 watchdog, transfer and setup scripts, the throughput sweep, the legal policy (on by
 default), the regression gates — each with its test (31 in all); still missing: the
-gated tapers, the Net2Net live test (after the run), the setup script's dry run. **Running since 2026-10-15 14:30:** **the longer D1 + C3 run** (the user, 2026-10-15: the longer run first, 40 steps): run N continued from N121, steps 122-161, in `~/thud-runs/runN_d1_cont` (a copy of run N's state, so N121's own buffer stays for a later test run), by `~/thud-runs/night11_2026-10-15.py`: four segments of 10 steps, after each measurement 4 on the segment's own games (the newest network and N121 on the same positions) and the share of self-play games keeping dwarfs (run N's last 10 steps: 2.2% of 693, the dwarfs' margin −23.4); ~24 minutes a step,
-done ~07:00-08:00 on 2026-10-16 (slower while work runs beside it). Progress in
-`stage1_matches/progress.log`. **The first segment** (to step 131): 12.7% of 472
-self-play games kept dwarfs (2.2% before), the dwarfs' margin −20.4; measurement 4: a far
-dwarf with the dwarfs to move worth 65% of its worth with the trolls to move in
-self-play positions (N121 46%), 18% in the games against alpha-beta's trolls (10%) —
-both rising, below the taper's 80% (the design's §10). **Also running** (detached): the
-setup script's dry run on a fresh clone, `~/setup-test` (log `~/setup-test.log`; at
-its step 7, the tests, since 19:33). **Committed, not pushed:** `0dc07a2f` (the rename to
+gated tapers, the Net2Net live test (after the run), the setup script's dry run. **The longer D1 + C3 run is done** (run N continued from N121, steps 122-161,
+`~/thud-runs/runN_d1_cont`, 2026-10-15 14:30 to 2026-10-16 09:29; a pause of ~7 minutes
+at 01:54 after the laptop ran on battery 01:15-01:35, nothing timed then): survival in
+self-play rose from 2.2% to 23-27% (steps 141-151), 22.7% at 161; the dwarfs' margin
+−20.4 → −23.4; the value's side-to-move gap narrowed to step 141 (73% in self-play
+positions), then reopened (47%; 3% in the games against alpha-beta) — the design's §10:
+the value does not learn what it sees. **The setup script's dry run** on a fresh
+clone passed every step (2026-10-15 17:49-19:55, `~/setup-test`, log `~/setup-test.log`:
+install.sh, the venv and torch, the builds, our programs, hexparrot, its 28 tests). **Committed, not pushed:** `0dc07a2f` (the rename to
 tests, measurements, probes; two new tests) and the two faster tests (below).
 **Done** (2026-10-07 16:28 to 2026-10-08 05:34): the night of matches against players
 without a network, run I and its evaluation (`~/thud-runs/night2_2026-10-07.py`).
 Deferred: MCTS-10,000 and -100,000, alpha-beta depth 4 (informative once our networks
 beat the lower rungs).
-**Next (2026-10-16):** the three test trims recorded in `PLAN.md`, *Tests* (then
-measure the full set), and the push; the dry run's outcome (`~/setup-test.log`); the longer run's segments read as the design's §10 says — survival and the gap
+**Waiting since 2026-10-16 22:29:** `~/thud-runs/night12_2026-10-16.py` — from 2026-10-17
+02:00 after 20 minutes without input (or `~/thud-runs/night12.go`), on mains: the push (its
+hook runs every test), then N161's evaluation (against N121, M102, alpha-beta 1 and 2,
+hexparrot), the probes and the regression gates (N161 against M102), into
+`~/thud-runs/eval_2026-10-17/`. **Next:** its results; then a value-loss-weight test run
+(E1) if they confirm the value's gap; the Net2Net live test in the next gap; the longer run's segments read as the design's §10 says — survival and the gap
 both rising: patience; survival rising but the gap not: E1, E2; survival below ~5%: B1′,
 or C7 with the user's word — then its evaluation (against N121 and the players without a
 network); the regression
@@ -3218,5 +3222,14 @@ the push's and the rename's tests ran (memory beside the trainer), to resume.
   M102 on the same positions 0.87 without noise, 1.05 with its own (ε 0.25): the noise made
   the amplification (the design's §10).
 
-**Next step:** as recorded in `## Current status` — tomorrow, after the user's token
-limit resets: the three test trims and the push; the dry run's outcome; the longer run.
+- **2026-10-16, 22:00-22:30: the longer run's results; faster tests; tonight's queue.** The
+  longer D1 + C3 run finished at 09:29 (the design's §10): survival 2.2% → 23-27%, the
+  value's gap narrowing to step 141 and then reopening — the value does not learn what it
+  sees. The setup dry run had passed (2026-10-15 19:55). Test trims: `legal_policy_test`
+  (20 positions for its reported searches; 50 s → 18 s) and `az_match_test` (4
+  simulations; 128 s → 55 s) done; `untried_move_test`'s 25-simulation game tried and
+  reverted (its control then failed, 87 of 90; I had wrongly said it would lose nothing).
+  The user: notes in CLAUDE.md — replies as long as needed, no longer. `night12` set up
+  to start after 02:00 and 20 minutes without input (the user needs the laptop until then).
+
+**Next step:** as recorded in `## Current status` — night12's results.

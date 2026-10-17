@@ -26,7 +26,7 @@
 //      upstream's computation, summing to 1 within 1e-12.
 //   Control: the same comparison against another network's priors (other weights) must
 //   differ by more than 1e-3, so 2 can fail.
-//   3. Reported, not required: searches (our MCTSBot, 100 simulations, no noise, through
+//   3. Reported, not required: searches on 20 positions (our MCTSBot, 100 simulations, no noise, through
 //      the trainer's batching evaluator) with the legal policy on and off — on how many
 //      positions the most visited move, and every root child's visits, agree (a prior
 //      ~1e-7 apart can tip a near tie).
@@ -188,7 +188,7 @@ int main() {
       az::MCTSBot bot(*game, eval, /*uct_c=*/2, /*max_simulations=*/100, /*max_memory_mb=*/100,
                       /*solve=*/false, /*seed=*/5, /*verbose=*/false,
                       az::ChildSelectionPolicy::PUCT, 0, 0, /*dont_return_chance_node=*/true);
-      for (int i = 0; i < 40; ++i) {
+      for (int i = 0; i < 20; ++i) {
         auto root = bot.MCTSearch(*positions[i]);
         std::vector<int> v;
         for (const auto& child : root->children) v.push_back(child.explore_count);
@@ -196,7 +196,7 @@ int main() {
         best[on].push_back(root->BestChild().action);
       }
     }
-    for (int i = 0; i < 40; ++i) {
+    for (int i = 0; i < 20; ++i) {
       ++searched;
       same_move += best[0][i] == best[1][i];
       same_visits += visits[0][i] == visits[1][i];

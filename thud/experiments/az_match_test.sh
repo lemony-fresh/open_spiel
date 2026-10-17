@@ -15,7 +15,7 @@
 
 # Tests az_match end to end (thud/experiments/az_match.cc; thud/PLAN.md, the GPU readiness
 # checklist), on two small untrained networks (make_test_network: the convolutional head
-# with the input planes, width 8, depth 1, a peaked prior), 2 pairs at 8 simulations:
+# with the input planes, width 8, depth 1, a peaked prior), 2 pairs at 4 simulations:
 #
 #   1. Reproducible: the same match twice plays the same battles (the games files equal).
 #   2. The record: each pair's two battles start from the same opening, network A on each
@@ -64,7 +64,7 @@ match() {  # match NAME ARGS...: A against B unless ARGS give b=
   shift
   local b="b=$tmp/b:0"
   for arg in "$@"; do [[ $arg == b=* ]] && b=$arg; done
-  OMP_NUM_THREADS=1 "$bin/az_match" a="$tmp/a:0" "$b" sims=8 pairs=2 opening=4 threads=1 \
+  OMP_NUM_THREADS=1 "$bin/az_match" a="$tmp/a:0" "$b" sims=4 pairs=2 opening=4 threads=1 \
     hexparrot_player="$repo/thud/experiments/hexparrot_player.py" \
     batch=1 untried=sibling_mean_minus_reduction "$@" games="$tmp/$name.games" \
     > "$tmp/$name.jsonl" 2> "$tmp/$name.err" || {

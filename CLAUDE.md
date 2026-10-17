@@ -21,6 +21,10 @@ times in a reply, in short replies too, though not in every sentence. In the doc
 belong in the final message of a turn, after the work, not in the text between tool
 calls, where long output buries them.
 
+**Answer as long as needed, no longer** (the user, 2026-10-16, to save tokens): a
+confirmation can be just a confirmation, and a simple question gets a simple answer;
+detail where the question or the result calls for it.
+
 ---
 
 ## Session start

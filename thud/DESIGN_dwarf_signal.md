@@ -983,6 +983,26 @@ moves; a step 0.7 → 0.6 would be allowed (gain 0.34). M102 on the same positio
 made the search amplify unsafe moves (§2 had inferred ~1.3 from M102's own training,
 without measuring it); and the teacher halved the prior's unsafe mass (0.16 → 0.08).
 
+**The whole run** (steps 122-161, done 2026-10-16 09:29; measurement 4 on each segment's own
+positions, N121 alongside on the same ones; the ratio is a far dwarf's worth with the
+dwarfs to move over its worth with the trolls to move):
+
+| Segment | Self-play games keeping dwarfs | The dwarfs' margin | Ratio, self-play positions (N121) | Ratio, games against alpha-beta (N121) |
+|---|---|---|---|---|
+| run N's last 10 steps | 2.2% | −23.4 | — | — |
+| to 131 | 12.7% | −20.4 | 65% (46%) | 18% (10%) |
+| to 141 | 23.0% | −20.7 | 73% (40%) | 44% (13%) |
+| to 151 | 27.0% | −21.8 | 50% (37%) | 15% (14%) |
+| to 161 | 22.7% | −23.4 | 47% (28%) | 3% (14%) |
+
+Survival rose fast to step 151, then fell back a little; the gap narrowed to step 141, then
+reopened — below the taper's 80% throughout. The placebo at self-play positions
+(~+0.008-0.010) is as large as the dwarf-to-move effect at steps 151-161, so the ratios
+there are uncertain. By the rule above: **survival rising but the gap not closing — the
+value does not learn what it sees** (E1, the value-loss weight, built 2026-10-15; E2).
+The margin's return to −23.4 at higher survival wants a look (the trolls improving too?):
+the evaluation of N161 against N121 and the players without a network comes first.
+
 ## Review log
 
 **Review 1** (an adversarial reviewer agent, 2026-10-12, on draft 2; findings checked at

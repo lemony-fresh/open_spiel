@@ -1626,14 +1626,14 @@ first session, with no patch at all.**
   | `az_match_test.sh` (new) | full, 97 s | `az_match`: reproducible; the record (openings, sides, the summary's arithmetic); `noise=`, `sample_plies=` and players without a network (alpha-beta, MCTS, hexparrot) the same whichever thread; `devices=`; `teacher_mix_a=` | each option must change the games; another seed too; the summary must record the devices |
   | `sanitized` (in `run_tests.sh`) | full, 10 s | `replay_buffer_test`, `features_test`, `az_buffer_truncate` under AddressSanitizer and UBSan | the binaries must carry ASan's instrumentation (and ASan was seen catching a heap overflow here) |
 
-  **Faster tests, to do 2026-10-16** (the user, 2026-10-15): three trims that lose
-  essentially nothing — `untried_move_test` plays the game that supplies its positions at
-  25 simulations instead of 100 (the searches under test stay at 100; the network is an
-  untrained test network, so the game's quality was never part of the test);
-  `legal_policy_test` reports its search comparison on 20 positions instead of 40 (its
-  required parts unchanged); `az_match_test` at 4 simulations instead of 8 (it tests
-  reproducibility and wiring, not strength). `identity_test` stays at 50 positions (the
-  user: it is the copy's proof of identity). Then measure the full set's time again.
+  **Faster tests** (the user, 2026-10-15/16): done, no weaker — `kickstart_test` (its cost
+  timing behind `cost=1`) and `conv_policy_test` (stops once the loss halves); done,
+  barely weaker — `legal_policy_test` reports its search comparison on 20 positions
+  (required parts unchanged; 50 s → 18 s), `az_match_test` at 4 simulations (128 s → 55 s).
+  **Tried and reverted:** `untried_move_test` with its position-supplying game at 25
+  simulations — the positions do matter to it: upstream's rule then visited a median of 87
+  dwarf moves, below its 90, and lowering the threshold would weaken it (my claim that it
+  would lose nothing was wrong). `identity_test` unchanged (the user).
 
   **Not covered by any test** (the gaps, to be kept current):
 
