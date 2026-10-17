@@ -211,6 +211,27 @@ class VPNetModel {
   // reported (LossInfo) stay unweighted, comparable across weights.
   void SetValueLossWeight(double weight) { value_loss_weight_ = weight; }
   double ValueLossWeight() const { return value_loss_weight_; }
+  // Our change (the same; the value-loss weight's sweep, 2026-10-17): the sizes (L2
+  // norms) of the gradients of the policy loss, the value loss (unweighted) and the L2
+  // term with respect to the parameters whose names pass `which` (the trunk: neither
+  // "policy" nor "value" in the name), and the cosine between the first two — computed
+  // as a learning step computes them (training mode, the batch's own statistics), but
+  // with no step: the parameters and the batch norms' running statistics stay as they
+  // were. Frozen parameters are left out (none left: every size 0).
+  // Our change (the same, 2026-10-17): with true, a learning step keeps every batch norm
+  // in evaluation mode — normalising by its running statistics, which then stay as they
+  // are, instead of the batch's own — while their scales and shifts still learn. This is
+  // how the trainer has in effect learnt on a single device: its inference threads call
+  // Inference, which sets the shared network to evaluation mode, while the learner's step
+  // runs (upstream's DeviceManager does not keep them apart; found 2026-10-17,
+  // thud/DESIGN_dwarf_signal.md, E1). Off by default (upstream's training mode).
+  void SetBatchNormsInEvaluation(bool on) { batch_norms_in_evaluation_ = on; }
+  bool BatchNormsInEvaluation() const { return batch_norms_in_evaluation_; }
+  struct GradientSizes {
+    double policy = 0, value = 0, l2 = 0, cosine = 0;
+  };
+  GradientSizes Gradients(const std::vector<TrainInputs>& inputs,
+                          const std::function<bool(const std::string&)>& which);
   // Our change (the legal policy; thud/PLAN.md, the batching path): Inference's priors
   // from the logits of each position's legal moves alone, normalised in double — not
   // upstream's mask and softmax over every distinct action (19,800 in Thud, of which a
@@ -228,7 +249,11 @@ class VPNetModel {
   std::string Device() const { return device_; }
 
  private:
-  LossInfo Losses(const std::vector<TrainInputs>& inputs, bool learn);
+  // Our change: with `gradients_of` (learn true), Gradients' computation instead of the
+  // learning step, into `sizes`.
+  LossInfo Losses(const std::vector<TrainInputs>& inputs, bool learn,
+                  const std::function<bool(const std::string&)>* gradients_of = nullptr,
+                  GradientSizes* sizes = nullptr);
   // Our change: Inference with the legal policy (SetLegalPolicy).
   std::vector<InferenceOutputs> InferenceAtLegalMoves(const std::vector<InferenceInputs>& inputs);
   // Our change: writes the network's input for `observation` to out[0, flat_input_size_).
@@ -270,6 +295,7 @@ class VPNetModel {
   int side_to_move_index_;
   // Our change (Freeze): leaf modules kept in evaluation mode while learning.
   std::vector<std::shared_ptr<torch::nn::Module>> frozen_modules_;
+  bool batch_norms_in_evaluation_ = false;  // Our change: SetBatchNormsInEvaluation.
   double value_loss_weight_ = 1;  // Our change: SetValueLossWeight.
   bool legal_policy_ = true;  // Our change: SetLegalPolicy.
 };

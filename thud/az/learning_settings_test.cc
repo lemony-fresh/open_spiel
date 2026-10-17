@@ -39,6 +39,21 @@
 //   5. Saving under a temporary name: SaveCheckpoint and ReplayBuffer::SaveBuffer leave
 //      no ".tmp" file, and what they wrote loads (the network's outputs, the buffer's
 //      contents equal).
+//   6. Gradients, the gradients' sizes (2026-10-17, the value-loss weight's sweep): each
+//      loss's own — over the value head's parameters the policy loss's gradient is
+//      exactly 0 and the value loss's not, over the policy head's the reverse, over the
+//      trunk both non-zero; the L2 term's equals its definition, weight decay x the size
+//      of the trunk's weights without the biases (a network with weight decay 0.01), and
+//      over the biases alone 0; the value's unweighted (the same at weight 5); and no
+//      step: every parameter and running statistic, so every output, exactly as before
+//      — the control: a learning step at rate 0, which only the running statistics
+//      change, moves the outputs; and over no parameter (a frozen trunk) every size 0,
+//      not LibTorch's exception (found 2026-10-17 by trainer_test's frozen trunk).
+//   7. SetBatchNormsInEvaluation: a learning step at rate 0 then leaves every output
+//      exactly as it was (the running statistics untouched; the control is part 3's step,
+//      which moves them), its reported losses equal Loss()'s on the same batch (the batch
+//      norms normalised as the network plays; the control: without it they differ), and
+//      at the network's rate the batch norms' scales still learn.
 //
 //   thud/run_tests.sh learning_settings_test   # builds and runs it
 //   build-tests/bin/learning_settings_test
@@ -304,6 +319,115 @@ int main() {
           absl::StrFormat("5. SaveCheckpoint and SaveBuffer leave no .tmp file; what they "
                           "wrote loads (outputs equal: %.2g; the buffer's samples equal: %s)",
                           d, same ? "yes" : "no"));
+  }
+
+  // 6. Gradients.
+  {
+    auto m = fresh(), reference = fresh();
+    auto everything = [](const std::string&) { return true; };
+    const auto before = Snapshot(*m);
+    const VPNetModel::GradientSizes value_head = m->Gradients(batch, IsValueHead);
+    const VPNetModel::GradientSizes policy_head = m->Gradients(batch, IsPolicyHead);
+    const VPNetModel::GradientSizes trunk = m->Gradients(batch, IsTrunk);
+    Check(value_head.policy == 0 && value_head.value > 0 && policy_head.value == 0 &&
+              policy_head.policy > 0 && trunk.policy > 0 && trunk.value > 0 &&
+              std::abs(trunk.cosine) <= 1,
+          absl::StrFormat("6. each loss's own gradient: value head policy %.2g, value %.2g; "
+                          "policy head policy %.2g, value %.2g; trunk policy %.3g, value "
+                          "%.3g, cosine %.3f",
+                          value_head.policy, value_head.value, policy_head.policy,
+                          policy_head.value, trunk.policy, trunk.value, trunk.cosine));
+    const VPNetModel::GradientSizes none =
+        m->Gradients(batch, [](const std::string&) { return false; });
+    Check(none.policy == 0 && none.value == 0 && none.l2 == 0 && none.cosine == 0,
+          "6. over no parameter (a frozen trunk) every size 0");
+    m->SetValueLossWeight(5);
+    const VPNetModel::GradientSizes weighted = m->Gradients(batch, IsTrunk);
+    Check(weighted.value == trunk.value && weighted.policy == trunk.policy,
+          absl::StrFormat("6. the value's gradient unweighted: %.6g at weight 5 and 1",
+                          weighted.value));
+    m->Gradients(batch, everything);
+    double moved = 0;
+    {
+      torch::NoGradGuard no_grad;
+      const auto now = m->NamedTensors();
+      for (size_t i = 0; i < now.size(); ++i) {
+        moved = std::max(moved, (now[i].second.to(torch::kDouble) -
+                                 before[i].second.to(torch::kDouble))
+                                    .abs()
+                                    .max()
+                                    .item<double>());
+      }
+    }
+    const double outputs = MaxDifference(*m, *reference, probe);
+    auto control = fresh();
+    control->SetLearningRate(0);
+    control->Learn(batch);
+    const double control_outputs = MaxDifference(*control, *reference, probe);
+    Check(moved == 0 && outputs == 0 && control_outputs > 0,
+          absl::StrFormat("6. no step: every tensor (running statistics included) moved by "
+                          "%.2g, the outputs by %.2g; the control, a step at rate 0, moves "
+                          "the outputs by %.2g",
+                          moved, outputs, control_outputs));
+
+    const std::string decay_dir = dir + "/decay";
+    std::filesystem::create_directories(decay_dir);
+    SPIEL_CHECK_TRUE(az::CreateGraphDef(*game, /*learning_rate=*/0.01, /*weight_decay=*/0.01,
+                                        decay_dir, "vpnet.pb", "resnet_conv_policy", 8, 1,
+                                        /*verbose=*/false));
+    VPNetModel decay(*game, decay_dir, "vpnet.pb", "/cpu:0");
+    double weights = 0;
+    {
+      torch::NoGradGuard no_grad;
+      for (auto& [name, t] : decay.NamedTensors()) {
+        if (IsTrunk(name) && !absl::StrContains(name, "bias") &&
+            !absl::StrContains(name, "running_") && !absl::StrContains(name, "num_batches")) {
+          weights += t.to(torch::kDouble).square().sum().item<double>();
+        }
+      }
+    }
+    const double expected = 0.01 * std::sqrt(weights);
+    const VPNetModel::GradientSizes l2 = decay.Gradients(batch, IsTrunk);
+    auto biases = [](const std::string& n) { return absl::StrContains(n, "bias"); };
+    const VPNetModel::GradientSizes l2_biases = decay.Gradients(batch, biases);
+    Check(std::abs(l2.l2 - expected) <= 1e-5 * expected && l2_biases.l2 == 0 &&
+              l2_biases.value > 0,
+          absl::StrFormat("6. the L2 term's gradient over the trunk %.7g, its definition "
+                          "0.01 x |weights| %.7g; over the biases %.2g (their value "
+                          "gradient %.2g)",
+                          l2.l2, expected, l2_biases.l2, l2_biases.value));
+  }
+
+  // 7. SetBatchNormsInEvaluation.
+  {
+    auto m = fresh(), reference = fresh(), control = fresh();
+    m->SetBatchNormsInEvaluation(true);
+    m->SetLearningRate(0);
+    control->SetLearningRate(0);
+    const VPNetModel::LossInfo plays = reference->Loss(batch);
+    const VPNetModel::LossInfo learnt = m->Learn(batch);
+    const VPNetModel::LossInfo control_learnt = control->Learn(batch);
+    const double outputs = MaxDifference(*m, *reference, probe);
+    const double same = std::max(std::abs(learnt.Value() - plays.Value()),
+                                 std::abs(learnt.Policy() - plays.Policy()));
+    const double differs = std::max(std::abs(control_learnt.Value() - plays.Value()),
+                                    std::abs(control_learnt.Policy() - plays.Policy()));
+    Check(outputs == 0 && same < 1e-5 && differs > 1e-3,
+          absl::StrFormat("7. batch norms in evaluation: a step at rate 0 moves the outputs "
+                          "by %.2g; its losses differ from Loss()'s by %.2g; the control, "
+                          "training mode, by %.2g",
+                          outputs, same, differs));
+    const auto before = Snapshot(*m);
+    m->SetLearningRate(m->BaseLearningRate());
+    m->Learn(batch);
+    auto scales = [](const std::string& n) {
+      return absl::StrContains(n, "batch_norm") && absl::EndsWith(n, ".weight");
+    };
+    const double moved = Moved(*m, before, scales);
+    Check(moved > 1e-5,
+          absl::StrFormat("7. ... and at the network's rate the batch norms' scales learn "
+                          "(by %.2g)",
+                          moved));
   }
 
   std::filesystem::remove_all(dir);

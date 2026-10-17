@@ -470,9 +470,19 @@ VPNetModel::LossInfo VPNetModel::Loss(const std::vector<TrainInputs>& inputs) {
   return Losses(inputs, /*learn=*/false);
 }
 
+// Our change: the gradients' sizes (vpnet.h).
+VPNetModel::GradientSizes VPNetModel::Gradients(
+    const std::vector<TrainInputs>& inputs,
+    const std::function<bool(const std::string&)>& which) {
+  GradientSizes sizes;
+  Losses(inputs, /*learn=*/true, &which, &sizes);
+  return sizes;
+}
+
 // Our change: Learn's code, which can also stop before the learning step.
-VPNetModel::LossInfo VPNetModel::Losses(const std::vector<TrainInputs>& inputs,
-                                        bool learn) {
+VPNetModel::LossInfo VPNetModel::Losses(
+    const std::vector<TrainInputs>& inputs, bool learn,
+    const std::function<bool(const std::string&)>* gradients_of, GradientSizes* sizes) {
   int training_batch_size = inputs.size();
 
   std::vector<float> raw_train_inputs(training_batch_size * flat_input_size_);
@@ -535,11 +545,60 @@ VPNetModel::LossInfo VPNetModel::Losses(const std::vector<TrainInputs>& inputs,
   // Run a training step and get the losses.
   model_->train();
   for (auto& module : frozen_modules_) module->eval();  // Our change: Freeze.
+  if (batch_norms_in_evaluation_) {  // Our change: SetBatchNormsInEvaluation.
+    for (const auto& module : model_->modules(/*include_self=*/false)) {
+      if (module->as<torch::nn::BatchNorm2d>() != nullptr) module->eval();
+    }
+  }
   model_->zero_grad();
+
+  // Our change (Gradients): the running statistics, which the forward pass in training
+  // mode updates, kept to be put back.
+  std::vector<torch::Tensor> running;
+  if (gradients_of != nullptr) {
+    for (const torch::Tensor& buffer : model_->buffers()) running.push_back(buffer.clone());
+  }
 
   std::vector<torch::Tensor> torch_outputs =
       model_->losses(torch_train_inputs, torch_train_legal_mask,
                      torch_policy_targets, torch_value_targets);
+
+  if (gradients_of != nullptr) {  // Our change: Gradients, no learning step.
+    std::vector<torch::Tensor> parameters;
+    for (const auto& named : model_->named_parameters()) {
+      if (named.value().requires_grad() && (*gradients_of)(named.key())) {
+        parameters.push_back(named.value());
+      }
+    }
+    auto gradients = [&](const torch::Tensor& loss) -> std::vector<torch::Tensor> {
+      if (parameters.empty()) return {};  // LibTorch refuses an empty list: all 0.
+      return torch::autograd::grad({loss.sum()}, parameters, /*grad_outputs=*/{},
+                                   /*retain_graph=*/true, /*create_graph=*/false,
+                                   /*allow_unused=*/true);
+    };
+    const auto policy = gradients(torch_outputs[0]), value = gradients(torch_outputs[1]),
+               l2 = gradients(torch_outputs[2]);
+    double pp = 0, vv = 0, ll = 0, pv = 0;
+    for (size_t i = 0; i < parameters.size(); ++i) {
+      if (policy[i].defined()) pp += policy[i].square().sum().item<double>();
+      if (value[i].defined()) vv += value[i].square().sum().item<double>();
+      if (l2[i].defined()) ll += l2[i].square().sum().item<double>();
+      if (policy[i].defined() && value[i].defined()) {
+        pv += (policy[i] * value[i]).sum().item<double>();
+      }
+    }
+    sizes->policy = std::sqrt(pp);
+    sizes->value = std::sqrt(vv);
+    sizes->l2 = std::sqrt(ll);
+    sizes->cosine = pp > 0 && vv > 0 ? pv / (sizes->policy * sizes->value) : 0;
+    {
+      torch::NoGradGuard no_grad;
+      const std::vector<torch::Tensor> buffers = model_->buffers();
+      for (size_t i = 0; i < buffers.size(); ++i) buffers[i].copy_(running[i]);
+    }
+    return LossInfo(torch_outputs[0].item<float>(), torch_outputs[1].item<float>(),
+                    torch_outputs[2].item<float>());
+  }
 
   torch::Tensor total_loss =  // Our change: the value loss weighted (SetValueLossWeight).
       value_loss_weight_ == 1

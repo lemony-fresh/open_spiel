@@ -664,6 +664,8 @@ the search and trainer*, run C'.
 | 2026-10-15 | One word per concept for what "check" had meant: **tests** (our test programs, files `*_test`, `thud/run_tests.sh`, `build-tests/`), **measurements** (the design's numbered ones: measurement 4 = the value by side to move), **probes** (analysis programs: `az_blunder_probe`, `az_noise_probe`, `az_head_probe`, `az_layout_probe`), **assertions**, **measures** (logged statistics); the session log keeps the old words | user | *Tests*; CLAUDE.md |
 | 2026-10-15 | The taper's condition (d): the gap counts as closed when, with the dwarfs to move, a far dwarf is worth at least 80% of its worth with the trolls to move, in two measurements in a row | user (Claude proposed) | the design's §5 |
 | 2026-10-15 | The taper's condition (c), stricter: step the dwarfs' teacher weight from w to w′ only if the unsafe-move loop's gain after the step, (1 − w′) × R, is at most 0.8, R (the search's visit share on unsafe dwarf moves over the prior's) at its 95% upper bound; to revisit once in use | user (Claude proposed) | the design's §5 |
+| 2026-10-17 | The run programs built by `thud/programs.mk` through `thud/build_programs.sh` (incremental; a second when nothing changed), run first by every queue and by `run_tests.sh --full`; it builds nothing while one of them runs (a stale `az_capture_targets` had aborted night12's probe) | user (Claude proposed) | CLAUDE.md, *Build and test*; *Tests* |
+| 2026-10-17 | E1 tested offline first: N161 trained on on run N's last buffer as the trainer learns (its own optimizer, the batch norms in evaluation mode), 640 batches at value-loss weights 1, 4 and 16 and a control at twice the rate, seeds 1 and 2; read by measurement 4 with intervals that resample whole games, paired between networks; the best weight then online against weight 1 (10 steps each); a finer sweep around it only if its neighbours differ beyond the seeds' noise | user (Claude proposed) | the design's §10, *E1's offline sweep* |
 
 **Considered and set aside** (with the reason): the Python AlphaZero (a layout bug, and
 slow; fallback note below); a 32 x 2 network (its convolutions see 11 x 11 squares);
@@ -1584,7 +1586,7 @@ first session, with no patch at all.**
   implemented and what's tested and what's missing, even if small subfeatures are
   missing"). `thud/run_tests.sh` builds what is out of date (`thud/tests.mk`, into
   `build-tests/`, **without `-DNDEBUG`**) and runs the quick tests (~20 s, four at once)
-  or with `--full` all 31 (150 s on an idle machine, 2026-10-17) and then brings the
+  or with `--full` all 32 (150 s on an idle machine, 2026-10-17) and then brings the
   programs our runs use up to date (`thud/build_programs.sh`, `thud/programs.mk`, into
   `build-shared/`: a stale `az_capture_targets` had aborted a night's probe; while one of
   them runs it builds nothing and says so); none needs a run folder — the networks the tests read
@@ -1608,11 +1610,12 @@ first session, with no patch at all.**
   | `augmentation_test` | quick, 0.2 s | the 8 symmetries of observations, moves and policy targets | positions mirrored independently, as text |
   | `identity_test` | full, 88 s | our AlphaZero copy computes as upstream's, bit for bit: outputs (ours with the legal policy off, `SetLegalPolicy(false)`), a learning step, searches with and without noise, rollouts | another network, seed, step must differ |
   | `legal_policy_test` (new) | full, 44 s | the legal policy, our default, against upstream's computation, for the three models, batches of 1 and 32: the values bit for bit, the priors within 1e-6 (measured ~1e-7) summing to 1; reported: searches with it on and off (all 120 identical) | another network's priors must differ |
-  | `learning_settings_test` (new) | quick, 0.8 s | the learning-rate schedule's factors, the config's round trip and old configs' defaults, `SetLearningRate`, the rate a checkpoint restores, the value-loss weight, the saves under temporary names | a step at the network's rate must move the parameters; weight 1 must move the value head |
+  | `learning_settings_test` (new) | quick, 0.8 s | the learning-rate schedule's factors, the config's round trip and old configs' defaults, `SetLearningRate`, the rate a checkpoint restores, the value-loss weight, the saves under temporary names; since 2026-10-17 `Gradients` (each loss's own gradient over each head, the L2 term's against its definition to 1e-5, unweighted, no step, an empty set all 0) and `SetBatchNormsInEvaluation` (a step at rate 0 moves no output, its losses equal `Loss()`'s, the scales still learn) | a step at the network's rate must move the parameters; weight 1 must move the value head; a step at rate 0 in training mode must move the outputs; training mode's losses must differ from `Loss()`'s |
   | `watchdog_test.sh` (new) | full, 90 s | the watchdog and crash-safe saving: kills during a buffer write and a checkpoint write, a truncated record — the run finishes, every step once; the stop; giving up | a half-written buffer must be refused |
   | `transfer_test.sh` (new) | full, 24 s | `transfer_run.sh` between local folders: checksums, the copy's path, the copy resumes into itself, the original untouched, `--state-only`, a running run refused, an interrupted copy completed | the original's config.json must still point at the original |
   | `playout_cap_test` (new) | quick, 1.3 s | playout cap randomisation: off plays the old games; on records about the share, every recorded position a full search; the fast bots | off, every move must be recorded |
   | `regression_gates_test.py` (new) | quick, 0.9 s | the gates' arithmetic on made inputs: a network against itself; the blunder rule by hand; positions that do not match skipped | each made regression must fail its gate alone; lower long hurls only monitored |
+  | `dwarf_value_report_test.py` (new, 2026-10-17) | quick, 0.8 s | measurement 4's intervals (`dwarf_value_report.py`): exact values, the 95% intervals' coverage (37 of 40), paired differences, reading the probe's records | resampling positions one by one must narrow the interval when each position is repeated in its game (it does, to 0.51; by games 1.00); a copy of a network must differ by exactly 0 |
   | `ladder_test.py` (new) | quick, 0.7 s | the ladder: known strengths recovered exactly (both links, a chain of matches), the 95% intervals' coverage with noise (77 of 80), differences, player names, loading az_match's files | one player 5 points a battle better must rise by 10 |
   | `position_edits_test` (new) | quick, 1.5 s | the value probe's position edits (`position_edits.h`): the far pieces, a piece removed, a dwarf moved — each against a computation of its own, on 707 positions | removing another piece must give another board |
   | `unsafe_targets_test` (new) | quick, 1 s | the taper's condition (c): the unsafe-move rule (by hand and against the board on 64,633 moves), R, its bootstrap upper end, the design's table of allowed steps | just above each bound must be refused |
@@ -1625,7 +1628,7 @@ first session, with no patch at all.**
   | `kickstart_test` | full, ~25 s (189 s → 37 s beside a trainer, 2026-10-15: the printed cost timing now behind `cost=1`) | the teacher's scores and policy, the mixed targets, the weight per player | depth 1 must score the position's moves alike; the mixed target must differ from the unmixed |
   | `teacher_mix_test` (new) | quick, 0.3 s | `az_match teacher_mix_a`: the mix per player, exactly; the values unchanged; the cache | the teacher must differ from the prior at both nodes |
   | `grow_test` (new) | quick, 2.4 s | Net2Net (`net2net.h`): the mapping; the function kept for wider, deeper, both, the linear head, no growth; every tensor accounted for; copies stay equal under training without noise, part with it; a grown network reloads | three: no division; a batch norm's statistics left uncopied; new blocks not the identity — each must exceed 10x the tolerance |
-  | `trainer_test.sh` (new) | quick, 26 s | the trainer end to end with every feature of ours on (two device copies, batching, augmentation, pruning, 2 learner batches, alpha-beta games, kickstarting and noise per player, a learning-rate warm-up and schedule, a value-loss weight): checkpoints, buffer, logs, config; resuming (the step follows on, the rates the schedule's, logs appended); training on from an `az_grow` network; `az_restructure` (a new head, frozen trunk); `az_fresh_optimizer` | the tools' own fatal tests (az_grow's control among them) |
+  | `trainer_test.sh` (new) | quick, 26 s | the trainer end to end with every feature of ours on (two device copies, batching, augmentation, pruning, 2 learner batches, alpha-beta games, kickstarting and noise per player, a learning-rate warm-up and schedule, a value-loss weight): checkpoints, buffer, logs, config; resuming (the step follows on, the rates the schedule's, logs appended); training on from an `az_grow` network; `az_restructure` (a new head, frozen trunk; since 2026-10-17 also training on at value-loss weight 4 with a warm-up and keep=every — the rates, the gradient sizes, the summary — and with `optimizer=source`); `az_fresh_optimizer` | the tools' own fatal tests (az_grow's control among them; `optimizer=source`'s: a fresh optimizer's step must differ) |
   | `az_match_test.sh` (new) | full, 97 s | `az_match`: reproducible; the record (openings, sides, the summary's arithmetic); `noise=`, `sample_plies=` and players without a network (alpha-beta, MCTS, hexparrot) the same whichever thread; `devices=`; `teacher_mix_a=` | each option must change the games; another seed too; the summary must record the devices |
   | `sanitized` (in `run_tests.sh`) | full, 10 s | `replay_buffer_test`, `features_test`, `az_buffer_truncate` under AddressSanitizer and UBSan | the binaries must carry ASan's instrumentation (and ASan was seen catching a heap overflow here) |
 
@@ -1655,6 +1658,16 @@ first session, with no patch at all.**
     `temperature_a`/`temperature_b`, `sims_a`/`sims_b`; `SelfPlayChooser`'s sampling only
     end to end. Its default path to `hexparrot_player.py` is found from the binary's folder
     and is right only for `build-shared/` (the test passes it explicitly).
+  - *Moving a build folder* breaks its incremental build: each object's dependency file
+    names it by its full path, so after the rename `build-checks/` → `build-tests/`
+    (2026-10-15) nine objects had no header dependencies left and were never rebuilt —
+    harmless until a header changed a class's layout (`VPNetModel`'s new member,
+    2026-10-17): `pruning_test` crashed and `trainer_test` aborted, both linked with a stale
+    `alpha_zero.o`, and the pre-commit hook stopped the commit. Fixed by a clean rebuild of
+    `build-tests/obj/`; after moving a build folder, delete its objects.
+  - *The trainer's batch norms* (2026-10-17): no test pins the mode its learning steps
+    run in — on one device the inference threads decide it (*Upstreaming*, candidate 4);
+    `SetBatchNormsInEvaluation`, the offline equivalent, is tested.
   - *The trainer*: its evaluators (`trainer_test` runs none), `explicit_learning`,
     resignation (`cutoff_probability`, off in our runs), `inference_cache` sizes, the
     learner's statistics' numbers (tested once by hand, 2026-10-03).
@@ -4480,6 +4493,19 @@ Found while building the GPU checklist's features; each checked in upstream's ow
    (Thud 19,800, chess 4,674, Go 362, Hex 121). An optimisation, not a fix; measured here
    only with networks cheap to evaluate (chess, a tiny network: +49%), none with a real
    one on this CPU (chess 64 x 4: ±0). Revisit after GPU measurements.
+4. **The learner's batch norms on a shared device** (found 2026-10-17, the design's §10,
+   *E1's offline sweep*): `VPNetModel::Learn` sets the network to training mode
+   (`vpnet.cc:270`) and `Inference` to evaluation mode (`:191`), on one shared module;
+   `DeviceManager`'s mutex guards only its count of requests (`device_manager.h:71, 97`),
+   and with one device `explicit_learning` must be off (`alpha_zero.cc:579`), so the
+   inference threads serving the actors use the learner's network while it learns, and
+   set it to evaluation mode during its steps. Reproduced on our copy (the same code):
+   N161's training-mode losses on batches of its buffer, value 0.12-0.14, fall to
+   0.023-0.027 with one inference thread beside the steps — the level our trainer
+   reported throughout; so the batch norms normalise mostly by their running statistics
+   while learning, and those are rarely updated. A real bug (the step's mode is not the one
+   `Learn` sets; the parameters are also written while inference reads them). Not yet
+   raised; a fix would change how every single-device run learns.
 
 ## Deferred decisions
 

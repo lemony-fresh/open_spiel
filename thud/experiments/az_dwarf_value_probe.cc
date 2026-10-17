@@ -33,9 +33,14 @@
 // ~0. Each also divided by 1 - v^2 (tanh's slope, "pre-tanh"). (An untrained network is
 // no control here: its value does not vary with the input.)
 //
-//   thud/az/build.sh thud/experiments/az_dwarf_value_probe.cc
+// With each=PATH (2026-10-17, for intervals that resample whole games:
+// thud/experiments/dwarf_value_report.py), every position's values also go to PATH, one
+// JSON line each: the network, the kind, the game it comes from (numbered as read), and
+// dwarf, shift and troll (null where the position has no such variant).
+//
+//   thud/build_programs.sh az_dwarf_value_probe
 //   OMP_NUM_THREADS=4 build-shared/az_dwarf_value_probe logs=RUN_DIR \
-//     nets=NAME=DIR:STEP,... [every=7 max=800 far=4 seed=1]
+//     nets=NAME=DIR:STEP,... [every=7 max=800 far=4 seed=1 each=PATH]
 //
 // Prints one JSON line per network and kind of position.
 
@@ -80,6 +85,7 @@ Action Find(const State& state, const std::string& move) {
 // moved one square (the last two empty if there is no such piece or square).
 struct Probe {
   std::unique_ptr<State> position, no_dwarf, no_troll, shifted;
+  int game = 0;  // The game it comes from, numbered as read.
 };
 
 }  // namespace
@@ -98,6 +104,7 @@ int main(int argc, char** argv) {
   const std::string logs = get("logs", ""), nets = get("nets", "");
   const int every = std::stoi(get("every", "7")), max_positions = std::stoi(get("max", "800"));
   const int far = std::stoi(get("far", "4"));
+  const std::string each_path = get("each", "");
   std::mt19937 rng(std::stoi(get("seed", "1")));
   if (logs.empty() || nets.empty()) {
     std::cerr << "Usage: az_dwarf_value_probe logs=RUN_DIR nets=NAME=DIR:STEP,... [...]"
@@ -112,6 +119,8 @@ int main(int argc, char** argv) {
                                           "selfplay_trolls_to_move",
                                           "selfplay_dwarfs_to_move"};
   std::map<std::string, std::vector<std::unique_ptr<State>>> all;
+  std::map<std::string, std::vector<int>> game_of;  // Parallel to `all`.
+  int game_number = 0;
   std::vector<std::string> paths;
   for (const auto& entry : std::filesystem::directory_iterator(logs)) {
     if (absl::StartsWith(entry.path().filename().string(), "log-actor-")) {
@@ -129,6 +138,7 @@ int main(int argc, char** argv) {
                              absl::StrContains(line, " as dwarfs;");
       if (!self_play && !ab_dwarfs) continue;
       ++games_read[self_play];
+      ++game_number;
       const std::string prefix = self_play ? "selfplay_" : "ab_games_";
       std::unique_ptr<State> s = game->NewInitialState();
       int ply = 0;
@@ -136,9 +146,11 @@ int main(int argc, char** argv) {
            absl::StrSplit(line.substr(line.find("Actions: ") + 9), ' ', absl::SkipEmpty())) {
         if (s->IsTerminal()) break;
         if (ply >= 10 && ply % every == 0) {
-          all[prefix + (s->CurrentPlayer() == thud::kDwarfPlayer ? "dwarfs_to_move"
-                                                                 : "trolls_to_move")]
-              .push_back(s->Clone());
+          const std::string kind =
+              prefix + (s->CurrentPlayer() == thud::kDwarfPlayer ? "dwarfs_to_move"
+                                                                 : "trolls_to_move");
+          all[kind].push_back(s->Clone());
+          game_of[kind].push_back(game_number);
         }
         s->ApplyAction(Find(*s, std::string(move)));
         ++ply;
@@ -172,12 +184,21 @@ int main(int argc, char** argv) {
         probe.no_troll = Without(*game, state, tr, tc);
       }
       probe.position = std::move(list[i]);
+      probe.game = game_of[kind][i];
       probes[kind].push_back(std::move(probe));
     }
     std::cerr << absl::StrFormat("%s: %d positions, %d with a far dwarf\n", kind,
                                  list.size(), probes[kind].size());
   }
 
+  std::ofstream each;
+  if (!each_path.empty()) {
+    each.open(each_path);
+    if (!each) open_spiel::SpielFatalError("Cannot write " + each_path);
+  }
+  auto json_number = [](bool present, double x) {
+    return present ? absl::StrFormat("%.6f", x) : std::string("null");
+  };
   for (absl::string_view spec : absl::StrSplit(nets, ',', absl::SkipEmpty())) {
     const size_t eq = spec.find('='), colon = spec.rfind(':');
     const std::string name(spec.substr(0, eq));
@@ -198,10 +219,20 @@ int main(int argc, char** argv) {
         dwarf.push_back(d);
         dwarf_pre.push_back(d / slope);
         if (p.shifted) shift.push_back(v - value(*p.shifted));
+        double s = 0, t = 0;
+        if (p.shifted) s = shift.back();
         if (p.no_troll) {
-          const double t = value(*p.no_troll) - v;
+          t = value(*p.no_troll) - v;
           troll.push_back(t);
           troll_pre.push_back(t / slope);
+        }
+        if (each.is_open()) {
+          each << absl::StrFormat(
+                      "{\"net\": \"%s\", \"kind\": \"%s\", \"game\": %d, \"v\": %.6f, "
+                      "\"dwarf\": %.6f, \"shift\": %s, \"troll\": %s}",
+                      name, kind, p.game, v, d, json_number(p.shifted != nullptr, s),
+                      json_number(p.no_troll != nullptr, t))
+               << "\n";
         }
       }
       auto mean = [](const std::vector<double>& x) -> double {

@@ -750,7 +750,11 @@ overfitting now (step 102: 0.021 on trained positions, 0.015 on new ones), and e
 position is sampled only ~3 times. Down: measurement 4 says the data, not the learning, are the
 limit — the value learnt a dwarf's worth wherever its data showed it; the trunk's
 capacity shifts toward the value; may start to overfit (watch the same measure). Dev ~1
-hour.
+hour. **Measured 2026-10-17** (§10, *E1's offline sweep*): the loss sizes mislead — on the
+trunk the value's gradient is already 1.5-6.6 times the policy's at weight 1 (N161, as the
+trainer learns), the two at a cosine of about −0.5; under Adam, which normalises each
+parameter's step, a larger weight mostly turns the trunk further toward the value, at the
+policy's expense, so little is expected; the sweep tests it.
 
 **E2. A categorical margin head**: 65 bins over the margins −32..32, the value its
 expectation (MuZero's categorical support, KataGo's score distribution, Leela Chess Zero's
@@ -880,7 +884,9 @@ reproduce the old targets exactly (D1: `kickstart_test`).
    - D1 does not win → C7 or B1′ next; C1 after them (measurement 5: its survivals are troll
      wipe-outs).
 4. **Later**: B1 only with b applied at sampling and sized to a measured signal (measurement 6);
-   C2 (after measurement 7); E2 on the GPU. **Not now**: A1-A3, B2, B3, C4-C6, D3, E1.
+   C2 (after measurement 7); E2 on the GPU. **Not now**: A1-A3, B2, B3, C4-C6, D3, E1 (E1
+   since tested after all, the longer run's gap having reopened: §10, *E1's offline
+   sweep*, 2026-10-17).
 
 ## 9. Open questions
 
@@ -1011,6 +1017,54 @@ network as N121: alpha-beta 1 +17.4 (N121 +20.8; its dwarfs −12.7 against −9
 gates against M102 all pass**, the blunders down to 5.9% of the dwarfs' moves (N121 9.8%,
 M102 25.4%). Condition (c): R = 0.65 (upper 0.79) — the search no longer amplifies unsafe
 moves, even without a teacher; the taper waits on condition (d), the value's gap.
+
+**Measurement 4 with intervals** (2026-10-17; `az_dwarf_value_probe each=` and
+`thud/experiments/dwarf_value_report.py`: 95% intervals from a bootstrap that resamples
+whole games — a game's positions are not independent — and differences between networks
+paired on the same positions). The table above, self-play positions: N131 65% (56-75),
+N141 73% (65-82), N151 50% (39-62), N161 47% (31-65). Each segment's positions differ, and
+N121 measured on each falls too (46, 43, 38, 28%), so the table alone cannot separate the
+networks from their positions. On the same positions it can: on steps 132-141's, **N151 −
+N141 = −24 points (−33 to −14)**, N161 − N151 +1 (−11 to +17); on steps 152-161's, −20
+(−29 to −10) and −1 (−11 to +10). So the gap did reopen between steps 141 and 151, and stayed
+reopened — the reading above stands. Net of the placebo the self-play ratios are
+uncertain at the end (N161 −11%, −54 to +26).
+
+**E1's offline sweep** (2026-10-17, `~/thud-runs/e1_sweep_2026-10-17.sh`, results in
+`~/thud-runs/e1_sweep_2026-10-17/`; the user: build it and run it, larger weights too, with
+intervals). N161 trained on on run N's last buffer (458,752 positions, steps ~141-161;
+every 20th block of 1,024 held out) by `az_restructure`, 640 batches of 1,024 (10 trainer
+steps, ~35 minutes an arm), then measurement 4 at 320 and 640 batches on steps 142-161's
+games, each arm paired with weight 1 at the same seed. Three findings while building it:
+
+- **Our trainer learns with its batch norms in evaluation mode, in effect.** In true
+  training mode N161's losses on batches of its own buffer are value 0.13, policy 3.96
+  (evaluation mode: 0.029, 3.84) — yet the trainer reported 0.027 and 3.85 as it trained.
+  The cause: on one device the inference threads serving the actors share the learner's
+  network, and each `Inference` sets it to evaluation mode while `Learn`'s step runs
+  (upstream's design; reproduced: one inference thread beside the steps brings their
+  losses from 0.12-0.14 down to 0.023-0.027; PLAN.md, *Upstreaming*, candidate 4). So
+  offline training that carries over must keep the batch norms in evaluation mode
+  (`batch_norms=evaluation`): with it the control at weight 1 holds N161's held-out losses
+  (value 0.0311 → 0.0296 → 0.0313, policy 3.797 → 3.794 over 40 batches); in training
+  mode they rose to 0.056 and 3.85.
+- **The value already leads the trunk** (E1 above): at weight 1 its gradient there is
+  1.5-6.6 times the policy's, cosine −0.4 to −0.5. A larger weight therefore changes the
+  direction of the trunk's steps more than their size; the expectation is a small effect.
+- **The optimizer matters**: a fresh one damages N161 (held-out value loss 0.031 → 0.16 in
+  40 batches), so every arm continues N161's own (`optimizer=source`, tested against the
+  source's own step). But Adam's second moments are N161's at weight 1: a new weight w
+  first raises the effective rate of the parameters the value leads — by about 1.4-2.6x
+  over these 640 batches at w = 4 to 16, estimated from Adam's update rule (not measured). Hence a control arm: weight 1 at twice the rate — if a
+  weight's effect is the rate's, the two agree.
+
+Arms: weights 1, 4, 16 and the rate control, each with seeds 1 and 2 (the training's own
+noise), a warm-up of 64 batches for all. **Reading** (set before the results): a weight
+helps if its paired difference from weight 1 in the dwarfs' worth with the dwarfs to move
+(and the ratio) excludes 0 at both seeds, exceeds the difference between weight 1's two
+seeds, and is not matched by the rate control; its cost is the held-out policy loss. Only
+then the best weight goes online against weight 1, and a finer sweep (its neighbours at
+a factor of 2) only if the neighbours differ beyond the seeds' noise.
 
 ## Review log
 

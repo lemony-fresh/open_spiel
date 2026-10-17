@@ -305,9 +305,14 @@ extra arguments, as its header says), `untried_move_test`, `conv_policy_test`,
 and the teacher in one network's prior, `teacher_mix_a=`), `az_forgetting`, `az_merge_buffers`, `az_target_quality`, `az_head_probe`,
 `az_reference_pilot`, `az_noise_probe`, `az_search_cost`, `az_blunder_probe`,
 `az_capture_targets`, `az_teacher_stats`, `az_feature_probe`, `az_long_capture_probe`,
-`az_input_plane_trace`, `az_risk_probe`, `az_dwarf_value_probe` and `teacher_mix_test`;
+`az_input_plane_trace`, `az_risk_probe`, `az_dwarf_value_probe` (since 2026-10-17 `each=`:
+every position's values, for `thud/experiments/dwarf_value_report.py`'s intervals, which
+resample whole games) and `teacher_mix_test`;
 `az_restructure`, which builds a network of a new structure from a trained one and
-its replay buffer, `az_grow`, which grows a network wider or deeper computing the same
+its replay buffer (since 2026-10-17 also trains a network on at another value-loss
+weight, as the trainer would: `copy=all freeze=none optimizer=source
+batch_norms=evaluation keep=every`, `warmup_batches=`; its reports carry the trunk's
+gradient sizes per loss), `az_grow`, which grows a network wider or deeper computing the same
 (Net2Net, 2026-10-15), and `az_fresh_optimizer`, a network's weights with a fresh optimizer;
 `az_match devices=`, `az_restructure device=` and `az_grow device=` choose where the
 networks run)
@@ -319,6 +324,15 @@ the new binary): **every queue in `~/thud-runs/` runs it before it starts**, and
 `thud/az/build.sh MAIN.cc`, which also links Abseil's static libraries (the flag parsing
 `libopen_spiel.so` does not re-export) and runs at `nice 19`. The tests build in
 `build-tests/` (below).
+
+**Our trainer learns with its batch norms in evaluation mode, in effect** (found
+2026-10-17; `thud/DESIGN_dwarf_signal.md` §10, *E1's offline sweep*): on one device its
+inference threads share the learner's network and set it to evaluation mode while the
+learner's steps run (upstream's `DeviceManager` does not keep them apart). N161's value
+loss on its own buffer is 0.03 as the trainer learns and 0.13 in true training mode, so
+anything that trains our networks outside the trainer must do the same
+(`VPNetModel::SetBatchNormsInEvaluation`, `az_restructure batch_norms=evaluation`) or its
+results will not carry over.
 
 **Now that JAX and PyTorch are in the venv, the next cmake run in `build/` adds their
 Python tests** (OpenSpiel detects both when `OPEN_SPIEL_ENABLE_JAX`/`_PYTORCH` are

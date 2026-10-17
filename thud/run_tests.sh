@@ -70,6 +70,7 @@ tests=(
   "playout_cap_test|quick|1.3|$bin/playout_cap_test"
   "regression_gates_test|quick|0.9|python3 thud/experiments/regression_gates_test.py"
   "ladder_test|quick|0.7|python3 thud/experiments/ladder_test.py"
+  "dwarf_value_report_test|quick|0.8|python3 thud/experiments/dwarf_value_report_test.py"
   "position_edits_test|quick|1.5|$bin/position_edits_test"
   "unsafe_targets_test|quick|1.0|$bin/unsafe_targets_test"
   "features_test|quick|3|$bin/features_test"

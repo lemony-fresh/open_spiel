@@ -290,9 +290,9 @@ positions), then reopened (47%; 3% in the games against alpha-beta) — the desi
 the value does not learn what it sees. **The setup script's dry run** on a fresh
 clone passed every step (2026-10-15 17:49-19:55, `~/setup-test`, log `~/setup-test.log`:
 install.sh, the venv and torch, the builds, our programs, hexparrot, its 28 tests).
-**Pushed** by night12 (2026-10-17, through `11098c23`); **committed, not pushed:** N161's
-evaluation (docs) and the programs' Makefile (2026-10-17: `thud/programs.mk`, run by
-`thud/build_programs.sh`, which every queue runs first).
+**Pushed** through `8b9d8b2b` (2026-10-17: N161's evaluation, the programs' Makefile
+`thud/programs.mk`, run by `thud/build_programs.sh`, which every queue runs first);
+**committed, not pushed:** E1's sweep tools (the session log, 2026-10-17).
 **Done** (2026-10-07 16:28 to 2026-10-08 05:34): the night of matches against players
 without a network, run I and its evaluation (`~/thud-runs/night2_2026-10-07.py`).
 Deferred: MCTS-10,000 and -100,000, alpha-beta depth 4 (informative once our networks
@@ -302,7 +302,20 @@ tests passed in its hook): N161 beats N121 by +4.12 (+1.26 to +6.99) and M102 by
 the regression gates against M102 all pass (blunders 5.9%); condition (c) R = 0.65 (upper
 0.79). `az_capture_targets` in `build-shared/` was a stale build from before the input
 planes and aborted; rebuilt and rerun by hand — so since 2026-10-17 `thud/build_programs.sh`
-brings every program up to date in a second when nothing changed. **Next:** a value-loss-weight test run (E1) from N161, for the value's gap; the Net2Net live test in the next gap; the longer run's segments read as the design's §10 says — survival and the gap
+brings every program up to date in a second when nothing changed.
+**E1's offline sweep is running** (2026-10-17, from 16:29, detached:
+`~/thud-runs/e1_sweep_2026-10-17.sh`, ~5.5 hours; results in
+`~/thud-runs/e1_sweep_2026-10-17/report.jsonl`): N161 trained on on run N's buffer at
+value-loss weights 1, 4, 16 and a rate control, 2 seeds each, read by measurement 4 with
+paired, game-resampled intervals (the design's §10, *E1's offline sweep*, with the reading
+rule fixed beforehand). Found while building it: **our trainer learns with its batch norms
+in evaluation mode, in effect** (the inference threads share the network on one device;
+upstream's design — `PLAN.md`, *Upstreaming*, candidate 4), and the value already leads
+the trunk's gradient (1.5-6.6x the policy's at weight 1), so E1 is expected to do little;
+and with intervals, the gap's reopening between N141 and N151 is confirmed (−20 to −24
+points on the same positions). **Next:** read the sweep's report by its rule; if a weight
+helps, it goes online against weight 1 (10 steps each); whether to fix the batch-norm race
+in our trainer (the user's call: it changes how every run learns); the Net2Net live test in the next gap; the longer run's segments read as the design's §10 says — survival and the gap
 both rising: patience; survival rising but the gap not: E1, E2; survival below ~5%: B1′,
 or C7 with the user's word — then its evaluation (against N121 and the players without a
 network); the regression
@@ -3253,4 +3266,38 @@ the push's and the rename's tests ran (memory beside the trainer), to resume.
   program only a note; `setup_machine.sh`'s step 5 uses it instead of its `build.sh`
   loop; CLAUDE.md says every queue runs it first. The full suite: 31 passed, 150 s.
 
-**Next step:** as recorded in `## Current status` — E1, the value-loss weight, from N161.
+- **2026-10-17, ~15:00-17:30: E1's offline sweep built and started; two findings.** Pushed
+  `11098c23..8b9d8b2b` (the hook's 31 tests passed). The user: E1 with larger weights
+  too, shortened, with intervals, and a finer sweep around the best. Built, each tested:
+  `VPNetModel::Gradients` (the gradient sizes of each loss over chosen parameters;
+  `learning_settings_test` 6, which caught LibTorch's exception on an empty set — a frozen
+  trunk — in `trainer_test`), `VPNetModel::SetBatchNormsInEvaluation` (part 7);
+  `az_restructure`'s `value_loss_weight=`, `warmup_batches=`, `keep=every`, `optimizer=source`
+  (with a fatal test: its step equals the source's own, a fresh optimizer's differs),
+  `augment=`, `batch_norms=`, and gradient sizes in every report (`trainer_test` 4);
+  `az_dwarf_value_probe each=` (its summary lines identical to night11's on all four
+  segments) and `thud/experiments/dwarf_value_report.py` with `dwarf_value_report_test.py`
+  (32 tests now). **Findings:** (1) measurement 4 with intervals — the table's ratios have
+  wide intervals and different positions per segment, but on the same positions N151 −
+  N141 is −20 to −24 points, so the gap's reopening is real. (2) The value's trunk
+  gradient is already 1.5-6.6x the policy's at weight 1 (I had told the user the policy
+  dominated the trunk, inferred from the losses' sizes: wrong, said so). (3) A fresh
+  optimizer damages N161 (value loss 0.031 → 0.16 in 40 batches), and even with its own the
+  value loss rose to 0.056 — because true training mode differs from how the trainer
+  learns: N161's training-mode value loss on its own buffer is 0.13, the trainer reported
+  0.027. Traced with a one-off diagnostic (not kept) to a race in upstream's design: on
+  one device the inference threads set the shared network to evaluation mode during the
+  learner's steps (reproduced: one inference thread beside them brings the losses from
+  0.12-0.14 to 0.023-0.027). With the batch norms kept in evaluation mode the control holds
+  N161's losses. Started `~/thud-runs/e1_sweep_2026-10-17.sh` at 16:29 (detached; 8 arms of
+  ~38 minutes, then measurement 4; the reading rule written into the design before the
+  results). Open: the sweep's report; whether to fix the race in our trainer (the user's
+  call); whether and how to raise it upstream. A mistake of mine, caught by the
+  pre-commit hook: renaming `build-checks/` to `build-tests/` (2026-10-15) left nine
+  dependency files naming the old paths, so those objects were never rebuilt after a
+  header change; `VPNetModel`'s new member made the stale `alpha_zero.o` crash
+  `pruning_test` and `trainer_test`. Clean rebuild of `build-tests/obj/`, then every test
+  rerun (`PLAN.md`, *Tests*).
+
+**Next step:** as recorded in `## Current status` — the E1 sweep's report, read by its
+rule.

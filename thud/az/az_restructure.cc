@@ -50,11 +50,35 @@
 // move when they are zeroed (the planes' effect: half the policies' L1 distance, and
 // the values' mean absolute difference, on the test positions).
 //
-//   thud/az/build.sh thud/az/az_restructure.cc
+// Training on with another value-loss weight (2026-10-17; thud/DESIGN_dwarf_signal.md,
+// E1, the offline sweep): with copy=all, freeze=none and the source's structure, the
+// source's network itself, trained on its buffer — with optimizer=source with the
+// source's own optimizer (its checkpoint's, as the trainer would go on; a fresh one
+// first damages the network: N161's held-out value loss 0.031 -> 0.16 in 40 batches at
+// 0.0001), tested at the start: one learning step of it equals the source's own, the
+// control a fresh optimizer's, which differs;
+// value_loss_weight=W weights the value loss (VPNetModel::SetValueLossWeight; the losses
+// reported stay unweighted), warmup_batches=N raises the learning rate linearly over the
+// first N batches (batch b at b/N of it), and keep=every keeps a checkpoint at every
+// report — checkpoint-B, B the batches so far, from checkpoint-0 (the copy), with no early
+// stop — instead of the best by the held-out policy loss. Every report carries the
+// learning rate and the trunk's gradient sizes on the 1,024 test positions
+// (VPNetModel::Gradients: the policy loss's, the value loss's unweighted, the L2 term's,
+// the cosine between the first two, and W x value / policy — where the weight puts the
+// value's pull on the trunk against the policy's). augment=0 trains without the
+// symmetries. batch_norms=evaluation learns as our trainer has in effect learnt (its
+// inference threads keep the shared network's batch norms in evaluation mode during its
+// learning steps: VPNetModel::SetBatchNormsInEvaluation) — needed for results that carry
+// over to it: in training mode N161's value loss on its own buffer is 0.13, not 0.03. The summary's held-out losses are then
+// the last network's.
+//
+//   thud/build_programs.sh az_restructure
 //   OMP_NUM_THREADS=8 build-shared/az_restructure from=RUN_DIR:STEP to=NEW_DIR \
 //     buffer=RUN_DIR/replay_buffer.data [buffer_size=458752 nn_model=resnet_conv_policy \
 //     freeze=copied learning_rate=0.001 batch_size=1024 eval_every=250 patience=4 \
-//     max_batches=20000 step=STEP seed=1 input_planes=0 copy=not_policy device=/cpu:0]
+//     max_batches=20000 step=STEP seed=1 input_planes=0 copy=not_policy device=/cpu:0 \
+//     value_loss_weight=1 warmup_batches=0 keep=best optimizer=fresh augment=1 \
+//     batch_norms=training]
 //   build-shared/az_restructure from=RUN_DIR:STEP to=NEW_DIR input_planes=1 copy=all \
 //     freeze=none max_batches=0 learning_rate=0.0001   # net surgery alone
 
@@ -192,6 +216,20 @@ std::string Losses(const VPNetModel::LossInfo& l) {
       l.Policy(), l.Value(), l.Policy(0), l.Policy(1));
 }
 
+// The learning rate and the trunk's gradient sizes, for a report.
+std::string Gradients(VPNetModel& model, const std::vector<VPNetModel::TrainInputs>& check) {
+  auto trunk = [](const std::string& name) {
+    return name.find("policy") == std::string::npos && name.find("value") == std::string::npos;
+  };
+  const VPNetModel::GradientSizes g = model.Gradients(check, trunk);
+  return absl::StrFormat(
+      "\"learning_rate\": %.6g, \"gradients\": {\"policy\": %.6g, \"value\": %.6g, "
+      "\"l2\": %.6g, \"cosine\": %.4f, \"weighted_value_to_policy\": %s}",
+      model.LearningRate(), g.policy, g.value, g.l2, g.cosine,
+      g.policy > 0 ? absl::StrFormat("%.4f", model.ValueLossWeight() * g.value / g.policy)
+                   : "null");  // A frozen trunk.
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -225,6 +263,26 @@ int main(int argc, char** argv) {
   const int step = std::stoi(get("step", std::to_string(from_step)));
   const bool input_planes = get("input_planes", "0") == "1";
   const bool copy_all = get("copy", "not_policy") == "all";
+  const double value_loss_weight = std::stod(get("value_loss_weight", "1"));
+  const int warmup_batches = std::stoi(get("warmup_batches", "0"));
+  const std::string keep = get("keep", "best");
+  if (keep != "best" && keep != "every") open_spiel::SpielFatalError("keep=best or keep=every");
+  const bool keep_every = keep == "every";
+  const bool augment = get("augment", "1") == "1";  // Thud's symmetries at random.
+  const std::string batch_norms = get("batch_norms", "training");
+  if (batch_norms != "training" && batch_norms != "evaluation") {
+    open_spiel::SpielFatalError("batch_norms=training or batch_norms=evaluation");
+  }
+  const std::string optimizer = get("optimizer", "fresh");
+  if (optimizer != "fresh" && optimizer != "source") {
+    open_spiel::SpielFatalError("optimizer=fresh or optimizer=source");
+  }
+  if (optimizer == "source" && (!copy_all || get("freeze", "copied") != "none")) {
+    open_spiel::SpielFatalError("optimizer=source needs copy=all and freeze=none");
+  }
+  if (keep_every && max_batches % eval_every != 0) {
+    open_spiel::SpielFatalError("keep=every needs max_batches a multiple of eval_every");
+  }
   // Added 2026-10-15 (thud/PLAN.md, the GPU readiness checklist): where the networks run
   // and train (cpu, cuda:0, ...).
   const std::string device = get("device", "/cpu:0");
@@ -248,6 +306,8 @@ int main(int argc, char** argv) {
       nn_depth, /*verbose=*/false,
       input_planes ? open_spiel::thud_az::kNumFeaturePlanes : 0));
   VPNetModel model(*game, to, "vpnet.pb", device);
+  model.SetValueLossWeight(value_loss_weight);
+  model.SetBatchNormsInEvaluation(batch_norms == "evaluation");
   auto not_policy = [](const std::string& name) {
     return name.find("policy") == std::string::npos;
   };
@@ -310,26 +370,63 @@ int main(int argc, char** argv) {
     open_spiel::SpielFatalError("The copy changed the network's outputs");
   }
 
+  // The source's optimizer, and its test: one learning step of a network so loaded
+  // equals the source's own step (to 1e-6); the control, a fresh optimizer's, differs.
+  if (optimizer == "source") {
+    const std::string checkpoint = absl::StrCat(from_dir, "/checkpoint-", from_step);
+    model.LoadCheckpoint(checkpoint);
+    std::cerr << absl::StrFormat("the source's optimizer: learning rate %g; training at %g\n",
+                                 model.LearningRate(), learning_rate);
+    model.SetLearningRate(learning_rate);
+    VPNetModel twin(*game, to, "vpnet.pb", device), fresh(*game, to, "vpnet.pb", device),
+        reference(*game, from_dir, "vpnet.pb", device);
+    twin.LoadCheckpoint(checkpoint);
+    reference.LoadCheckpoint(checkpoint);
+    fresh.CopyParametersFrom(source, include, /*widen_inputs=*/true);
+    for (VPNetModel* m : {&twin, &reference, &fresh}) {
+      m->SetLearningRate(learning_rate);
+      m->Learn(check);
+    }
+    const double same = Differences(twin, reference, check).first;
+    const double control = Differences(fresh, reference, check).first;
+    std::cerr << absl::StrFormat(
+        "test: a learning step with the source's optimizer differs from the source's own by "
+        "%g at most (the values), the control with a fresh one by %g\n",
+        same, control);
+    if (same > 1e-6 || control <= 1e-6) {
+      open_spiel::SpielFatalError("The source's optimizer was not taken over");
+    }
+  }
+
   const VPNetModel::LossInfo source_loss = HeldOut(source, held_out);
   VPNetModel::LossInfo best = HeldOut(model, held_out);
   std::cout << absl::StrFormat("{\"source\": true, %s}", Losses(source_loss)) << std::endl;
-  std::cout << absl::StrFormat("{\"batches\": 0, \"held_out\": {%s}%s}", Losses(best),
+  std::cout << absl::StrFormat("{\"batches\": 0, \"held_out\": {%s}, %s%s}", Losses(best),
+                               Gradients(model, check),
                                model.TakesInputPlanes()
                                    ? ", " + InputPlaneStats(model, check)
                                    : std::string())
             << std::endl;
-  model.SaveCheckpoint(step);
-  int best_batches = 0, since_best = 0;
+  model.SaveCheckpoint(keep_every ? 0 : step);
+  int best_batches = 0, since_best = 0, last_batches = 0;
+  VPNetModel::LossInfo last = best;
   std::uniform_int_distribution<int> pick(0, train.size() - 1);
   std::uniform_int_distribution<int> symmetry(0, thud::kNumSymmetries - 1);
   VPNetModel::LossInfo trained;
   const auto start = std::chrono::steady_clock::now();
   for (int b = 1; b <= max_batches; ++b) {
+    if (b <= warmup_batches) {
+      model.SetLearningRate(learning_rate * b / warmup_batches);
+    } else if (b == warmup_batches + 1 && warmup_batches > 0) {
+      model.SetLearningRate(learning_rate);
+    }
     std::vector<VPNetModel::TrainInputs> batch;
     batch.reserve(batch_size);
     for (int j = 0; j < batch_size; ++j) {
-      batch.push_back(open_spiel::thud_az::torch_az::SymmetricTrainInputs(
-          positions[train[pick(rng)]], symmetry(rng)));
+      const VPNetModel::TrainInputs& position = positions[train[pick(rng)]];
+      batch.push_back(augment ? open_spiel::thud_az::torch_az::SymmetricTrainInputs(
+                                    position, symmetry(rng))
+                              : position);
     }
     trained += model.Learn(batch);
     if (b % eval_every == 0) {
@@ -337,11 +434,12 @@ int main(int argc, char** argv) {
       const bool better = now.Policy() < best.Policy();
       std::cout << absl::StrFormat(
                        "{\"batches\": %d, \"seconds\": %.0f, \"trained\": {%s}, "
-                       "\"held_out\": {%s}, \"best\": %s%s}",
+                       "\"held_out\": {%s}, \"best\": %s, %s%s}",
                        b,
                        std::chrono::duration<double>(std::chrono::steady_clock::now() - start)
                            .count(),
                        Losses(trained), Losses(now), better ? "true" : "false",
+                       Gradients(model, check),
                        model.TakesInputPlanes() ? ", " + InputPlaneStats(model, check)
                                                 : std::string())
                 << std::endl;
@@ -350,6 +448,12 @@ int main(int argc, char** argv) {
         best = now;
         best_batches = b;
         since_best = 0;
+      }
+      if (keep_every) {
+        model.SaveCheckpoint(b);
+        last_batches = b;
+        last = now;
+      } else if (better) {
         model.SaveCheckpoint(step);
       } else if (++since_best >= patience) {
         break;
@@ -357,9 +461,9 @@ int main(int argc, char** argv) {
     }
   }
 
-  // The best network, and the freeze's test.
+  // The network kept (the best, or with keep=every the last), and the freeze's test.
   VPNetModel saved(*game, to, "vpnet.pb", device);
-  saved.LoadCheckpoint(step);
+  saved.LoadCheckpoint(keep_every ? last_batches : step);
   const double freeze_difference = Differences(saved, source, check).first;
   std::cerr << absl::StrFormat(
       "test: the saved network's values differ from the source's by %g at most%s\n",
@@ -370,9 +474,13 @@ int main(int argc, char** argv) {
   std::cout << absl::StrFormat(
                    "{\"summary\": true, \"from\": \"%s\", \"to\": \"%s\", \"nn_model\": "
                    "\"%s\", \"freeze\": %s, \"best_batches\": %d, \"source_held_out\": {%s}, "
-                   "\"held_out\": {%s}}",
+                   "\"held_out\": {%s}, \"value_loss_weight\": %g, \"warmup_batches\": %d, "
+                   "\"keep\": \"%s\", \"last_batches\": %d, \"optimizer\": \"%s\", "
+                   "\"batch_norms\": \"%s\", \"augment\": %s}",
                    from, to, nn_model, freeze ? "true" : "false", best_batches,
-                   Losses(source_loss), Losses(best))
+                   Losses(source_loss), Losses(keep_every ? last : best), value_loss_weight,
+                   warmup_batches,
+                   keep, last_batches, optimizer, batch_norms, augment ? "true" : "false")
             << std::endl;
   return 0;
 }

@@ -43,6 +43,16 @@
 #      the values are fatal), writes the checkpoint and finite held-out losses. Not into
 #      another width or depth: its copy test then fails by design, the trunk not copied
 #      (2026-10-15; thud/PLAN.md, the checklist) — growth is az_grow's (3).
+#      And training on with another value-loss weight (2026-10-17, E1's offline sweep):
+#      the run's own network (copy=all, freeze=none; its test that the copy computes the
+#      same is fatal) at value-loss weight 4, a warm-up of 20 batches, keep=every, 20
+#      batches: checkpoints 0, 10 and 20; the learning rate half at batch 10 and full at
+#      20 (the warm-up); the trunk's gradient sizes positive and finite, with
+#      weighted_value_to_policy 4 x value / policy (the weight is on the network that
+#      learns; that it changes the learning is learning_settings_test's part 4); the
+#      summary records the weight, keep=every and the last batch. With optimizer=source
+#      (the run's own optimizer) it exits 0: its test that a step with it equals the
+#      run's own step, and that a fresh optimizer's differs (the control), is fatal.
 #   5. az_fresh_optimizer: the latest network's weights with a fresh optimizer at a new
 #      learning rate (a folder from make_test_network, at 0.001, against the run's 0.0001;
 #      its own tests of the outputs and the rate are fatal) exits 0.
@@ -201,6 +211,41 @@ check "4. az_restructure, a new head on the frozen trunk, exits 0 (its checks pa
 check "4. ... writes the checkpoint" [ -f "$tmp/restructured/checkpoint-3.pt" ]
 check "4. ... with finite held-out losses" bash -c \
   "grep -qiE 'held' '$tmp/restructure.log' && ! grep -qiE '\bnan\b|\binf\b' '$tmp/restructure.log'"
+
+# 4. ... and training on with another value-loss weight.
+"$bin/az_restructure" from="$run:-1" to="$tmp/value_weight" buffer="$run/replay_buffer.data" \
+  buffer_size=2048 nn_model=resnet_conv_policy input_planes=1 copy=all freeze=none \
+  learning_rate=0.002 batch_size=64 eval_every=10 max_batches=20 value_loss_weight=4 \
+  warmup_batches=20 keep=every > "$tmp/value_weight.jsonl" 2> "$tmp/value_weight.err"
+check "4. az_restructure at value-loss weight 4, keep=every, exits 0 (its copy test passed)" \
+  [ $? -eq 0 ]
+check "4. ... keeps checkpoints 0, 10 and 20" bash -c "for b in 0 10 20; do \
+  [ -f '$tmp/value_weight/checkpoint-'\$b.pt ] || exit 1; done"
+check "4. ... warm-up, gradient sizes, the weight in the reports and the summary" \
+  python3 - "$tmp/value_weight.jsonl" <<'EOF'
+import json, math, sys
+lines = [json.loads(l) for l in open(sys.argv[1]) if l.strip().startswith("{")]
+reports = {d["batches"]: d for d in lines if "batches" in d}
+summary = [d for d in lines if d.get("summary")][0]
+ok = abs(reports[10]["learning_rate"] - 0.001) < 1e-9 and \
+     abs(reports[20]["learning_rate"] - 0.002) < 1e-9
+for b in (0, 10, 20):
+  g = reports[b]["gradients"]
+  ok = ok and all(math.isfinite(g[k]) and g[k] > 0 for k in ("policy", "value")) and \
+       abs(g["weighted_value_to_policy"] - 4 * g["value"] / g["policy"]) <= \
+       1e-3 * g["weighted_value_to_policy"] + 1e-4
+ok = ok and summary["value_loss_weight"] == 4 and summary["keep"] == "every" and \
+     summary["last_batches"] == 20 and summary["warmup_batches"] == 20
+sys.exit(0 if ok else 1)
+EOF
+
+check "4. ... with optimizer=source, exits 0 (its test of the optimizer passed)" bash -c \
+  "'$bin/az_restructure' from='$run:-1' to='$tmp/value_weight_source' \
+  buffer='$run/replay_buffer.data' buffer_size=2048 nn_model=resnet_conv_policy \
+  input_planes=1 copy=all freeze=none learning_rate=0.002 batch_size=64 eval_every=10 \
+  max_batches=10 value_loss_weight=4 keep=every optimizer=source \
+  > '$tmp/value_weight_source.jsonl' 2> '$tmp/value_weight_source.err' && \
+  grep -q '\"optimizer\": \"source\"' '$tmp/value_weight_source.jsonl'"
 
 # 5. A fresh optimizer.
 mkdir -p "$tmp/fresh_opt"
