@@ -67,6 +67,7 @@ tests=(
   "search_settings_test|quick|0.3|$bin/search_settings_test"
   "teacher_mix_test|quick|0.3|$bin/teacher_mix_test"
   "learning_settings_test|quick|0.8|$bin/learning_settings_test"
+  "batch_norm_test|quick|3|$bin/batch_norm_test"
   "playout_cap_test|quick|1.3|$bin/playout_cap_test"
   "regression_gates_test|quick|0.9|python3 thud/experiments/regression_gates_test.py"
   "ladder_test|quick|0.7|python3 thud/experiments/ladder_test.py"

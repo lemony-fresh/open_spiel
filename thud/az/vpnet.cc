@@ -29,6 +29,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <limits>
+#include <optional>
 #include <fstream>  // For ifstream/ofstream.
 #include <string>
 #include <vector>
@@ -43,6 +44,21 @@
 namespace open_spiel {
 namespace thud_az {
 namespace torch_az {
+
+namespace {
+
+// Our change (the race's fix, vpnet.h): puts a network back in evaluation mode when it
+// goes out of scope — before the exclusive lock taken ahead of it is released.
+class EvaluationOnExit {
+ public:
+  explicit EvaluationOnExit(Model model) : model_(std::move(model)) {}
+  ~EvaluationOnExit() { model_->eval(); }
+
+ private:
+  Model model_;
+};
+
+}  // namespace
 
 // Saves a struct that holds initialization data for the model to a file.
 //
@@ -169,6 +185,7 @@ VPNetModel::VPNetModel(const Game& game, const std::string& path,
     input_planes_ = true;
     flat_input_size_ = input_size;
   }
+  model_->eval();  // Our change (the race's fix): evaluation mode outside learning.
 }
 
 void VPNetModel::ModelInput(const std::vector<float>& observation, float* out) const {
@@ -198,6 +215,8 @@ torch::Tensor VPNetModel::Parameter(const std::string& name) {
 std::vector<std::string> VPNetModel::CopyParametersFrom(
     VPNetModel& other, const std::function<bool(const std::string&)>& include,
     bool widen_inputs) {
+  absl::WriterMutexLock lock(lock_.get());  // Our change (the race's fix).
+  absl::ReaderMutexLock other_lock(other.lock_.get());
   std::vector<std::string> copied;
   torch::NoGradGuard no_grad;
   // More input channels here, otherwise alike.
@@ -232,6 +251,7 @@ std::vector<std::string> VPNetModel::CopyParametersFrom(
 
 std::vector<std::string> VPNetModel::Freeze(
     const std::function<bool(const std::string&)>& which) {
+  absl::WriterMutexLock lock(lock_.get());  // Our change (the race's fix).
   std::vector<std::string> frozen;
   for (auto& item : model_->named_parameters()) {
     if (which(item.key())) {
@@ -248,16 +268,20 @@ std::vector<std::string> VPNetModel::Freeze(
 }
 
 void VPNetModel::LoadWeights(const std::string& path) {
+  absl::WriterMutexLock lock(lock_.get());  // Our change (the race's fix).
+  EvaluationOnExit evaluation(model_);
   torch::load(model_, absl::StrCat(path, ".pt"), torch_device_);
 }
 
 double VPNetModel::LearningRate() {
+  absl::ReaderMutexLock lock(lock_.get());  // Our change (the race's fix).
   return static_cast<torch::optim::AdamOptions&>(
              model_optimizer_.param_groups()[0].options())
       .lr();
 }
 
 void VPNetModel::SetLearningRate(double learning_rate) {
+  absl::WriterMutexLock lock(lock_.get());  // Our change (the race's fix).
   for (auto& group : model_optimizer_.param_groups()) {
     static_cast<torch::optim::AdamOptions&>(group.options()).lr(learning_rate);
   }
@@ -265,6 +289,7 @@ void VPNetModel::SetLearningRate(double learning_rate) {
 
 std::string VPNetModel::SaveCheckpoint(int step) {
   std::string full_path = absl::StrCat(path_, "/checkpoint-", step);
+  absl::ReaderMutexLock lock(lock_.get());  // Our change (the race's fix).
 
   // Our change (thud/PLAN.md, the GPU readiness checklist: restarting after a crash or
   // a preemption): each file written under a temporary name and renamed into place, so
@@ -290,6 +315,8 @@ void VPNetModel::LoadCheckpoint(int step) {
 }
 
 void VPNetModel::LoadCheckpoint(const std::string& path) {
+  absl::WriterMutexLock lock(lock_.get());  // Our change (the race's fix).
+  EvaluationOnExit evaluation(model_);
   torch::load(model_, absl::StrCat(path, ".pt"), torch_device_);
   torch::load(model_optimizer_, absl::StrCat(path, "-optimizer.pt"),
               torch_device_);
@@ -316,7 +343,10 @@ std::vector<torch::Tensor> VPNetModel::Activations(
                        torch::TensorOptions().dtype(torch::kByte))
           .clone()
           .to(torch_device_);
-  model_->eval();
+  // Our change (the race's fix): read under the shared lock, the network already in
+  // evaluation mode (no longer set here: readers run side by side).
+  absl::ReaderMutexLock lock(lock_.get());
+  SPIEL_DCHECK_FALSE(model_->is_training());
   torch::NoGradGuard no_grad;
   std::vector<torch::Tensor> activations = model_->Activations(observations, legal_mask);
   for (torch::Tensor& a : activations) a = a.to(torch::kCPU);
@@ -365,7 +395,10 @@ std::vector<VPNetModel::InferenceOutputs> VPNetModel::Inference(
   // NoGradGuard prevents LibTorch from building the autograd computation
   // graph, saving memory and compute since we never backprop through
   // inference.
-  model_->eval();
+  // Our change (the race's fix): under the shared lock, the network already in evaluation
+  // mode (upstream sets it here, which switched a concurrent learning step's mode).
+  absl::ReaderMutexLock lock(lock_.get());
+  SPIEL_DCHECK_FALSE(model_->is_training());
   torch::NoGradGuard no_grad;
   std::vector<torch::Tensor> torch_outputs =
       model_(torch_inf_inputs, torch_inf_legal_mask);
@@ -426,7 +459,8 @@ std::vector<VPNetModel::InferenceOutputs> VPNetModel::InferenceAtLegalMoves(
         .to(torch_device_);
   };
 
-  model_->eval();
+  absl::ReaderMutexLock lock(lock_.get());  // Our change (the race's fix).
+  SPIEL_DCHECK_FALSE(model_->is_training());
   torch::NoGradGuard no_grad;
   std::vector<torch::Tensor> torch_outputs =
       model_->ValueAndPolicyAt(torch_inputs, index(rows), index(actions));
@@ -477,6 +511,120 @@ VPNetModel::GradientSizes VPNetModel::Gradients(
   GradientSizes sizes;
   Losses(inputs, /*learn=*/true, &which, &sizes);
   return sizes;
+}
+
+// Our change (the race's fix, vpnet.h): Gradients' computation over no parameter.
+VPNetModel::LossInfo VPNetModel::LossInTrainingMode(const std::vector<TrainInputs>& inputs) {
+  const std::function<bool(const std::string&)> none = [](const std::string&) {
+    return false;
+  };
+  GradientSizes sizes;
+  return Losses(inputs, /*learn=*/true, &none, &sizes);
+}
+
+std::vector<int64_t> VPNetModel::BatchNormCounts() {
+  absl::ReaderMutexLock lock(lock_.get());
+  std::vector<int64_t> counts;
+  for (const auto& module : model_->modules(/*include_self=*/false)) {
+    if (auto* norm = module->as<torch::nn::BatchNorm2d>()) {
+      counts.push_back(norm->num_batches_tracked.item<int64_t>());
+    }
+  }
+  return counts;
+}
+
+std::vector<double> VPNetModel::BatchNormMomenta() {
+  absl::ReaderMutexLock lock(lock_.get());
+  std::vector<double> momenta;
+  for (const auto& module : model_->modules(/*include_self=*/false)) {
+    if (auto* norm = module->as<torch::nn::BatchNorm2d>()) {
+      momenta.push_back(norm->options.momentum().value_or(-1));
+    }
+  }
+  return momenta;
+}
+
+std::string VPNetModel::BatchNormCountsDiffer(const std::vector<int64_t>& before,
+                                              const std::vector<int64_t>& after,
+                                              const std::vector<bool>& training,
+                                              const std::vector<std::string>& names) {
+  SPIEL_CHECK_EQ(before.size(), after.size());
+  SPIEL_CHECK_EQ(before.size(), training.size());
+  SPIEL_CHECK_EQ(before.size(), names.size());
+  std::string differ;
+  for (size_t i = 0; i < before.size(); ++i) {
+    const int64_t expected = training[i] ? 1 : 0;
+    if (after[i] - before[i] != expected) {
+      absl::StrAppend(&differ, differ.empty() ? "" : ", ", names[i], " counted ",
+                      after[i] - before[i], " (", expected, " expected)");
+    }
+  }
+  return differ;
+}
+
+// Our change (vpnet.h): Losses' inputs, for ConvertBatchNorms.
+std::pair<torch::Tensor, torch::Tensor> VPNetModel::InputsAndMasks(
+    const std::vector<TrainInputs>& inputs) {
+  const int batch_size = inputs.size();
+  std::vector<float> raw_inputs(batch_size * flat_input_size_);
+  std::vector<uint8_t> raw_mask(batch_size * num_actions_, 0);
+  for (int batch = 0; batch < batch_size; ++batch) {
+    ModelInput(inputs[batch].observations, raw_inputs.data() + batch * flat_input_size_);
+    for (Action action : inputs[batch].legal_actions) {
+      raw_mask[num_actions_ * batch + action] = 1;
+    }
+  }
+  return {torch::from_blob(raw_inputs.data(), {batch_size, flat_input_size_})
+              .clone()
+              .to(torch_device_),
+          torch::from_blob(raw_mask.data(), {batch_size, num_actions_},
+                           torch::TensorOptions().dtype(torch::kByte))
+              .clone()
+              .to(torch_device_)};
+}
+
+std::vector<VPNetModel::BatchNormConversion> VPNetModel::ConvertBatchNorms(
+    const std::vector<std::vector<TrainInputs>>& batches) {
+  SPIEL_CHECK_FALSE(batches.empty());
+  std::vector<std::pair<torch::Tensor, torch::Tensor>> tensors;
+  for (const auto& batch : batches) tensors.push_back(InputsAndMasks(batch));
+  absl::WriterMutexLock lock(lock_.get());
+  EvaluationOnExit evaluation(model_);
+  torch::NoGradGuard no_grad;
+  std::vector<BatchNormConversion> out;
+  for (const auto& item : model_->named_modules(/*name_prefix=*/"", /*include_self=*/false)) {
+    auto* norm = item.value()->as<torch::nn::BatchNorm2d>();
+    if (norm == nullptr) continue;
+    const torch::Tensor old_mean = norm->running_mean.clone();
+    const torch::Tensor old_var = norm->running_var.clone();
+    const torch::Tensor old_count = norm->num_batches_tracked.clone();
+    const auto old_momentum = norm->options.momentum();
+    // Its input's statistics, the network before it in evaluation mode: with no
+    // momentum a batch norm's running statistics are the mean of its batches'.
+    model_->eval();
+    norm->running_mean.zero_();
+    norm->running_var.fill_(1);
+    norm->num_batches_tracked.zero_();
+    norm->options.momentum(std::nullopt);
+    norm->train();
+    for (const auto& [x, mask] : tensors) model_->forward(x, mask);
+    norm->eval();
+    const torch::Tensor mean = norm->running_mean.clone(), var = norm->running_var.clone();
+    const double eps = norm->options.eps();
+    const torch::Tensor old_deviation = (old_var + eps).sqrt();
+    const torch::Tensor deviation = (var + eps).sqrt();
+    // The same output: w (x - m) / s + b = w' (x - m') / s' + b'.
+    norm->bias.add_(norm->weight * (mean - old_mean) / old_deviation);
+    norm->weight.mul_(deviation / old_deviation);
+    norm->running_mean.copy_(mean);
+    norm->running_var.copy_(var);
+    norm->num_batches_tracked.copy_(old_count);
+    norm->options.momentum(old_momentum);
+    const torch::Tensor ratio = deviation / old_deviation;
+    out.push_back({item.key(), ((mean - old_mean) / old_deviation).abs().max().item<double>(),
+                   ratio.min().item<double>(), ratio.max().item<double>()});
+  }
+  return out;
 }
 
 // Our change: Learn's code, which can also stop before the learning step.
@@ -531,7 +679,9 @@ VPNetModel::LossInfo VPNetModel::Losses(
 
   // Only the losses, as the network plays (Inference): no learning step.
   if (!learn) {
-    model_->eval();
+    // Our change (the race's fix): under the shared lock, already in evaluation mode.
+    absl::ReaderMutexLock lock(lock_.get());
+    SPIEL_DCHECK_FALSE(model_->is_training());
     torch::NoGradGuard no_grad;
     std::vector<torch::Tensor> torch_outputs =
         model_->losses(torch_train_inputs, torch_train_legal_mask,
@@ -541,6 +691,11 @@ VPNetModel::LossInfo VPNetModel::Losses(
     AddLossesBySide(inputs, torch_outputs[3], torch_outputs[4], &info);
     return info;
   }
+
+  // Our change (the race's fix): the step under the exclusive lock, the network back in
+  // evaluation mode before the lock is released.
+  absl::WriterMutexLock lock(lock_.get());
+  EvaluationOnExit evaluation(model_);
 
   // Run a training step and get the losses.
   model_->train();
@@ -559,9 +714,35 @@ VPNetModel::LossInfo VPNetModel::Losses(
     for (const torch::Tensor& buffer : model_->buffers()) running.push_back(buffer.clone());
   }
 
+  // Our change (the race's fix): each batch norm's mode and count of batches, to check
+  // that the forward pass ran in the modes set here.
+  std::vector<torch::nn::BatchNorm2dImpl*> norms;
+  std::vector<std::string> norm_names;
+  std::vector<bool> norm_training;
+  std::vector<int64_t> norm_before;
+  for (const auto& item : model_->named_modules(/*name_prefix=*/"", /*include_self=*/false)) {
+    if (auto* norm = item.value()->as<torch::nn::BatchNorm2d>()) {
+      norms.push_back(norm);
+      norm_names.push_back(item.key());
+      norm_training.push_back(norm->is_training());
+      norm_before.push_back(norm->num_batches_tracked.item<int64_t>());
+    }
+  }
+
   std::vector<torch::Tensor> torch_outputs =
       model_->losses(torch_train_inputs, torch_train_legal_mask,
                      torch_policy_targets, torch_value_targets);
+
+  {  // Our change (the race's fix): the check.
+    std::vector<int64_t> norm_after;
+    for (auto* norm : norms) norm_after.push_back(norm->num_batches_tracked.item<int64_t>());
+    const std::string differ =
+        BatchNormCountsDiffer(norm_before, norm_after, norm_training, norm_names);
+    if (!differ.empty()) {
+      SpielFatalError("A learning step's batch norms did not run in the modes it set (" +
+                      differ + "): the network was used by another thread meanwhile");
+    }
+  }
 
   if (gradients_of != nullptr) {  // Our change: Gradients, no learning step.
     std::vector<torch::Tensor> parameters;

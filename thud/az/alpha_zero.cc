@@ -945,6 +945,11 @@ void learner(const open_spiel::Game& game, const AlphaZeroConfig& config,
     VPNetModel::LossInfo losses, new_loss, trained_loss;
     int64_t growing_buffer_size = 0;  // Added: the positions the learner sampled from.
     double step_learning_rate = 0;  // Added: the learning rate of this step.
+    // Added (the race's fix, vpnet.h): the batches each batch norm counted in training
+    // mode this step, the fewest and the most — each learning batch's, when it learnt in
+    // training mode (VPNetModel::Learn stops the program otherwise).
+    int64_t batch_norm_fewest = 0, batch_norm_most = 0;
+    int step_batches = 0;
     const bool compare_losses = !trained_sample.empty();  // Added.
     {  // Extra scope to return the device for use for inference asap.
       DeviceManager::DeviceLoan learn_model =
@@ -1014,6 +1019,8 @@ void learner(const open_spiel::Game& game, const AlphaZeroConfig& config,
                      HasLearningRateSchedule(config) ? LearningRateFactor(config, step) : 1.0,
                      config.value_loss_weight);
       }
+      const std::vector<int64_t> batch_norms_before = learn_model->BatchNormCounts();
+      step_batches = batches;
       for (int i = 0; i < batches; i++) {
         std::vector<VPNetModel::TrainInputs> batch =
             sample(&rng, config.train_batch_size);
@@ -1023,6 +1030,14 @@ void learner(const open_spiel::Game& game, const AlphaZeroConfig& config,
           }
         }
         losses += learn_model->Learn(batch);
+      }
+      {  // Added: the batch norms' counts (see batch_norm_fewest).
+        const std::vector<int64_t> after = learn_model->BatchNormCounts();
+        for (size_t i = 0; i < after.size(); ++i) {
+          const int64_t counted = after[i] - batch_norms_before[i];
+          batch_norm_fewest = i == 0 ? counted : std::min(batch_norm_fewest, counted);
+          batch_norm_most = i == 0 ? counted : std::max(batch_norm_most, counted);
+        }
       }
       trained_sample = sample(&loss_rng, std::min<int64_t>(kLossSample, buffer_size));
       growing_buffer_size = buffer_size;
@@ -1081,6 +1096,11 @@ void learner(const open_spiel::Game& game, const AlphaZeroConfig& config,
         // are unweighted).
         {"learning_rate", step_learning_rate},
         {"value_loss_weight", config.value_loss_weight},
+        // Added (the race's fix): each batch norm's count of training-mode batches this
+        // step, against the step's learning batches.
+        {"batch_norms", json::Object({{"batches", step_batches},
+                                      {"fewest", batch_norm_fewest},
+                                      {"most", batch_norm_most}})},
     };
     if (compare_losses) {  // Added: see new_sample above.
       record.emplace("loss_before_learning",

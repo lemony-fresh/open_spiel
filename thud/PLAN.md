@@ -666,6 +666,8 @@ the search and trainer*, run C'.
 | 2026-10-15 | The taper's condition (c), stricter: step the dwarfs' teacher weight from w to w′ only if the unsafe-move loop's gain after the step, (1 − w′) × R, is at most 0.8, R (the search's visit share on unsafe dwarf moves over the prior's) at its 95% upper bound; to revisit once in use | user (Claude proposed) | the design's §5 |
 | 2026-10-17 | The run programs built by `thud/programs.mk` through `thud/build_programs.sh` (incremental; a second when nothing changed), run first by every queue and by `run_tests.sh --full`; it builds nothing while one of them runs (a stale `az_capture_targets` had aborted night12's probe) | user (Claude proposed) | CLAUDE.md, *Build and test*; *Tests* |
 | 2026-10-17 | E1 tested offline first: N161 trained on on run N's last buffer as the trainer learns (its own optimizer, the batch norms in evaluation mode), 640 batches at value-loss weights 1, 4 and 16 and a control at twice the rate, seeds 1 and 2; read by measurement 4 with intervals that resample whole games, paired between networks; the best weight then online against weight 1 (10 steps each); a finer sweep around it only if its neighbours differ beyond the seeds' noise — **stopped the same day** (the user: the batch-norm finding first, kept apart from E1) | user (Claude proposed) | the design's §10, *E1's offline sweep* |
+| 2026-10-17 | The batch-norm race first, kept apart from E1 (with proper batch norms the gap may change): fixed in our copy (a lock on the network; each learning step checks its batch norms' counts and stops the program if they are off), no upstream change; N161 converted (its batch norms set to the true statistics of what reaches them, the function unchanged — Net2Net's step — not retrained from scratch: the buffer holds only ~21 steps, and a start other than N161 would confound the comparison); **N′** = the converted N161 trained on 640 batches in training mode, against w1s1 (the same the old way): held-out losses, measurement 4, a match; then 10 self-play steps each, the fix (our trainer, two copies, `explicit_learning`) against the control (`az_trainer_d1`, the race), value-loss weight 1 | user (Claude proposed; the user named N′) | the design's §10; *Upstreaming*, candidate 4 |
+| 2026-10-17 | Upstream: the race's fix as a PR with a reproduction on Connect Four, prepared in a separate worktree once tonight's runs are going (a slow PR review says nothing about upstream's upkeep: the user) | user | *Upstreaming*, candidate 4 |
 
 **Considered and set aside** (with the reason): the Python AlphaZero (a layout bug, and
 slow; fallback note below); a 32 x 2 network (its convolutions see 11 x 11 squares);
@@ -1586,7 +1588,7 @@ first session, with no patch at all.**
   implemented and what's tested and what's missing, even if small subfeatures are
   missing"). `thud/run_tests.sh` builds what is out of date (`thud/tests.mk`, into
   `build-tests/`, **without `-DNDEBUG`**) and runs the quick tests (~20 s, four at once)
-  or with `--full` all 32 (150 s on an idle machine, 2026-10-17) and then brings the
+  or with `--full` all 33 (150 s on an idle machine, 2026-10-17) and then brings the
   programs our runs use up to date (`thud/build_programs.sh`, `thud/programs.mk`, into
   `build-shared/`: a stale `az_capture_targets` had aborted a night's probe; while one of
   them runs it builds nothing and says so); none needs a run folder — the networks the tests read
@@ -1610,6 +1612,7 @@ first session, with no patch at all.**
   | `augmentation_test` | quick, 0.2 s | the 8 symmetries of observations, moves and policy targets | positions mirrored independently, as text |
   | `identity_test` | full, 88 s | our AlphaZero copy computes as upstream's, bit for bit: outputs (ours with the legal policy off, `SetLegalPolicy(false)`), a learning step, searches with and without noise, rollouts | another network, seed, step must differ |
   | `legal_policy_test` (new) | full, 44 s | the legal policy, our default, against upstream's computation, for the three models, batches of 1 and 32: the values bit for bit, the priors within 1e-6 (measured ~1e-7) summing to 1; reported: searches with it on and off (all 120 identical) | another network's priors must differ |
+  | `batch_norm_test` (new, 2026-10-17) | quick, 3 s | the race's fix (`vpnet.h`): beside a thread running Inference without pause our network learns exactly as alone and each batch norm counts one batch a step; `BatchNormCountsDiffer`; evaluation mode after learning; `ConvertBatchNorms` on stale statistics (outputs unchanged, training mode then like evaluation mode, counts and momenta kept); `LossInTrainingMode` changes nothing | upstream's `VPNetModel` beside the thread must depart (it does: by 1.01); the stale network's training-mode losses must differ (by 0.19) |
   | `learning_settings_test` (new) | quick, 0.8 s | the learning-rate schedule's factors, the config's round trip and old configs' defaults, `SetLearningRate`, the rate a checkpoint restores, the value-loss weight, the saves under temporary names; since 2026-10-17 `Gradients` (each loss's own gradient over each head, the L2 term's against its definition to 1e-5, unweighted, no step, an empty set all 0) and `SetBatchNormsInEvaluation` (a step at rate 0 moves no output, its losses equal `Loss()`'s, the scales still learn) | a step at the network's rate must move the parameters; weight 1 must move the value head; a step at rate 0 in training mode must move the outputs; training mode's losses must differ from `Loss()`'s |
   | `watchdog_test.sh` (new) | full, 90 s | the watchdog and crash-safe saving: kills during a buffer write and a checkpoint write, a truncated record — the run finishes, every step once; the stop; giving up | a half-written buffer must be refused |
   | `transfer_test.sh` (new) | full, 24 s | `transfer_run.sh` between local folders: checksums, the copy's path, the copy resumes into itself, the original untouched, `--state-only`, a running run refused, an interrupted copy completed | the original's config.json must still point at the original |
@@ -1628,7 +1631,7 @@ first session, with no patch at all.**
   | `kickstart_test` | full, ~25 s (189 s → 37 s beside a trainer, 2026-10-15: the printed cost timing now behind `cost=1`) | the teacher's scores and policy, the mixed targets, the weight per player | depth 1 must score the position's moves alike; the mixed target must differ from the unmixed |
   | `teacher_mix_test` (new) | quick, 0.3 s | `az_match teacher_mix_a`: the mix per player, exactly; the values unchanged; the cache | the teacher must differ from the prior at both nodes |
   | `grow_test` (new) | quick, 2.4 s | Net2Net (`net2net.h`): the mapping; the function kept for wider, deeper, both, the linear head, no growth; every tensor accounted for; copies stay equal under training without noise, part with it; a grown network reloads | three: no division; a batch norm's statistics left uncopied; new blocks not the identity — each must exceed 10x the tolerance |
-  | `trainer_test.sh` (new) | quick, 26 s | the trainer end to end with every feature of ours on (two device copies, batching, augmentation, pruning, 2 learner batches, alpha-beta games, kickstarting and noise per player, a learning-rate warm-up and schedule, a value-loss weight): checkpoints, buffer, logs, config; resuming (the step follows on, the rates the schedule's, logs appended); training on from an `az_grow` network; `az_restructure` (a new head, frozen trunk; since 2026-10-17 also training on at value-loss weight 4 with a warm-up and keep=every — the rates, the gradient sizes, the summary — and with `optimizer=source`); `az_fresh_optimizer` | the tools' own fatal tests (az_grow's control among them; `optimizer=source`'s: a fresh optimizer's step must differ) |
+  | `trainer_test.sh` (new) | quick, 26 s | the trainer end to end with every feature of ours on (two device copies, batching, augmentation, pruning, 2 learner batches, alpha-beta games, kickstarting and noise per player, a learning-rate warm-up and schedule, a value-loss weight): checkpoints, buffer, logs, config; resuming (the step follows on, the rates the schedule's, logs appended); training on from an `az_grow` network; `az_restructure` (a new head, frozen trunk; since 2026-10-17 two copies with `--explicit_learning` in the first run and one device in the grown one, each step's batch norms counting exactly its batches; `az_batch_norm_convert` (part 6); also training on at value-loss weight 4 with a warm-up and keep=every — the rates, the gradient sizes, the summary — and with `optimizer=source`); `az_fresh_optimizer` | the tools' own fatal tests (az_grow's control among them; `optimizer=source`'s: a fresh optimizer's step must differ) |
   | `az_match_test.sh` (new) | full, 97 s | `az_match`: reproducible; the record (openings, sides, the summary's arithmetic); `noise=`, `sample_plies=` and players without a network (alpha-beta, MCTS, hexparrot) the same whichever thread; `devices=`; `teacher_mix_a=` | each option must change the games; another seed too; the summary must record the devices |
   | `sanitized` (in `run_tests.sh`) | full, 10 s | `replay_buffer_test`, `features_test`, `az_buffer_truncate` under AddressSanitizer and UBSan | the binaries must carry ASan's instrumentation (and ASan was seen catching a heap overflow here) |
 
@@ -1665,9 +1668,11 @@ first session, with no patch at all.**
     2026-10-17): `pruning_test` crashed and `trainer_test` aborted, both linked with a stale
     `alpha_zero.o`, and the pre-commit hook stopped the commit. Fixed by a clean rebuild of
     `build-tests/obj/`; after moving a build folder, delete its objects.
-  - *The trainer's batch norms* (2026-10-17): no test pins the mode its learning steps
-    run in — on one device the inference threads decide it (*Upstreaming*, candidate 4);
-    `SetBatchNormsInEvaluation`, the offline equivalent, is tested.
+  - *The trainer's batch norms* (2026-10-17): until the fix no test pinned the mode its
+    learning steps ran in — on one device the inference threads decided it
+    (*Upstreaming*, candidate 4). Now `trainer_test` requires each step's batch norms to
+    count exactly its batches, with two copies and with one, and `batch_norm_test` has
+    upstream's class as the control.
   - *The trainer*: its evaluators (`trainer_test` runs none), `explicit_learning`,
     resignation (`cutoff_probability`, off in our runs), `inference_cache` sizes, the
     learner's statistics' numbers (tested once by hand, 2026-10-03).
@@ -4509,8 +4514,12 @@ Found while building the GPU checklist's features; each checked in upstream's ow
    with depth — an inference call under way when the learner switches to training
    apparently finishes its deeper layers in training mode, normalised by its few
    positions' statistics (run H's step 65 alike: 16-53). A real bug (the step's mode is not the one
-   `Learn` sets; the parameters are also written while inference reads them). Not yet
-   raised; a fix would change how every single-device run learns.
+   `Learn` sets; the parameters are also written while inference reads them). **Fixed in
+   our copy** (2026-10-17: `thud/az/vpnet.h` — a reader-writer lock, the network kept in
+   evaluation mode outside learning, each learning step's counts checked;
+   `batch_norm_test` has upstream's class as its control). **Decided (the user):** a PR
+   with a reproduction on Connect Four, prepared in a separate worktree once the runs are
+   going; reviewed by the user before anything is pushed.
 
 ## Deferred decisions
 

@@ -46,7 +46,7 @@ TORCH_LINK := $(LINK) -Wl,--no-as-needed $(TORCH)/lib/libtorch.so \
   -Wl,-rpath,$(TORCH)/lib
 
 COPIES := $(addprefix $(OBJ)/az/,mcts.o alpha_zero.o model.o vpnet.o vpevaluator.o)
-AZ_PROGRAMS := az_trainer az_grow az_restructure az_fresh_optimizer
+AZ_PROGRAMS := az_trainer az_grow az_restructure az_fresh_optimizer az_batch_norm_convert
 EXPERIMENT_PROGRAMS := az_match az_forgetting az_merge_buffers az_target_quality \
   az_head_probe az_reference_pilot az_noise_probe az_search_cost az_blunder_probe \
   az_capture_targets az_teacher_stats az_feature_probe az_long_capture_probe \

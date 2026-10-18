@@ -49,14 +49,14 @@ TORCH_LINK := $(LINK) -Wl,--no-as-needed $(TORCH)/lib/libtorch.so \
 
 # Our copy of the C++ AlphaZero, linked into every LibTorch program (as build.sh does).
 COPIES := $(addprefix $(OUT)/obj/az/,mcts.o alpha_zero.o model.o vpnet.o vpevaluator.o)
-# Upstream's, for identity_test only.
+# Upstream's, for identity_test and batch_norm_test (the race's control) only.
 UPSTREAM := $(addprefix $(OUT)/obj/upstream/,model.o vpnet.o vpevaluator.o)
 
 TORCH_TESTS := alphabeta_training_test augmentation_test conv_policy_test grow_test \
   learning_settings_test legal_policy_test playout_cap_test \
   growing_buffer_test input_planes_test instrumentation_test kickstart_test \
   pruning_test search_settings_test untried_move_test make_test_network
-TORCH_PROGRAMS := az_trainer az_grow az_restructure az_fresh_optimizer
+TORCH_PROGRAMS := az_trainer az_grow az_restructure az_fresh_optimizer az_batch_norm_convert
 EXPERIMENT_PROGRAMS := az_match teacher_mix_test az_search_cost az_dwarf_value_probe az_unsafe_targets
 PLAIN_TESTS := features_test replay_buffer_test
 PLAIN_EXPERIMENTS := az_buffer_truncate position_edits_test unsafe_targets_test
@@ -69,7 +69,7 @@ SANITIZE := -fsanitize=address,undefined -fno-omit-frame-pointer -fno-sanitize-r
 SANITIZED := $(addprefix $(OUT)/bin/sanitized/,$(PLAIN_TESTS) $(PLAIN_EXPERIMENTS))
 
 ALL := $(addprefix $(OUT)/bin/,$(TORCH_TESTS) $(TORCH_PROGRAMS) $(EXPERIMENT_PROGRAMS) \
-  identity_test $(PLAIN_TESTS) $(PLAIN_EXPERIMENTS)) $(SANITIZED)
+  identity_test batch_norm_test $(PLAIN_TESTS) $(PLAIN_EXPERIMENTS)) $(SANITIZED)
 
 all: $(ALL)
 
@@ -115,7 +115,8 @@ $(addprefix $(OUT)/bin/,$(EXPERIMENT_PROGRAMS)): $(OUT)/bin/%: $(OUT)/obj/experi
 	@mkdir -p $(@D)
 	nice -n 19 $(CXX) -o $@ $^ $(TORCH_LINK)
 
-$(OUT)/bin/identity_test: $(OUT)/obj/az/identity_test.o $(COPIES) $(UPSTREAM)
+$(OUT)/bin/identity_test $(OUT)/bin/batch_norm_test: $(OUT)/bin/%: $(OUT)/obj/az/%.o \
+    $(COPIES) $(UPSTREAM)
 	@mkdir -p $(@D)
 	nice -n 19 $(CXX) -o $@ $^ $(TORCH_LINK)
 

@@ -308,6 +308,9 @@ and the teacher in one network's prior, `teacher_mix_a=`), `az_forgetting`, `az_
 `az_input_plane_trace`, `az_risk_probe`, `az_dwarf_value_probe` (since 2026-10-17 `each=`:
 every position's values, for `thud/experiments/dwarf_value_report.py`'s intervals, which
 resample whole games) and `teacher_mix_test`;
+`az_batch_norm_convert` (2026-10-17, the race's fix: a network's batch norms set to the
+true statistics of what reaches them, its function unchanged), `batch_norm_test` (the
+lock against upstream's class, the counts' check, the conversion),
 `az_restructure`, which builds a network of a new structure from a trained one and
 its replay buffer (since 2026-10-17 also trains a network on at another value-loss
 weight, as the trainer would: `copy=all freeze=none optimizer=source
@@ -325,14 +328,19 @@ the new binary): **every queue in `~/thud-runs/` runs it before it starts**, and
 `libopen_spiel.so` does not re-export) and runs at `nice 19`. The tests build in
 `build-tests/` (below).
 
-**Our trainer learns with its batch norms in evaluation mode, in effect** (found
-2026-10-17; `thud/DESIGN_dwarf_signal.md` §10, *E1's offline sweep*): on one device its
-inference threads share the learner's network and set it to evaluation mode while the
-learner's steps run (upstream's `DeviceManager` does not keep them apart). N161's value
-loss on its own buffer is 0.03 as the trainer learns and 0.13 in true training mode, so
-anything that trains our networks outside the trainer must do the same
-(`VPNetModel::SetBatchNormsInEvaluation`, `az_restructure batch_norms=evaluation`) or its
-results will not carry over.
+**Until 2026-10-17 our trainer learnt with its batch norms in evaluation mode, in effect**
+(`thud/DESIGN_dwarf_signal.md` §10, *E1's offline sweep*): on one device its inference
+threads shared the learner's network and set it to evaluation mode while the learner's
+steps ran (upstream's design; in run N's step 161 the input batch norm ran 7 of 64
+learning batches in training mode). **Fixed in our copy** (`thud/az/vpnet.h`): a lock
+keeps learning and inference on one network apart, and every learning step checks that
+each batch norm counted its batch (`num_batches_tracked`) and stops the program if not;
+`learner.jsonl`'s `batch_norms` records the counts per step. `az_trainer_d1` (run N's
+binary) keeps the race: the old regime, for controls. A network trained before the fix
+goes on learning in training mode only after `az_batch_norm_convert` (its batch norms set
+to the true statistics of what reaches them, its function unchanged: N161's stored ones
+were off by up to 1.8 deviations); offline training meant to match the old trainer uses
+`az_restructure batch_norms=evaluation`.
 
 **Now that JAX and PyTorch are in the venv, the next cmake run in `build/` adds their
 Python tests** (OpenSpiel detects both when `OPEN_SPIEL_ENABLE_JAX`/`_PYTORCH` are

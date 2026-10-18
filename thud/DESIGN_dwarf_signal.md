@@ -1072,6 +1072,25 @@ seeds, and is not matched by the rate control; its cost is the held-out policy l
 then the best weight goes online against weight 1, and a finer sweep (its neighbours at
 a factor of 2) only if the neighbours differ beyond the seeds' noise.
 
+**The race fixed, and the two arms** (2026-10-17; the user: the batch-norm finding first,
+apart from E1 — with proper batch norms the gap may change). Our copy now locks the
+network against concurrent use and checks every learning step's batch-norm counts
+(`thud/az/vpnet.h`; `batch_norm_test`, upstream's class as the control). N161 cannot just
+go on learning in training mode: its stored statistics are far from those of what reaches
+its batch norms (the conversion found channel means up to 1.8 deviations off and true
+deviations up to 1.9x the stored ones), so training mode computes another function
+(N161's value loss 0.13 against 0.03). **N161c**: its batch norms converted to the true
+statistics, scale and shift adjusted (`az_batch_norm_convert`, 32 batches of its buffer):
+evaluation-mode outputs within 7.7e-7 of N161's, and training mode's losses now within
+0.0002 of evaluation mode's (N161: 0.2048). **N′**: N161c trained on 640 batches of the
+buffer in training mode, w1s1's recipe exactly (seed, rate, warm-up), so that N′ and w1s1
+differ in the batch norms' mode alone; compared by held-out losses, measurement 4 and a
+match (`~/thud-runs/nprime_2026-10-17.sh`). Then **two arms of 10 self-play steps** (162-171,
+run N's recipe, value-loss weight 1; `~/thud-runs/bn_arms_2026-10-17.sh`): B, N′ with the
+fixed trainer (two copies, `explicit_learning`); A, w1s1 with `az_trainer_d1` (the race
+as before); read by measurement 4 on fixed positions (paired), survival, the losses, the
+batch norms' counts, self-play speed, and a match of the two step-171 networks.
+
 ## Review log
 
 **Review 1** (an adversarial reviewer agent, 2026-10-12, on draft 2; findings checked at

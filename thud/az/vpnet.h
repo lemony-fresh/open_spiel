@@ -31,6 +31,7 @@
 #include <utility>
 #include <vector>
 
+#include "open_spiel/abseil-cpp/absl/synchronization/mutex.h"
 #include "thud/az/model.h"
 #include "open_spiel/spiel.h"
 #include "open_spiel/spiel_utils.h"
@@ -227,6 +228,50 @@ class VPNetModel {
   // thud/DESIGN_dwarf_signal.md, E1). Off by default (upstream's training mode).
   void SetBatchNormsInEvaluation(bool on) { batch_norms_in_evaluation_ = on; }
   bool BatchNormsInEvaluation() const { return batch_norms_in_evaluation_; }
+
+  // Our change (the race's fix, 2026-10-17; thud/DESIGN_dwarf_signal.md §10, E1's offline
+  // sweep): the network is shared safely between threads. Inference, Activations, Loss
+  // and SaveCheckpoint read it under a shared lock, side by side; Learn, Gradients,
+  // LossInTrainingMode, LoadCheckpoint, LoadWeights, CopyParametersFrom and
+  // ConvertBatchNorms change it under an exclusive one, and put it back in evaluation
+  // mode before releasing it — so it is in evaluation mode whenever it is read, and the
+  // readers no longer set the mode (upstream's Inference sets it, and its Learn sets
+  // training mode, on one module that the trainer's inference threads share with the
+  // learner: their calls switched the learner's steps to evaluation mode). Every learning
+  // step then checks that each batch norm in training mode counted exactly its one batch
+  // (num_batches_tracked) and every other none, and stops the program if not.
+  //
+  // The batch norms' counts of batches seen in training mode, in module order; and their
+  // momenta (-1 for none: a cumulative average), for tests.
+  std::vector<int64_t> BatchNormCounts();
+  std::vector<double> BatchNormMomenta();
+  // The check's comparison: "" when each batch norm `training` counted one batch from
+  // `before` to `after` and each other none; otherwise the layers that did not, by name.
+  static std::string BatchNormCountsDiffer(const std::vector<int64_t>& before,
+                                           const std::vector<int64_t>& after,
+                                           const std::vector<bool>& training,
+                                           const std::vector<std::string>& names);
+  // The losses Learn would report, in training mode (the batch's own statistics), with
+  // no learning step: the parameters and the running statistics stay as they were.
+  LossInfo LossInTrainingMode(const std::vector<TrainInputs>& inputs);
+
+  // Our change (the same): each batch norm made to normalise by the true statistics of
+  // what reaches it, the function unchanged in evaluation mode — Net2Net's way of
+  // setting a batch norm from activation statistics estimated on training data. For one
+  // batch norm at a time, the others in evaluation mode: its input's mean and variance
+  // over `batches` (a cumulative average of the batches' own); then its running
+  // statistics set to them and its scale and shift adjusted so that its output stays the
+  // same (w' = w s'/s, b' = b + w (m' - m)/s, s = sqrt(var + eps)). Afterwards training
+  // mode, which normalises by each batch's statistics, computes nearly what evaluation
+  // mode does. Its count of batches and its momentum stay as they were. Returns per
+  // batch norm the largest shift of a channel's mean in units of its old deviation, and
+  // the smallest and largest ratio of new to old deviation.
+  struct BatchNormConversion {
+    std::string name;
+    double largest_mean_shift = 0, smallest_ratio = 0, largest_ratio = 0;
+  };
+  std::vector<BatchNormConversion> ConvertBatchNorms(
+      const std::vector<std::vector<TrainInputs>>& batches);
   struct GradientSizes {
     double policy = 0, value = 0, l2 = 0, cosine = 0;
   };
@@ -296,6 +341,12 @@ class VPNetModel {
   // Our change (Freeze): leaf modules kept in evaluation mode while learning.
   std::vector<std::shared_ptr<torch::nn::Module>> frozen_modules_;
   bool batch_norms_in_evaluation_ = false;  // Our change: SetBatchNormsInEvaluation.
+  // Our change (the race's fix): shared for reading the network, exclusive for changing
+  // it. A pointer, so that the model stays movable.
+  std::unique_ptr<absl::Mutex> lock_ = std::make_unique<absl::Mutex>();
+  // Our change: the network's input and legal-move mask for `inputs`, on the device.
+  std::pair<torch::Tensor, torch::Tensor> InputsAndMasks(
+      const std::vector<TrainInputs>& inputs);
   double value_loss_weight_ = 1;  // Our change: SetValueLossWeight.
   bool legal_policy_ = true;  // Our change: SetLegalPolicy.
 };

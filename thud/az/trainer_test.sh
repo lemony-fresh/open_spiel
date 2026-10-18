@@ -18,7 +18,7 @@
 # planes, width 8, depth 1, from make_test_network) at 8 simulations, a buffer of 2,048:
 #
 #   1. A fresh run with every feature of ours on at once — two copies of the network
-#      (--devices=/cpu:0,/cpu:0), batched inference, symmetry augmentation, policy target
+#      (--devices=/cpu:0,/cpu:0) with upstream's --explicit_learning, batched inference, symmetry augmentation, policy target
 #      pruning, two learner batches a step, games against alpha-beta (depth 1 for both
 #      sides), kickstarting per player (0.7, 0.3; depth 1), root noise per player (off
 #      at the dwarfs' roots), simulations and policy temperatures per player, a
@@ -26,7 +26,8 @@
 #      the moves in full) — runs 2
 #      steps and exits 0; writes checkpoints 1, 2 and the latest, the buffer, and
 #      learner.jsonl with steps 1 and 2 (losses finite, per side); config.json records
-#      the settings; the actors log them.
+#      the settings; the actors log them; every batch norm counted each learning batch in
+#      training mode (learner.jsonl's batch_norms; the race's fix, thud/az/vpnet.h).
 #   2. Resuming (the trainer given the run's config.json, max_steps 3): step 3 follows
 #      step 2 (not 1 again), the total games only grow, games against alpha-beta (half of
 #      them) were played and counted, each step's learning rate is the schedule's (the
@@ -35,8 +36,9 @@
 #   3. az_grow (8 x 1 -> 12 x 2, noise 0.01; its own tests of the function, the control
 #      and the reload are fatal) on the latest network, then a run folder from it — the
 #      config's new size, the buffer, learner.jsonl and the grown checkpoint as the
-#      latest — resumed for a step: the trainer takes the grown network and learns on
-#      (step 4, losses finite).
+#      latest — resumed for a step, on one device (the learner sharing the network with
+#      inference: the lock alone keeps them apart): the trainer takes the grown network
+#      and learns on (step 4, losses finite, every batch norm counting both batches).
 #   4. az_restructure as it was built for: a new policy head (the linear one, `resnet`)
 #      on the run's trunk and value head, copied and frozen (freeze=copied), trained 20
 #      batches on the run's buffer: exits 0 (its tests that the copy and the freeze keep
@@ -56,6 +58,12 @@
 #   5. az_fresh_optimizer: the latest network's weights with a fresh optimizer at a new
 #      learning rate (a folder from make_test_network, at 0.001, against the run's 0.0001;
 #      its own tests of the outputs and the rate are fatal) exits 0.
+#
+#   6. az_batch_norm_convert (2026-10-17, the race's fix) on the run's network and buffer
+#      (3 batches of 200): exits 0 — its tests are fatal: evaluation mode unchanged (1e-4;
+#      found ~3e-8), training mode's losses within a fifth of the source's distance from
+#      evaluation mode's (found 0.13-0.14 before, under 0.001 after, 3 seeds) — and writes
+#      the checkpoint.
 #
 #   thud/az/trainer_test.sh [BIN_DIR]    # default build-tests/bin
 #
@@ -91,7 +99,7 @@ steps() { python3 -c "import json,sys; print(' '.join(str(json.loads(l)['step'])
 # 1. A fresh run.
 "$bin/az_trainer" --flagfile="$repo/thud/experiments/az_thud.flags" --path="$run" \
   --graph_def=vpnet.pb --nn_model=resnet_conv_policy --nn_width=8 --nn_depth=1 \
-  --devices=/cpu:0,/cpu:0 --actors=3 --evaluators=0 --inference_batch_size=2 \
+  --devices=/cpu:0,/cpu:0 --explicit_learning --actors=3 --evaluators=0 --inference_batch_size=2 \
   --inference_threads=1 --max_simulations=8 --player_simulations=8,6 \
   --player_policy_temperature=1.5,1 --replay_buffer_size=2048 --replay_buffer_reuse=4 \
   --train_batch_size=64 --learner_batches=2 --checkpoint_freq=1 --max_steps=2 \
@@ -119,10 +127,26 @@ for line in open(sys.argv[1]):
   ok &= len(d["loss_by_side"]) == 2 and all(math.isfinite(x) for x in numbers)
 sys.exit(0 if ok else 1)
 EOF
+# Every batch norm counted each of a step's learning batches in training mode (the race's
+# fix, thud/az/vpnet.h): learner.jsonl's batch_norms, from step FIRST on.
+exact_counts() {
+  python3 - "$1" "$2" <<'EOF'
+import json, sys
+d = [json.loads(l) for l in open(sys.argv[1]) if l.strip()]
+bad = [(x["step"], x["batch_norms"]) for x in d if x["step"] >= int(sys.argv[2]) and
+       not x["batch_norms"]["batches"] == x["batch_norms"]["fewest"] ==
+           x["batch_norms"]["most"] == 2]
+if bad: print(bad)
+sys.exit(1 if bad else 0)
+EOF
+}
+check "1. two copies, explicit learning: each batch norm counted both learning batches a step" \
+  exact_counts "$run/learner.jsonl" 1
 check "1. config.json records the settings" python3 - "$run/config.json" <<'EOF'
 import json, sys
 c = json.load(open(sys.argv[1]))
-want = {"devices": "/cpu:0,/cpu:0", "learner_batches": 2, "symmetry_augmentation": True,
+want = {"devices": "/cpu:0,/cpu:0", "explicit_learning": True, "learner_batches": 2,
+        "symmetry_augmentation": True,
         "policy_target_pruning": True, "alphabeta_share": 0.5, "alphabeta_depth": "1,1",
         "player_kickstart_weight": "0.7,0.3", "player_policy_epsilon": "0,0.25",
         "player_simulations": "8,6", "nn_width": 8, "nn_depth": 1, "lr_warmup_steps": 2,
@@ -177,6 +201,8 @@ appended() {
     [ "$(wc -l < "$run/log-learner.txt")" -gt "$learner_lines" ]
 }
 check "2. the actors' and the learner's logs are appended to" appended
+check "2. ... and the resumed step's batch norms counted both its batches" \
+  exact_counts "$run/learner.jsonl" 3
 
 # 3. Growth, and training on from the grown network.
 grown=$tmp/grown
@@ -190,11 +216,14 @@ if [ -f "$grown/checkpoint-3.pt" ]; then
   python3 - "$run/config.json" "$grown" <<'EOF'
 import json, sys
 c = json.load(open(sys.argv[1]))
-c.update(path=sys.argv[2], nn_width=12, nn_depth=2, max_steps=4, graph_def="vpnet.pb")
+c.update(path=sys.argv[2], nn_width=12, nn_depth=2, max_steps=4, graph_def="vpnet.pb",
+         devices="/cpu:0", explicit_learning=False)  # One device: the lock alone.
 json.dump(c, open(sys.argv[2] + "/config.json", "w"), indent=2)
 EOF
   "$bin/az_trainer" "$grown/config.json" > "$tmp/grown.log" 2>&1
   check "3. the trainer resumes from the grown network and exits 0" [ $? -eq 0 ]
+  check "3. ... on one device, the learner sharing it: its batch norms counted both batches" \
+    exact_counts "$grown/learner.jsonl" 4
   check "3. ... and learns step 4 with finite losses" python3 - "$grown/learner.jsonl" <<'EOF'
 import json, math, sys
 d = [json.loads(l) for l in open(sys.argv[1]) if l.strip()][-1]
@@ -253,5 +282,12 @@ mkdir -p "$tmp/fresh_opt"
   nn_width=8 nn_depth=1 checkpoints=1 > /dev/null 2>&1
 "$bin/az_fresh_optimizer" from="$run:-1" to="$tmp/fresh_opt/net" step=5 > "$tmp/fresh_opt.log" 2>&1
 check "5. az_fresh_optimizer exits 0 (its checks passed)" [ $? -eq 0 ]
+
+# 6. The batch norms converted.
+"$bin/az_batch_norm_convert" from="$run:-1" to="$tmp/converted" \
+  buffer="$run/replay_buffer.data" buffer_size=2048 batches=3 batch_size=200 \
+  > "$tmp/converted.jsonl" 2> "$tmp/converted.err"
+check "6. az_batch_norm_convert exits 0 (its tests passed) and writes the checkpoint" \
+  bash -c "[ $? -eq 0 ] && [ -f '$tmp/converted/checkpoint--1.pt' ]"
 
 finish

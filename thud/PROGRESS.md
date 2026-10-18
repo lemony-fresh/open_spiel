@@ -313,14 +313,20 @@ in evaluation mode, in effect** (the inference threads share the network on one 
 upstream's design — `PLAN.md`, *Upstreaming*, candidate 4), and the value already leads
 the trunk's gradient (1.5-6.6x the policy's at weight 1), so E1 is expected to do little;
 and with intervals, the gap's reopening between N141 and N151 is confirmed (−20 to −24
-points on the same positions). The race measured by the batch norms' own counters
+points on the same positions). **The race is fixed in our copy** (2026-10-17: a lock on
+the network, each learning step's batch-norm counts checked; 33 tests pass), N161
+converted (N161c: its batch norms set to the true statistics, the function within 7.7e-7),
+and running (detached): **N′** (N161c trained on 640 batches in training mode, against
+w1s1, the same the old way; `~/thud-runs/nprime_2026-10-17.sh`, from 18:00, then
+measurement 4 and a match), then **the two arms** (10 self-play steps each: N′ with the
+fixed trainer, w1s1 with `az_trainer_d1`; `~/thud-runs/bn_arms_2026-10-17.sh`, ~10-11
+hours, results in `~/thud-runs/bn_fix_2026-10-17/`). The race measured by the batch norms' own counters
 (`num_batches_tracked`): in step 161 of the 64 learning batches the input batch norm ran 7
 in training mode, the deeper ones 11-51 (rising with depth: inference calls under way when
 the learner switches to training finish their deeper layers in training mode); run H's
-step 65 alike. **Next:** the user's question, what to do about the batch norms first
-(proposed: the trainer with two copies of the network and upstream's `explicit_learning`,
-tested by those counters; N161 converted to normalise by its inputs' true statistics, its
-function unchanged; then N161 trained on in each mode, 10 steps each); E1 after that; the Net2Net live test in the next gap; the longer run's segments read as the design's §10 says — survival and the gap
+step 65 alike. **Next:** N′ against w1s1, then the arms' results (the design's §10);
+the upstream PR for the race with a Connect Four reproduction, in a separate worktree,
+while the arms run (the user reviews before anything is pushed); E1 only after the arms; the Net2Net live test in the next gap; the longer run's segments read as the design's §10 says — survival and the gap
 both rising: patience; survival rising but the gap not: E1, E2; survival below ~5%: B1′,
 or C7 with the user's word — then its evaluation (against N121 and the players without a
 network); the regression
