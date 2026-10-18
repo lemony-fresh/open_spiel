@@ -4520,7 +4520,7 @@ Found while building the GPU checklist's features; each checked in upstream's ow
    `batch_norm_test` has upstream's class as its control). **Decided (the user):** a PR
    with a reproduction on Connect Four, prepared in a separate worktree once the runs are
    going; reviewed by the user before anything is pushed. **Prepared 2026-10-17**: branch
-   `vpnet-batch-norm-race` (worktree `~/open_spiel-bn-race`, commit `dd5fe58c`, the noreply
+   `vpnet-batch-norm-race` (worktree `~/open_spiel-bn-race`, commit `ea07aa1c`, the noreply
    identity, not pushed; the description `~/open_spiel-bn-race_PR.md`): a reader-writer
    lock in `vpnet.h`/`vpnet.cc` (Inference shared, Learn and LoadCheckpoint exclusive, the
    model in evaluation mode outside Learn), and `TestLearnUnaffectedByConcurrentInference`
