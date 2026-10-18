@@ -325,8 +325,9 @@ hours, results in `~/thud-runs/bn_fix_2026-10-17/`). The race measured by the ba
 in training mode, the deeper ones 11-51 (rising with depth: inference calls under way when
 the learner switches to training finish their deeper layers in training mode); run H's
 step 65 alike. **Next:** N′ against w1s1, then the arms' results (the design's §10);
-the upstream PR for the race with a Connect Four reproduction, in a separate worktree,
-while the arms run (the user reviews before anything is pushed); E1 only after the arms; the Net2Net live test in the next gap; the longer run's segments read as the design's §10 says — survival and the gap
+the upstream PR for the race, prepared (`~/open_spiel-bn-race`, commit `dd5fe58c`, the
+description `~/open_spiel-bn-race_PR.md`): the user reviews it before anything is pushed,
+and it opens after #1637 is through; E1 only after the arms; the Net2Net live test in the next gap; the longer run's segments read as the design's §10 says — survival and the gap
 both rising: patience; survival rising but the gap not: E1, E2; survival below ~5%: B1′,
 or C7 with the user's word — then its evaluation (against N121 and the players without a
 network); the regression
@@ -3310,5 +3311,29 @@ the push's and the rename's tests ran (memory beside the trainer), to resume.
   `pruning_test` and `trainer_test`. Clean rebuild of `build-tests/obj/`, then every test
   rerun (`PLAN.md`, *Tests*).
 
-**Next step:** as recorded in `## Current status` — the E1 sweep's report, read by its
-rule.
+- **2026-10-17, ~17:20-19:00: the batch-norm race fixed; N′; the upstream PR prepared.** The
+  user: stop everything, keep the race apart from E1 (proper batch norms may change the
+  gap), convert N161 rather than retrain it, name the result N′, and prepare the upstream
+  fix as a PR with a Connect Four reproduction once the runs go, in a separate copy. Done:
+  the E1 sweep stopped (w1s1 kept as the old regime's offline arm); the batch norms'
+  counters measured the race (step 161: the input batch norm 7 of 64 batches in training
+  mode, the deeper ones 11-51; run H's step 65 alike); our copy fixed (a reader-writer lock;
+  each learning step's counts checked, fatal; learner.jsonl's batch_norms) with
+  `batch_norm_test` (upstream's class as the control) and `trainer_test`'s exact counts (two
+  copies with `explicit_learning`, and one device); `az_batch_norm_convert` (Net2Net's way:
+  the true statistics, scale and shift compensated): N161c within 7.7e-7 of N161, training
+  mode's losses within 0.0002 of evaluation mode's (N161: 0.2048; its stored statistics off
+  by up to 1.8 deviations). All 33 tests pass. **N′** after 640 batches against w1s1: held-out
+  policy 3.7819 against 3.7824, value 0.0294 against 0.0261 (w1s1's own value moved by
+  ±0.003 between reports: within the noise). Running: measurement 4 and the match N′ against
+  w1s1 (`nprime_2026-10-17.sh`), then the two arms (`bn_arms_2026-10-17.sh`). **Upstream**:
+  branch `vpnet-batch-norm-race` in the worktree `~/open_spiel-bn-race` (commit `dd5fe58c`,
+  the noreply identity, no co-author line, as #1637; not pushed): the lock in upstream's
+  `vpnet.h`/`vpnet.cc` (26 lines) and `TestLearnUnaffectedByConcurrentInference` (Connect
+  Four) — it fails on unchanged upstream at the first step (3 runs of 3), passes with the fix
+  (3 of 3); `torch_model_test`, `torch_integration_test` and the tic-tac-toe example (2
+  steps) pass; the description drafted in `~/open_spiel-bn-race_PR.md`, for the user's
+  review. A safety check refused an `rm -rf` of a command substitution; the paths were
+  listed first and removed by name.
+
+**Next step:** as recorded in `## Current status` — N′ against w1s1, then the arms.
