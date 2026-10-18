@@ -31,6 +31,11 @@
 //      fifth of their former distance from evaluation mode's (the control: that distance
 //      before, at least 0.01); the batch norms' counts and momenta as before; and
 //      LossInTrainingMode changes nothing (the outputs after it exactly the same).
+//   5. ConvertBatchNorms without compensation (the dormant-channel probe's fresh network,
+//      2026-10-18), on a fresh network and one batch: evaluation mode then computes what
+//      training mode does on that batch — their losses within 1e-3 — where before, with
+//      the placeholder statistics (mean 0, variance 1), they differ by at least 0.01 (the
+//      control).
 //
 //   thud/run_tests.sh batch_norm_test   # builds and runs it
 //   build-tests/bin/batch_norm_test
@@ -277,6 +282,28 @@ int main() {
                           "control), %.4f after; counts and momenta kept; LossInTrainingMode "
                           "moved the outputs by %.2g",
                           conversion.size(), shift, outputs, before, after, unchanged));
+  }
+
+  // 5. ConvertBatchNorms without compensation.
+  {
+    std::filesystem::create_directories(dir + "/fresh");
+    SPIEL_CHECK_TRUE(ours::CreateGraphDef(*game, /*learning_rate=*/0.01, /*weight_decay=*/1e-4,
+                                          dir + "/fresh", "vpnet.pb", "resnet", 16, 2,
+                                          /*verbose=*/false));
+    ours::VPNetModel m(*game, dir + "/fresh", "vpnet.pb", "/cpu:0");
+    const auto batch = Positions<ours::VPNetModel::TrainInputs>(*game, &rng, 256);
+    auto distance = [&]() {
+      const auto trained = m.LossInTrainingMode(batch), plays = m.Loss(batch);
+      return std::abs(trained.Value() - plays.Value()) + std::abs(trained.Policy() - plays.Policy());
+    };
+    const double before = distance();
+    m.ConvertBatchNorms({batch}, /*compensate=*/false);
+    const double after = distance();
+    Check(before >= 0.01 && after <= 1e-3,
+          absl::StrFormat("5. ConvertBatchNorms without compensation on a fresh network: "
+                          "training mode's losses from evaluation mode's %.4f before (the "
+                          "control), %.2g after",
+                          before, after));
   }
 
   std::filesystem::remove_all(dir);

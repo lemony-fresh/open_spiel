@@ -353,6 +353,19 @@ std::vector<torch::Tensor> VPNetModel::Activations(
   return activations;
 }
 
+std::vector<std::pair<std::string, torch::Tensor>> VPNetModel::ReluOutputs(
+    const std::vector<InferenceInputs>& inputs) {
+  std::vector<TrainInputs> train;
+  for (const auto& in : inputs) train.push_back({in.legal_actions, in.observations, {}, 0});
+  torch::Tensor observations = InputsAndMasks(train).first;
+  absl::ReaderMutexLock lock(lock_.get());
+  SPIEL_DCHECK_FALSE(model_->is_training());
+  torch::NoGradGuard no_grad;
+  std::vector<std::pair<std::string, torch::Tensor>> out = model_->ReluOutputs(observations);
+  for (auto& [name, a] : out) a = a.to(torch::kCPU);
+  return out;
+}
+
 std::vector<VPNetModel::InferenceOutputs> VPNetModel::Inference(
     const std::vector<InferenceInputs>& inputs) {
   if (legal_policy_) return InferenceAtLegalMoves(inputs);  // Our change.
@@ -584,7 +597,7 @@ std::pair<torch::Tensor, torch::Tensor> VPNetModel::InputsAndMasks(
 }
 
 std::vector<VPNetModel::BatchNormConversion> VPNetModel::ConvertBatchNorms(
-    const std::vector<std::vector<TrainInputs>>& batches) {
+    const std::vector<std::vector<TrainInputs>>& batches, bool compensate) {
   SPIEL_CHECK_FALSE(batches.empty());
   std::vector<std::pair<torch::Tensor, torch::Tensor>> tensors;
   for (const auto& batch : batches) tensors.push_back(InputsAndMasks(batch));
@@ -614,8 +627,10 @@ std::vector<VPNetModel::BatchNormConversion> VPNetModel::ConvertBatchNorms(
     const torch::Tensor old_deviation = (old_var + eps).sqrt();
     const torch::Tensor deviation = (var + eps).sqrt();
     // The same output: w (x - m) / s + b = w' (x - m') / s' + b'.
-    norm->bias.add_(norm->weight * (mean - old_mean) / old_deviation);
-    norm->weight.mul_(deviation / old_deviation);
+    if (compensate) {
+      norm->bias.add_(norm->weight * (mean - old_mean) / old_deviation);
+      norm->weight.mul_(deviation / old_deviation);
+    }
     norm->running_mean.copy_(mean);
     norm->running_var.copy_(var);
     norm->num_batches_tracked.copy_(old_count);

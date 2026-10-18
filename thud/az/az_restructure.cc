@@ -81,6 +81,12 @@
 //     batch_norms=training]
 //   build-shared/az_restructure from=RUN_DIR:STEP to=NEW_DIR input_planes=1 copy=all \
 //     freeze=none max_batches=0 learning_rate=0.0001   # net surgery alone
+//
+// A fresh network trained on the buffer (2026-10-18; thud/DESIGN_dwarf_signal.md §10,
+// the capacity tests: a reset that keeps the replay buffer, as in Nikishin, Schwarzer,
+// D'Oro, Bacon and Courville, "The Primacy Bias in Deep Reinforcement Learning", ICML
+// 2022): copy=none copies nothing — LibTorch's initialisation, the source giving only the
+// structure — with freeze=none and optimizer=fresh; there is no copy to test.
 
 #include <algorithm>
 #include <chrono>
@@ -262,7 +268,11 @@ int main(int argc, char** argv) {
   const int buffer_size = std::stoi(get("buffer_size", "458752"));
   const int step = std::stoi(get("step", std::to_string(from_step)));
   const bool input_planes = get("input_planes", "0") == "1";
-  const bool copy_all = get("copy", "not_policy") == "all";
+  const std::string copy = get("copy", "not_policy");
+  if (copy != "not_policy" && copy != "all" && copy != "none") {
+    open_spiel::SpielFatalError("copy=not_policy, copy=all or copy=none");
+  }
+  const bool copy_all = copy == "all", copy_none = copy == "none";
   const double value_loss_weight = std::stod(get("value_loss_weight", "1"));
   const int warmup_batches = std::stoi(get("warmup_batches", "0"));
   const std::string keep = get("keep", "best");
@@ -279,6 +289,10 @@ int main(int argc, char** argv) {
   }
   if (optimizer == "source" && (!copy_all || get("freeze", "copied") != "none")) {
     open_spiel::SpielFatalError("optimizer=source needs copy=all and freeze=none");
+  }
+  if (copy_none && (get("freeze", "copied") != "none" || optimizer != "fresh" ||
+                    max_batches == 0)) {
+    open_spiel::SpielFatalError("copy=none needs freeze=none, optimizer=fresh and batches");
   }
   if (keep_every && max_batches % eval_every != 0) {
     open_spiel::SpielFatalError("keep=every needs max_batches a multiple of eval_every");
@@ -312,9 +326,11 @@ int main(int argc, char** argv) {
     return name.find("policy") == std::string::npos;
   };
   auto everything = [](const std::string&) { return true; };
+  auto nothing = [](const std::string&) { return false; };
   const std::function<bool(const std::string&)> include =
-      copy_all ? std::function<bool(const std::string&)>(everything)
-               : std::function<bool(const std::string&)>(not_policy);
+      copy_none ? std::function<bool(const std::string&)>(nothing)
+      : copy_all ? std::function<bool(const std::string&)>(everything)
+                 : std::function<bool(const std::string&)>(not_policy);
   const std::vector<std::string> copied =
       model.CopyParametersFrom(source, include, /*widen_inputs=*/true);
   std::cerr << absl::StrFormat("copied %d tensors from %s:%d (%s, %d x %d) into %s (%s)\n",
@@ -366,7 +382,9 @@ int main(int argc, char** argv) {
   std::cerr << absl::StrFormat(
       "test: values differ from the source's by %g at most, policies by %g\n", copy_value,
       copy_policy);
-  if (copy_value > 1e-5 || (copy_all && copy_policy > 1e-5)) {
+  if (copy_none) {
+    std::cerr << "copy=none: a fresh network, no copy to test\n";
+  } else if (copy_value > 1e-5 || (copy_all && copy_policy > 1e-5)) {
     open_spiel::SpielFatalError("The copy changed the network's outputs");
   }
 

@@ -147,6 +147,13 @@ torch::Tensor ResTorsoBlockImpl::forward(torch::Tensor x) {
   return output;
 }
 
+std::vector<torch::Tensor> ResTorsoBlockImpl::ReluOutputs(torch::Tensor x) {
+  torch::Tensor first = torch::relu(batch_norm1_(conv1_(x)));
+  torch::Tensor output = batch_norm2_(conv2_(first));
+  output += x;
+  return {first, torch::relu(output)};
+}
+
 ResOutputBlockImpl::ResOutputBlockImpl(const ResOutputBlockConfig& config)
     : value_conv_(torch::nn::Conv2dOptions(
                       /*input_channels=*/config.input_channels,
@@ -482,6 +489,47 @@ ModelImpl::ModelImpl(const ModelConfig& config, const std::string& device)
 
 torch::Tensor ResOutputBlockImpl::PolicyPlanes(torch::Tensor x) {
   return torch::relu(policy_batch_norm_(policy_conv_(x)));
+}
+
+std::vector<torch::Tensor> ResOutputBlockImpl::ReluOutputs(torch::Tensor x) {
+  torch::Tensor value_conv = torch::relu(value_batch_norm_(value_conv_(x)));
+  torch::Tensor value_linear =
+      torch::relu(value_linear1_(value_conv.view({-1, value_observation_size_})));
+  return {value_conv, value_linear, PolicyPlanes(x),
+          torch::tanh(value_linear2_(value_linear))};
+}
+
+std::vector<torch::Tensor> ResConvPolicyOutputBlockImpl::ReluOutputs(torch::Tensor x) {
+  torch::Tensor value_conv = torch::relu(value_batch_norm_(value_conv_(x)));
+  torch::Tensor value_linear =
+      torch::relu(value_linear1_(value_conv.view({-1, value_observation_size_})));
+  return {value_conv, value_linear, torch::relu(policy_batch_norm_(policy_conv1_(x))),
+          torch::tanh(value_linear2_(value_linear))};
+}
+
+std::vector<std::pair<std::string, torch::Tensor>> ModelImpl::ReluOutputs(torch::Tensor x) {
+  if (this->nn_model_ != "resnet" && this->nn_model_ != "resnet_conv_policy") {
+    throw std::runtime_error("ReluOutputs: only for nn_model resnet and "
+                             "resnet_conv_policy, not " + this->nn_model_);
+  }
+  std::vector<std::pair<std::string, torch::Tensor>> out;
+  x = layers_[0]->as<ResInputBlock>()->forward(x);
+  out.push_back({"input", x});
+  for (int i = 1; i <= num_torso_blocks_; i++) {
+    std::vector<torch::Tensor> block = layers_[i]->as<ResTorsoBlock>()->ReluOutputs(x);
+    out.push_back({"torso_" + std::to_string(i) + "_a", block[0]});
+    out.push_back({"torso_" + std::to_string(i) + "_b", block[1]});
+    x = block[1];
+  }
+  std::vector<torch::Tensor> head =
+      this->nn_model_ == "resnet"
+          ? layers_[num_torso_blocks_ + 1]->as<ResOutputBlock>()->ReluOutputs(x)
+          : layers_[num_torso_blocks_ + 1]->as<ResConvPolicyOutputBlock>()->ReluOutputs(x);
+  out.push_back({"value_conv", head[0]});
+  out.push_back({"value_linear", head[1]});
+  out.push_back({"policy_conv", head[2]});
+  out.push_back({"value", head[3]});
+  return out;
 }
 
 std::vector<torch::Tensor> ModelImpl::Activations(torch::Tensor x,

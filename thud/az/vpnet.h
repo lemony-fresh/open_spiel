@@ -170,6 +170,11 @@ class VPNetModel {
   // CPU for these positions — the torso's output, the policy head's planes, the
   // values and the policies — with gradients off, in evaluation mode.
   std::vector<torch::Tensor> Activations(const std::vector<InferenceInputs>& inputs);
+  // Our change (the dormant-channel probe, 2026-10-18): ModelImpl::ReluOutputs on the
+  // CPU for these positions — every rectifier's output by name, and last the values —
+  // with gradients off, in evaluation mode.
+  std::vector<std::pair<std::string, torch::Tensor>> ReluOutputs(
+      const std::vector<InferenceInputs>& inputs);
 
   // Our change (thud/PLAN.md, a tool to restructure a network): copies into this
   // network every parameter and buffer of `other` whose name passes `include` and
@@ -265,13 +270,16 @@ class VPNetModel {
   // mode, which normalises by each batch's statistics, computes nearly what evaluation
   // mode does. Its count of batches and its momentum stay as they were. Returns per
   // batch norm the largest shift of a channel's mean in units of its old deviation, and
-  // the smallest and largest ratio of new to old deviation.
+  // the smallest and largest ratio of new to old deviation. With compensate false (the
+  // dormant-channel probe's fresh network, 2026-10-18), the running statistics alone are
+  // set, in the order the batch norms run, each from what reaches it once those before it
+  // normalise: the function changes to what training mode computes on these batches.
   struct BatchNormConversion {
     std::string name;
     double largest_mean_shift = 0, smallest_ratio = 0, largest_ratio = 0;
   };
   std::vector<BatchNormConversion> ConvertBatchNorms(
-      const std::vector<std::vector<TrainInputs>>& batches);
+      const std::vector<std::vector<TrainInputs>>& batches, bool compensate = true);
   struct GradientSizes {
     double policy = 0, value = 0, l2 = 0, cosine = 0;
   };

@@ -121,6 +121,9 @@ class ResTorsoBlockImpl : public torch::nn::Module {
  public:
   ResTorsoBlockImpl(const ResTorsoBlockConfig& config, int layer);
   torch::Tensor forward(torch::Tensor x);
+  // Our change (the dormant-channel probe, 2026-10-18): the outputs of its two
+  // rectifiers — after the first batch norm, and the block's output — from one pass.
+  std::vector<torch::Tensor> ReluOutputs(torch::Tensor x);
 
  private:
   torch::nn::Conv2d conv1_;
@@ -161,6 +164,10 @@ class ResOutputBlockImpl : public torch::nn::Module {
   // Our change (thud/PLAN.md, the feature probe): the policy head's rectified
   // planes (policy_filters of them), the input of its linear layer.
   torch::Tensor PolicyPlanes(torch::Tensor x);
+  // Our change (the dormant-channel probe, 2026-10-18): the outputs of the head's
+  // rectifiers — the value's convolution, its first linear layer, the policy's
+  // convolution — and the value, from one pass.
+  std::vector<torch::Tensor> ReluOutputs(torch::Tensor x);
 
  private:
   torch::nn::Conv2d value_conv_;
@@ -204,6 +211,10 @@ class ResConvPolicyOutputBlockImpl : public torch::nn::Module {
                                               torch::Tensor actions);
   // The planes the policy logits are taken from, for tests.
   torch::Tensor PolicyPlanes(torch::Tensor x);
+  // Our change (the dormant-channel probe, 2026-10-18): as ResOutputBlock's — the
+  // value's convolution, its first linear layer, the policy's first convolution — and
+  // the value.
+  std::vector<torch::Tensor> ReluOutputs(torch::Tensor x);
 
  private:
   torch::nn::Conv2d value_conv_;
@@ -264,6 +275,12 @@ class ModelImpl : public torch::nn::Module {
   // policy forward() returns — so a caller can check the activations are the
   // ones that make the outputs.
   std::vector<torch::Tensor> Activations(torch::Tensor x, torch::Tensor mask);
+  // Our change (the dormant-channel probe, 2026-10-18; thud/DESIGN_dwarf_signal.md §10),
+  // for "resnet" and "resnet_conv_policy": every rectifier's output by name, from one
+  // pass — "input", "torso_K_a" and "torso_K_b" (block K's two), "value_conv",
+  // "value_linear", "policy_conv" — and last "value", the value forward() returns, so
+  // that a caller can check these are the activations that make it.
+  std::vector<std::pair<std::string, torch::Tensor>> ReluOutputs(torch::Tensor x);
   // The policy, value and L2 losses; our change: then each position's policy and
   // value loss, detached (thud/PLAN.md, Instrumentation: statistics per side).
   std::vector<torch::Tensor> losses(torch::Tensor inputs, torch::Tensor masks,

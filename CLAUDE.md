@@ -308,14 +308,17 @@ and the teacher in one network's prior, `teacher_mix_a=`), `az_forgetting`, `az_
 `az_input_plane_trace`, `az_risk_probe`, `az_dwarf_value_probe` (since 2026-10-17 `each=`:
 every position's values, for `thud/experiments/dwarf_value_report.py`'s intervals, which
 resample whole games) and `teacher_mix_test`;
-`az_batch_norm_convert` (2026-10-17, the race's fix: a network's batch norms set to the
+`az_dormant_probe` and `az_plasticity` (2026-10-18, the capacity tests: dead and dormant
+channels per rectifier, Sokar et al.; random targets fitted against fresh networks of
+other widths, Lyle et al.), `az_batch_norm_convert` (2026-10-17, the race's fix: a network's batch norms set to the
 true statistics of what reaches them, its function unchanged), `batch_norm_test` (the
 lock against upstream's class, the counts' check, the conversion),
 `az_restructure`, which builds a network of a new structure from a trained one and
 its replay buffer (since 2026-10-17 also trains a network on at another value-loss
 weight, as the trainer would: `copy=all freeze=none optimizer=source
 batch_norms=evaluation keep=every`, `warmup_batches=`; its reports carry the trunk's
-gradient sizes per loss), `az_grow`, which grows a network wider or deeper computing the same
+gradient sizes per loss; since 2026-10-18 `copy=none`, a fresh network trained on the
+buffer: a reset that keeps the data), `az_grow`, which grows a network wider or deeper computing the same
 (Net2Net, 2026-10-15), and `az_fresh_optimizer`, a network's weights with a fresh optimizer;
 `az_match devices=`, `az_restructure device=` and `az_grow device=` choose where the
 networks run)

@@ -64,6 +64,14 @@
 #      found ~3e-8), training mode's losses within a fifth of the source's distance from
 #      evaluation mode's (found 0.13-0.14 before, under 0.001 after, 3 seeds) — and writes
 #      the checkpoint.
+#   7. The capacity tests (2026-10-18; thud/DESIGN_dwarf_signal.md §10): az_dormant_probe on
+#      the run's network and buffer exits 0 — its tests are fatal: the values after its
+#      rectifiers equal Inference's, and a killed channel (the positive control) is found
+#      dead — and reports the network and a fresh one; az_plasticity (the run's network,
+#      fresh widths 8 and 2, random targets) exits 0 — its test that the wider fresh
+#      network fits better is fatal; az_restructure copy=none (a fresh network trained on
+#      the buffer) exits 0 and starts from outputs unlike the source's (the control that
+#      nothing was copied).
 #
 #   thud/az/trainer_test.sh [BIN_DIR]    # default build-tests/bin
 #
@@ -289,5 +297,22 @@ check "5. az_fresh_optimizer exits 0 (its checks passed)" [ $? -eq 0 ]
   > "$tmp/converted.jsonl" 2> "$tmp/converted.err"
 check "6. az_batch_norm_convert exits 0 (its tests passed) and writes the checkpoint" \
   bash -c "[ $? -eq 0 ] && [ -f '$tmp/converted/checkpoint--1.pt' ]"
+
+# 7. The capacity tests.
+"$bin/az_dormant_probe" nets="run=$run:-1" buffer="$run/replay_buffer.data" buffer_size=2048 \
+  positions=256 batch=64 > "$tmp/dormant.jsonl" 2> "$tmp/dormant.err"
+check "7. az_dormant_probe exits 0 (its tests passed) and reports the network and a fresh one" \
+  bash -c "[ $? -eq 0 ] && [ \$(grep -c '\"summary\": true' '$tmp/dormant.jsonl') -eq 2 ]"
+"$bin/az_plasticity" nets="run=$run:-1,f8=fresh:8,f2=fresh:2" buffer="$run/replay_buffer.data" \
+  buffer_size=2048 scratch="$tmp/plasticity" positions=64 batch=32 batches=40 report=20 \
+  learning_rate=0.01 > "$tmp/plasticity.jsonl" 2> "$tmp/plasticity.err"
+check "7. az_plasticity exits 0 (the wider fresh network fits better) and reports all three" \
+  bash -c "[ $? -eq 0 ] && [ \$(grep -c '\"summary\": true' '$tmp/plasticity.jsonl') -eq 3 ]"
+"$bin/az_restructure" from="$run:-1" to="$tmp/reset" buffer="$run/replay_buffer.data" \
+  buffer_size=2048 nn_model=resnet_conv_policy input_planes=1 copy=none freeze=none \
+  batch_size=64 eval_every=10 max_batches=10 > "$tmp/reset.jsonl" 2> "$tmp/reset.err"
+check "7. az_restructure copy=none exits 0 from outputs unlike the source's" \
+  bash -c "[ $? -eq 0 ] && grep -q 'copy=none: a fresh network' '$tmp/reset.err' && \
+    python3 -c \"import re,sys; d=float(re.search(r'values differ from the source.s by (\\S+)', open(sys.argv[1]).read()).group(1)); sys.exit(0 if d > 1e-3 else 1)\" '$tmp/reset.err'"
 
 finish
