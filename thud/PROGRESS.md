@@ -334,8 +334,13 @@ against 0.10. Self-play speed: B 4h09m, A 4h34m. **Running** (detached,
 `~/thud-runs/np_cont_2026-10-18.sh`): N′'s run continued to step 201 in segments of 10
 (at step 176 at 13:03; self-play kept dwarfs in 77.8% of steps 172-176's games), each
 followed by measurement 4 (the fixed positions, its own games), the trunk's gradients
-and matches against N161 and hexparrot:3; `touch ~/thud-runs/np_cont.stop` ends it after a
-segment. The race measured by the batch norms' own counters
+and matches against N161 and hexparrot:3 (segment 181's by ~16:15, 191's ~21:15, 201's
+~02:15; `touch ~/thud-runs/np_cont.stop` ends it after a segment); then
+`~/thud-runs/eval_Np_2026-10-18.sh` (waiting): night12's evaluation of the last finished
+segment's network — matches against M102 and alpha-beta 1 and 2, the probes (capture
+targets, long captures, unsafe targets), the regression gates against M102 and against
+N161 — ~2.5 hours, by ~05:00. Run N's recipe stays unchanged through it (the teacher's
+weight 0.7 on the dwarfs' positions, 0.3 on the trolls'; value-loss weight 1). The race measured by the batch norms' own counters
 (`num_batches_tracked`): in step 161 of the 64 learning batches the input batch norm ran 7
 in training mode, the deeper ones 11-51 (rising with depth: inference calls under way when
 the learner switches to training finish their deeper layers in training mode); run H's
@@ -3407,4 +3412,16 @@ the push's and the rename's tests ran (memory beside the trainer), to resume.
   33-51 minutes (no pause: the clock log's drift 1 s; daytime use of the laptop, most
   likely), step 176 23.
 
-**Next step:** as recorded in `## Current status` — the segments' results.
+- **2026-10-18, ~13:30-13:55: pushed; the evaluation queued.** Pushed through `fd5f5cc3`
+  (the pre-push hook: 33 of 33 tests, 696 s beside the trainer). The user: use the
+  computer until 8 pm at least; queue Np201's evaluation behind the run —
+  `~/thud-runs/eval_Np_2026-10-18.sh`, night12's evaluation of N161 on the last segment
+  np_cont finishes (201, else 191 or 181), the gates against M102 and N161 (N161's own
+  capture targets taken again on N′'s run's logs, since the gate compares the same
+  positions); its gates step tested by replaying night12's N161 files through it (the same
+  lines as night12's). Decided: the teacher's weights stay as run N's (0.7 on the dwarfs'
+  positions, 0.3 on the trolls') for this run — one change at a time, so the run differs
+  from run N by the fix alone; a taper of the teacher stays on the list for later.
+
+**Next step:** as recorded in `## Current status` — the segments' results, then Np201's
+evaluation.
