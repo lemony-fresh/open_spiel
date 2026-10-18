@@ -325,10 +325,13 @@ of its games, run N's last segment 22.7%**, arm A ~29% in steps 162-168), arm A 
 171 by ~03:45, then measurement 4 and the match Np171 against No171. Queued after it
 (`~/thud-runs/np_cont_2026-10-18.sh`, detached, waiting): self-play without training
 (N′, w1s1, Np171, No171 against themselves in run N's self-play conditions: does arm A's
-lower survival come from the networks or from the race in its self-play?), the trunk's
-gradient sizes, then N′'s run continued to step 201 in three segments of 10 (each:
-measurement 4 on the fixed positions and on its own games, the gradients, a match against
-N161; ~4.4 hours each; `touch ~/thud-runs/np_cont.stop` ends it after a segment). The race measured by the batch norms' own counters
+lower survival come from the networks or from the race in its self-play?), the four
+against hexparrot:3 (each side against a fixed player, pair by pair against N161's match
+on the same openings, and the gates' dwarf blunders and troll kills: did the dwarfs get
+stronger or the trolls weaker?), the trunk's gradient sizes, then N′'s run continued to
+step 201 in three segments of 10 (each: measurement 4 on the fixed positions and on its
+own games, the gradients, matches against N161 and hexparrot:3; ~4.8 hours each; `touch
+~/thud-runs/np_cont.stop` ends it after a segment). The race measured by the batch norms' own counters
 (`num_batches_tracked`): in step 161 of the 64 learning batches the input batch norm ran 7
 in training mode, the deeper ones 11-51 (rising with depth: inference calls under way when
 the learner switches to training finish their deeper layers in training mode); run H's
@@ -3371,6 +3374,19 @@ the push's and the rename's tests ran (memory beside the trainer), to resume.
   showed little — N′ against w1s1 −1.45 — so the queue matches each segment's network
   against N161). Its pieces were tested before the start: the self-play settings (one pair
   at 2 simulations), the battle counter (margins equal to the replayed returns), the cut of
-  a segment's games from the actors' logs.
+  a segment's games from the actors' logs. Then the user asked for a test of whether arm
+  B's dwarfs got stronger or its trolls weaker, and for the dwarfs' blunder rates: the
+  trainer's own games against alpha-beta depth 2 (a fixed player) already say per side,
+  steps 162-171 — our dwarfs −29.1 ± 0.3 (B) against −30.3 ± 0.3 (A), our trolls +18.8 ±
+  0.8 against +18.5 ± 1.0: the trolls no weaker, the dwarfs a little stronger — but in
+  training's conditions, arm A's race included, and alpha-beta 2's trolls leave our dwarfs
+  little to gain (−30 of −32). So the queue (stopped while still waiting, extended,
+  restarted) also matches N′, w1s1, Np171, No171 and each segment's network against
+  hexparrot:3 as night12 matched N161 (seed 1: the same openings), compares each side's
+  margin with N161's pair by pair, and runs the regression gates against N161 (blunders:
+  the share of dwarf moves whose dwarf the reply takes; troll kills). The new match
+  function was tested with a stand-in az_match replaying M102's hexparrot match: M102's
+  sides against N161's (dwarfs −11.40, trolls −6.08) equal the summaries' differences, and
+  the gates reproduce night12's blunders (0.254 against 0.059).
 
 **Next step:** as recorded in `## Current status` — the arms' results and the queue's.

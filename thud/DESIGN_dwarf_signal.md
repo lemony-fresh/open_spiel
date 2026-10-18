@@ -1097,8 +1097,11 @@ inference shares the learner's network: modes switched mid-call, weights written
 mid-call). **Self-play without training** tells them apart: each of N′, w1s1, Np171 and
 No171 against itself in run N's self-play conditions (`az_match share=1 noise=0,1
 sample_plies=10 opening=0`), no learner beside it — w1s1 keeping dwarfs like N′ points to
-the race, like arm A to the networks. Then N′'s run goes on to step 201 in segments of 10,
-read as §10's segments are (survival and the gap), with a match against N161 after each
+the race, like arm A to the networks. Survival alone cannot say whether the dwarfs got
+stronger or the trolls weaker: each side against a fixed player can — hexparrot:3 (it
+saturates neither side), pair by pair against N161's match on the same openings, with the
+gates' dwarf blunders. Then N′'s run goes on to step 201 in segments of 10, read as §10's
+segments are (survival and the gap), with matches against N161 and hexparrot:3 after each
 (`~/thud-runs/np_cont_2026-10-18.sh`).
 
 ## Review log
