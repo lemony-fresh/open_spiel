@@ -26,8 +26,10 @@
 // network that fits like a fresh one of width w has the capacity of width w, in effect.
 //
 // Every `report` steps one JSON line per network: the mean policy and value loss of the
-// steps since the last report; then a summary per network (the last report's losses, and
-// the mean over all reports). Test, fatal, when fresh networks of two widths are measured:
+// steps since the last report; then a summary per network (the last report's losses, the
+// mean over all reports, and the size — L2 norm — of its weights at the start: with batch
+// norms a larger weight learns more slowly at the same rate, one known cause of lost
+// plasticity). Test, fatal, when fresh networks of two widths are measured:
 // the wider fits better (else the test cannot tell capacities apart at these settings).
 //
 //   thud/build_programs.sh az_plasticity
@@ -39,6 +41,7 @@
 // `scratch` (must not exist) holds the fresh networks' vpnet.pb files.
 
 #include <algorithm>
+#include <cmath>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -64,8 +67,20 @@ using open_spiel::thud_az::torch_az::VPNetModel;
 
 struct Result {
   std::string name;
-  double last_policy = 0, last_value = 0, mean_policy = 0, mean_value = 0;
+  double last_policy = 0, last_value = 0, mean_policy = 0, mean_value = 0, norm = 0;
 };
+
+// The L2 norm of the network's learnt parameters (not the running statistics).
+double WeightNorm(VPNetModel& model) {
+  double sum = 0;
+  for (const auto& [name, t] : model.NamedTensors()) {
+    if (name.find("running") != std::string::npos || name.find("num_batches") != std::string::npos) {
+      continue;
+    }
+    sum += t.to(torch::kFloat64).square().sum().item<double>();
+  }
+  return std::sqrt(sum);
+}
 
 }  // namespace
 
@@ -162,6 +177,7 @@ int main(int argc, char** argv) {
     VPNetModel model(*game, dir, "vpnet.pb", device);  // A fresh optimizer.
     if (n.width == 0) model.LoadWeights(absl::StrCat(n.dir, "/checkpoint-", n.step));
     model.SetLearningRate(learning_rate);
+    const double norm = WeightNorm(model);
 
     std::mt19937 rng(seed + 2);  // The same batches for every network.
     std::vector<int> order(positions.size());
@@ -170,6 +186,7 @@ int main(int argc, char** argv) {
     double policy = 0, value = 0, sum_policy = 0, sum_value = 0;
     int reports = 0;
     Result r{n.name};
+    r.norm = norm;
     for (int b = 1; b <= batches; ++b) {
       std::vector<VPNetModel::TrainInputs> part;
       for (int i = 0; i < batch; ++i) {
@@ -201,9 +218,10 @@ int main(int argc, char** argv) {
     r.mean_value = sum_value / std::max(reports, 1);
     std::cout << absl::StrFormat(
                      "{\"summary\": true, \"net\": \"%s\", \"width\": %d, \"last_policy\": %.4f, "
-                     "\"last_value\": %.4f, \"mean_policy\": %.4f, \"mean_value\": %.4f}",
+                     "\"last_value\": %.4f, \"mean_policy\": %.4f, \"mean_value\": %.4f, "
+                     "\"weight_norm\": %.2f}",
                      n.name, n.width > 0 ? n.width : structure.nn_width, r.last_policy,
-                     r.last_value, r.mean_policy, r.mean_value)
+                     r.last_value, r.mean_policy, r.mean_value, r.norm)
               << std::endl;
     if (n.width > 0) fresh_by_width[n.width] = r.last_policy + r.last_value;
     results.push_back(r);
