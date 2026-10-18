@@ -317,25 +317,29 @@ points on the same positions). **The race is fixed in our copy** (2026-10-17: a 
 the network, each learning step's batch-norm counts checked; 33 tests pass), N161
 converted (N161c: its batch norms set to the true statistics, the function within 7.7e-7),
 and **N′** (N161c trained on 640 batches in training mode) drew w1s1 (the same the old
-way): −1.45 a pair (−4.62 to +1.72). Running (detached): **the two arms** (10 self-play
-steps each: N′ with the fixed trainer, w1s1 with `az_trainer_d1`;
-`~/thud-runs/bn_arms_2026-10-17.sh`, results in `~/thud-runs/bn_fix_2026-10-17/`): arm B
-done (19:12-23:21; every step's batch norms 64 of 64; **its self-play kept dwarfs in 65.8%
-of its games, run N's last segment 22.7%**, arm A ~29% in steps 162-168), arm A to step
-171 by ~03:45, then measurement 4 and the match Np171 against No171. Queued after it
-(`~/thud-runs/np_cont_2026-10-18.sh`, detached, waiting): self-play without training
-(N′, w1s1, Np171, No171 against themselves in run N's self-play conditions: does arm A's
-lower survival come from the networks or from the race in its self-play?), the four
-against hexparrot:3 (each side against a fixed player, pair by pair against N161's match
-on the same openings, and the gates' dwarf blunders and troll kills: did the dwarfs get
-stronger or the trolls weaker?), the trunk's gradient sizes, then N′'s run continued to
-step 201 in three segments of 10 (each: measurement 4 on the fixed positions and on its
-own games, the gradients, matches against N161 and hexparrot:3; ~4.8 hours each; `touch
-~/thud-runs/np_cont.stop` ends it after a segment). The race measured by the batch norms' own counters
+way): −1.45 a pair (−4.62 to +1.72). **The two arms are done** (10 self-play steps each
+from step 161: B, N′ with the fixed trainer; A, w1s1 with `az_trainer_d1`;
+`~/thud-runs/bn_arms_2026-10-17.sh`, results in `~/thud-runs/bn_fix_2026-10-17/`, the
+design's §10): **Np171 beats No171 by +7.6 a pair** (+4.3 to +10.9, 30 of 40 pairs);
+against hexparrot:3, pair by pair against N161 on the same openings, **Np171's dwarfs
++16.5** (+12.4 to +20.6), its trolls +1.1 (−3.9 to +6.0) — the dwarfs stronger, the trolls
+no weaker — and its dwarfs blunder 2.0% (N161 5.9%, No171 4.4%); Np171 beats hexparrot:3
+by +13.0 a pair (N161 −4.6). Already N′ and w1s1 (640 offline batches, either mode) had
+dwarfs +8.5 to +10.6 and blunders 2.3-2.6%; the fixed trainer built on it, the old one lost
+most of it (No171's dwarfs +1.9). Survival in self-play without training: N′ 61%, w1s1
+54%, Np171 61%, No171 34% (arm A's own first steps 34%: the race also spoilt its self-play
+directly). Measurement 4: a far dwarf's worth with the dwarfs to move in the games against
+alpha-beta, Np171 0.0070 against No171 0.0024 (N161 −0.0001), the gap's ratio 0.27
+against 0.10. Self-play speed: B 4h09m, A 4h34m. **Running** (detached,
+`~/thud-runs/np_cont_2026-10-18.sh`): N′'s run continued to step 201 in segments of 10
+(at step 176 at 13:03; self-play kept dwarfs in 77.8% of steps 172-176's games), each
+followed by measurement 4 (the fixed positions, its own games), the trunk's gradients
+and matches against N161 and hexparrot:3; `touch ~/thud-runs/np_cont.stop` ends it after a
+segment. The race measured by the batch norms' own counters
 (`num_batches_tracked`): in step 161 of the 64 learning batches the input batch norm ran 7
 in training mode, the deeper ones 11-51 (rising with depth: inference calls under way when
 the learner switches to training finish their deeper layers in training mode); run H's
-step 65 alike. **Next:** the arms' results and the queue's (the design's §10);
+step 65 alike. **Next:** the segments' results (the design's §10);
 the upstream PR for the race opened as
 [#1646](https://github.com/google-deepmind/open_spiel/pull/1646) (2026-10-17, after the
 user's review; the CLA check passed; waiting for upstream's CI and review — the
@@ -3389,4 +3393,18 @@ the push's and the rename's tests ran (memory beside the trainer), to resume.
   sides against N161's (dwarfs −11.40, trolls −6.08) equal the summaries' differences, and
   the gates reproduce night12's blunders (0.254 against 0.059).
 
-**Next step:** as recorded in `## Current status` — the arms' results and the queue's.
+- **2026-10-18, ~13:20: the arms' results** (the design's §10, *The arms' results*). The
+  match Np171 against No171 +7.6 (+4.3 to +10.9); against hexparrot:3 per side against
+  N161, Np171's dwarfs +16.5, its trolls +1.1, its blunders 2.0% (N161 5.9%); N′ and w1s1
+  already +10.6 and +8.5 for the dwarfs, No171 back to +1.9 (blunders 4.4%). Self-play
+  without training: N′ 61%, w1s1 54%, Np171 61%, No171 34% keeping dwarfs. The value's
+  gap: a far dwarf's worth, dwarfs to move, in the games against alpha-beta, Np171 0.0070,
+  No171 0.0024, N161 −0.0001. The trunk's gradients: the value's pull against the
+  policy's (weighted) N161 2.6x, No171 10.2x (evaluation mode; cosine −0.52, −0.51), N′
+  3.7x, Np171 8.2x (training mode; cosine +0.06, −0.04). Self-play speed: arm B 4h09m,
+  arm A 4h34m for 10 steps. The self-play test took 3h15m, not the ~1-1.5 hours I had
+  estimated (four at once), so the queue runs ~2 hours later; N′'s steps 172-175 took
+  33-51 minutes (no pause: the clock log's drift 1 s; daytime use of the laptop, most
+  likely), step 176 23.
+
+**Next step:** as recorded in `## Current status` — the segments' results.

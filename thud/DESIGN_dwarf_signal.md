@@ -1104,6 +1104,40 @@ gates' dwarf blunders. Then N′'s run goes on to step 201 in segments of 10, re
 segments are (survival and the gap), with matches against N161 and hexparrot:3 after each
 (`~/thud-runs/np_cont_2026-10-18.sh`).
 
+**The arms' results** (2026-10-18; one seed each; `~/thud-runs/bn_fix_2026-10-17/`, the
+queue's in `cont/`). Strength: **Np171 beats No171 by +7.6 a pair** (+4.3 to +10.9, 30 of
+40) after 10 steps from equal starts (N′ against w1s1 −1.45). Each side against
+hexparrot:3, against N161 on the same 40 openings (95% intervals), with the gates' dwarf
+blunders (the share of dwarf moves whose dwarf the reply takes):
+
+| Network | Dwarfs | Trolls | Blunders | Against hexparrot:3 |
+|---|---|---|---|---|
+| N161 | — | — | 5.9% | −4.6 a pair |
+| w1s1 (640 batches, evaluation mode) | +8.5 (+4.4 to +12.5) | −0.4 (−4.7 to +3.9) | 2.6% | +3.5 |
+| N′ (640 batches, training mode) | +10.6 (+6.2 to +14.9) | −1.0 (−6.3 to +4.3) | 2.3% | +5.0 |
+| No171 (arm A, the race) | +1.9 (−1.7 to +5.5) | +2.0 (−3.0 to +6.9) | 4.4% | −0.8 |
+| Np171 (arm B, fixed) | **+16.5** (+12.4 to +20.6) | +1.1 (−3.9 to +6.0) | 2.0% | **+13.0** |
+
+So the dwarfs got stronger and the trolls no weaker. Two surprises: 640 offline batches on
+run N's buffer improved the dwarfs in either mode — the old trainer's learning was neither
+mode but a mix that changed from batch to batch and layer to layer, which clean training
+in either mode avoids (an inference, untested) — and arm A's 10 steps lost most of w1s1's
+gain while arm B's added to N′'s. Survival, the four networks against themselves in run
+N's self-play conditions without a learner (80 battles each): N′ 61%, w1s1 54% (the starts
+alike), Np171 61%, No171 34% — the networks diverged; and arm A's own first two steps kept
+dwarfs in 34% of their games where w1s1 alone keeps 54% (arm B 61%, N′ alone 61%): the race
+also spoilt arm A's self-play directly. The value (measurement 4, steps 142-161's
+positions, paired): a far dwarf's worth with the dwarfs to move, in the games against
+alpha-beta — where N161 gave it none (−0.0001) — Np171 0.0070, No171 0.0024 (+0.0046,
++0.0037 to +0.0055); its ratio to the trolls-to-move worth 0.27 against 0.10; in self-play
+positions +0.0028 (+0.0016 to +0.0041). Still far below material (1/32 = 0.031): the gap
+closes, faster with the fix. The trunk's gradients (1,024 positions of run N's buffer):
+the weighted value's pull against the policy's grew in both arms (N′ 3.7x → Np171 8.2x,
+training mode, cosine ~0; N161 2.6x → No171 10.2x, evaluation mode, cosine −0.5) — the
+value already leads the trunk, so a larger value weight (E1) is not what these results
+ask for. Self-play speed: 10 steps in 4h09m (B, two copies and `explicit_learning`)
+against 4h34m (A).
+
 ## Review log
 
 **Review 1** (an adversarial reviewer agent, 2026-10-12, on draft 2; findings checked at
