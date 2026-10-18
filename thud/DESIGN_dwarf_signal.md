@@ -1090,6 +1090,16 @@ run N's recipe, value-loss weight 1; `~/thud-runs/bn_arms_2026-10-17.sh`): B, N�
 fixed trainer (two copies, `explicit_learning`); A, w1s1 with `az_trainer_d1` (the race
 as before); read by measurement 4 on fixed positions (paired), survival, the losses, the
 batch norms' counts, self-play speed, and a match of the two step-171 networks.
+Arm B's self-play kept dwarfs in 65.8% of its games (steps 162-171), arm A's in ~29%
+(162-168), from the first step on — while N′ and w1s1 drew their match. Two causes are
+open: the networks (N′ learnt in training mode) or the race in arm A's self-play (its
+inference shares the learner's network: modes switched mid-call, weights written
+mid-call). **Self-play without training** tells them apart: each of N′, w1s1, Np171 and
+No171 against itself in run N's self-play conditions (`az_match share=1 noise=0,1
+sample_plies=10 opening=0`), no learner beside it — w1s1 keeping dwarfs like N′ points to
+the race, like arm A to the networks. Then N′'s run goes on to step 201 in segments of 10,
+read as §10's segments are (survival and the gap), with a match against N161 after each
+(`~/thud-runs/np_cont_2026-10-18.sh`).
 
 ## Review log
 

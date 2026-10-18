@@ -316,15 +316,23 @@ and with intervals, the gap's reopening between N141 and N151 is confirmed (−2
 points on the same positions). **The race is fixed in our copy** (2026-10-17: a lock on
 the network, each learning step's batch-norm counts checked; 33 tests pass), N161
 converted (N161c: its batch norms set to the true statistics, the function within 7.7e-7),
-and running (detached): **N′** (N161c trained on 640 batches in training mode, against
-w1s1, the same the old way; `~/thud-runs/nprime_2026-10-17.sh`, from 18:00, then
-measurement 4 and a match), then **the two arms** (10 self-play steps each: N′ with the
-fixed trainer, w1s1 with `az_trainer_d1`; `~/thud-runs/bn_arms_2026-10-17.sh`, ~10-11
-hours, results in `~/thud-runs/bn_fix_2026-10-17/`). The race measured by the batch norms' own counters
+and **N′** (N161c trained on 640 batches in training mode) drew w1s1 (the same the old
+way): −1.45 a pair (−4.62 to +1.72). Running (detached): **the two arms** (10 self-play
+steps each: N′ with the fixed trainer, w1s1 with `az_trainer_d1`;
+`~/thud-runs/bn_arms_2026-10-17.sh`, results in `~/thud-runs/bn_fix_2026-10-17/`): arm B
+done (19:12-23:21; every step's batch norms 64 of 64; **its self-play kept dwarfs in 65.8%
+of its games, run N's last segment 22.7%**, arm A ~29% in steps 162-168), arm A to step
+171 by ~03:45, then measurement 4 and the match Np171 against No171. Queued after it
+(`~/thud-runs/np_cont_2026-10-18.sh`, detached, waiting): self-play without training
+(N′, w1s1, Np171, No171 against themselves in run N's self-play conditions: does arm A's
+lower survival come from the networks or from the race in its self-play?), the trunk's
+gradient sizes, then N′'s run continued to step 201 in three segments of 10 (each:
+measurement 4 on the fixed positions and on its own games, the gradients, a match against
+N161; ~4.4 hours each; `touch ~/thud-runs/np_cont.stop` ends it after a segment). The race measured by the batch norms' own counters
 (`num_batches_tracked`): in step 161 of the 64 learning batches the input batch norm ran 7
 in training mode, the deeper ones 11-51 (rising with depth: inference calls under way when
 the learner switches to training finish their deeper layers in training mode); run H's
-step 65 alike. **Next:** N′ against w1s1, then the arms' results (the design's §10);
+step 65 alike. **Next:** the arms' results and the queue's (the design's §10);
 the upstream PR for the race opened as
 [#1646](https://github.com/google-deepmind/open_spiel/pull/1646) (2026-10-17, after the
 user's review; the CLA check passed; waiting for upstream's CI and review — the
@@ -3349,4 +3357,20 @@ the push's and the rename's tests ran (memory beside the trainer), to resume.
   [#1646](https://github.com/google-deepmind/open_spiel/pull/1646), commit `cb154b7b`, three
   files; the CLA check passed.
 
-**Next step:** as recorded in `## Current status` — N′ against w1s1, then the arms.
+- **2026-10-18, ~02:10-02:45: a queue after the arms.** Arm B finished at 23:21 (steps
+  162-171, 4h09m; every step's batch norms counted 64 of 64; no pause); arm A at step 168.
+  Arm B's self-play kept dwarfs in 65.8% of its 284 games (the dwarfs' margin −8.7), arm
+  A's in 15-41% a step (162-168), run N's last segment 22.7% (−23.4) — different from the
+  first step on, although N′ and w1s1 drew their match. Arm B changed both how the network
+  learnt and its self-play's inference (no longer sharing the learner's network), so the
+  user asked for more work after the arms and `~/thud-runs/np_cont_2026-10-18.sh` was
+  queued: self-play without training for the four networks (which of the two it is), the
+  trunk's gradients, and N′'s run continued to 201 with measurement 4 and a match against
+  N161 after each segment (the user, 2026-10-17: 20 or 40 more steps; and on a comparison
+  match: one is already queued at 171, Np171 against No171, but after 10 steps matches
+  showed little — N′ against w1s1 −1.45 — so the queue matches each segment's network
+  against N161). Its pieces were tested before the start: the self-play settings (one pair
+  at 2 simulations), the battle counter (margins equal to the replayed returns), the cut of
+  a segment's games from the actors' logs.
+
+**Next step:** as recorded in `## Current status` — the arms' results and the queue's.
