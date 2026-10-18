@@ -3330,7 +3330,9 @@ the push's and the rename's tests ran (memory beside the trainer), to resume.
   w1s1 (`nprime_2026-10-17.sh`), then the two arms (`bn_arms_2026-10-17.sh`). Measurement 4 (steps
   142-161's games, paired, one seed each): N′'s value rates a far dwarf with the dwarfs to
   move 0.0145 against w1s1's 0.0124 (+0.0021, +0.0013 to +0.0030), the ratio to the trolls'
-  side the same (+0 points, −4 to +5); both above N161. **Upstream**:
+  side the same (+0 points, −4 to +5); both above N161. The match N′ against w1s1 (40 pairs,
+  seed 3, no noise): −1.45 a pair (−4.62 to +1.72), 15 won, 2 drawn, 23 lost — no difference
+  shown. Arm B started at 19:12. **Upstream**:
   branch `vpnet-batch-norm-race` in the worktree `~/open_spiel-bn-race` (commit `cb154b7b`,
   the noreply identity, no co-author line, as #1637; not pushed): the lock in upstream's
   `vpnet.h`/`vpnet.cc` (26 lines) and `TestLearnUnaffectedByConcurrentInference` (Connect
