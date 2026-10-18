@@ -4472,6 +4472,16 @@ files has changed upstream since our copy (checked against upstream `master`, 20
    upstream's CI (`check-changes`) and the maintainers' review; merged in batches, at
    least every two weeks.
 
+**Upstream's state** (checked 2026-10-17, the user asked): merges come in batches — 05-12,
+05-22, 07-13 (a large one), 07-16/17, 08-11/12, 08-25, 08-31 — with releases 2.0, 2.0.1 and
+2.0.2 in July and August; none since 08-31. On 2026-09-18 Marc Lanctot, OpenSpiel's lead,
+announced he had left Google DeepMind and lost admin rights, handing maintenance to John
+Schultz (@jhtschultz) and Zun Li (@rezunli96) (issue #1621; accepted 09-21). Since then no
+merge, and on 10-01 Lanctot wrote that he "can't import PRs anymore" (PRs are imported
+into Google's repository and synced out, hence the batches). Open PRs are piling up (51:
+17 opened in September, 11 in October so far). So: maintained, in a handover — our #1637
+and #1646 wait for the new maintainers' first batch.
+
 ### Further upstream candidates (2026-10-15)
 
 Found while building the GPU checklist's features; each checked in upstream's own code
