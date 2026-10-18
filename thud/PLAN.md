@@ -665,7 +665,7 @@ the search and trainer*, run C'.
 | 2026-10-15 | The taper's condition (d): the gap counts as closed when, with the dwarfs to move, a far dwarf is worth at least 80% of its worth with the trolls to move, in two measurements in a row | user (Claude proposed) | the design's §5 |
 | 2026-10-15 | The taper's condition (c), stricter: step the dwarfs' teacher weight from w to w′ only if the unsafe-move loop's gain after the step, (1 − w′) × R, is at most 0.8, R (the search's visit share on unsafe dwarf moves over the prior's) at its 95% upper bound; to revisit once in use | user (Claude proposed) | the design's §5 |
 | 2026-10-17 | The run programs built by `thud/programs.mk` through `thud/build_programs.sh` (incremental; a second when nothing changed), run first by every queue and by `run_tests.sh --full`; it builds nothing while one of them runs (a stale `az_capture_targets` had aborted night12's probe) | user (Claude proposed) | CLAUDE.md, *Build and test*; *Tests* |
-| 2026-10-17 | E1 tested offline first: N161 trained on on run N's last buffer as the trainer learns (its own optimizer, the batch norms in evaluation mode), 640 batches at value-loss weights 1, 4 and 16 and a control at twice the rate, seeds 1 and 2; read by measurement 4 with intervals that resample whole games, paired between networks; the best weight then online against weight 1 (10 steps each); a finer sweep around it only if its neighbours differ beyond the seeds' noise | user (Claude proposed) | the design's §10, *E1's offline sweep* |
+| 2026-10-17 | E1 tested offline first: N161 trained on on run N's last buffer as the trainer learns (its own optimizer, the batch norms in evaluation mode), 640 batches at value-loss weights 1, 4 and 16 and a control at twice the rate, seeds 1 and 2; read by measurement 4 with intervals that resample whole games, paired between networks; the best weight then online against weight 1 (10 steps each); a finer sweep around it only if its neighbours differ beyond the seeds' noise — **stopped the same day** (the user: the batch-norm finding first, kept apart from E1) | user (Claude proposed) | the design's §10, *E1's offline sweep* |
 
 **Considered and set aside** (with the reason): the Python AlphaZero (a layout bug, and
 slow; fallback note below); a 32 x 2 network (its convolutions see 11 x 11 squares);
@@ -4503,7 +4503,12 @@ Found while building the GPU checklist's features; each checked in upstream's ow
    N161's training-mode losses on batches of its buffer, value 0.12-0.14, fall to
    0.023-0.027 with one inference thread beside the steps — the level our trainer
    reported throughout; so the batch norms normalise mostly by their running statistics
-   while learning, and those are rarely updated. A real bug (the step's mode is not the one
+   while learning, and those are rarely updated. The batch norms' own counters
+   (`num_batches_tracked`, one per batch in training mode) agree: in run N's step 161 the
+   input batch norm counted 7 of the 64 learning batches, the deeper ones 11-51, rising
+   with depth — an inference call under way when the learner switches to training
+   apparently finishes its deeper layers in training mode, normalised by its few
+   positions' statistics (run H's step 65 alike: 16-53). A real bug (the step's mode is not the one
    `Learn` sets; the parameters are also written while inference reads them). Not yet
    raised; a fix would change how every single-device run learns.
 

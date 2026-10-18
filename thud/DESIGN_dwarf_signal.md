@@ -1045,7 +1045,11 @@ games, each arm paired with weight 1 at the same seed. Three findings while buil
   (upstream's design; reproduced: one inference thread beside the steps brings their
   losses from 0.12-0.14 down to 0.023-0.027; PLAN.md, *Upstreaming*, candidate 4). So
   offline training that carries over must keep the batch norms in evaluation mode
-  (`batch_norms=evaluation`): with it the control at weight 1 holds N161's held-out losses
+  (`batch_norms=evaluation`). The batch norms' own counters agree: in step 161 the input
+  batch norm ran in training mode for 7 of the 64 learning batches, the deeper ones 11-51
+  (rising with depth: apparently inference calls under way when the learner switches to
+  training, finishing their deeper layers in training mode). With the batch norms kept in
+  evaluation mode the control at weight 1 holds N161's held-out losses
   (value 0.0311 → 0.0296 → 0.0313, policy 3.797 → 3.794 over 40 batches); in training
   mode they rose to 0.056 and 3.85.
 - **The value already leads the trunk** (E1 above): at weight 1 its gradient there is
@@ -1058,7 +1062,9 @@ games, each arm paired with weight 1 at the same seed. Three findings while buil
   over these 640 batches at w = 4 to 16, estimated from Adam's update rule (not measured). Hence a control arm: weight 1 at twice the rate — if a
   weight's effect is the rate's, the two agree.
 
-Arms: weights 1, 4, 16 and the rate control, each with seeds 1 and 2 (the training's own
+**Stopped the same day** after arm w1s1 (the user: the batch-norm finding first, kept apart
+from E1 — with proper batch norms the gap may change). As planned: weights 1, 4, 16 and
+the rate control (the user would have preferred 1, 16, 64), each with seeds 1 and 2 (the training's own
 noise), a warm-up of 64 batches for all. **Reading** (set before the results): a weight
 helps if its paired difference from weight 1 in the dwarfs' worth with the dwarfs to move
 (and the ratio) excludes 0 at both seeds, exceeds the difference between weight 1's two

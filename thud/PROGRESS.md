@@ -303,9 +303,9 @@ the regression gates against M102 all pass (blunders 5.9%); condition (c) R = 0.
 0.79). `az_capture_targets` in `build-shared/` was a stale build from before the input
 planes and aborted; rebuilt and rerun by hand — so since 2026-10-17 `thud/build_programs.sh`
 brings every program up to date in a second when nothing changed.
-**E1's offline sweep is running** (2026-10-17, from 16:29, detached:
-`~/thud-runs/e1_sweep_2026-10-17.sh`, ~5.5 hours; results in
-`~/thud-runs/e1_sweep_2026-10-17/report.jsonl`): N161 trained on on run N's buffer at
+**E1's offline sweep is stopped** (the user, 2026-10-17 ~17:20: the batch-norm finding
+first, kept apart from E1; arm w1s1 done, w4s1 cut off; `~/thud-runs/e1_sweep_2026-10-17/`;
+the script resumes if restarted): N161 trained on on run N's buffer at
 value-loss weights 1, 4, 16 and a rate control, 2 seeds each, read by measurement 4 with
 paired, game-resampled intervals (the design's §10, *E1's offline sweep*, with the reading
 rule fixed beforehand). Found while building it: **our trainer learns with its batch norms
@@ -313,9 +313,14 @@ in evaluation mode, in effect** (the inference threads share the network on one 
 upstream's design — `PLAN.md`, *Upstreaming*, candidate 4), and the value already leads
 the trunk's gradient (1.5-6.6x the policy's at weight 1), so E1 is expected to do little;
 and with intervals, the gap's reopening between N141 and N151 is confirmed (−20 to −24
-points on the same positions). **Next:** read the sweep's report by its rule; if a weight
-helps, it goes online against weight 1 (10 steps each); whether to fix the batch-norm race
-in our trainer (the user's call: it changes how every run learns); the Net2Net live test in the next gap; the longer run's segments read as the design's §10 says — survival and the gap
+points on the same positions). The race measured by the batch norms' own counters
+(`num_batches_tracked`): in step 161 of the 64 learning batches the input batch norm ran 7
+in training mode, the deeper ones 11-51 (rising with depth: inference calls under way when
+the learner switches to training finish their deeper layers in training mode); run H's
+step 65 alike. **Next:** the user's question, what to do about the batch norms first
+(proposed: the trainer with two copies of the network and upstream's `explicit_learning`,
+tested by those counters; N161 converted to normalise by its inputs' true statistics, its
+function unchanged; then N161 trained on in each mode, 10 steps each); E1 after that; the Net2Net live test in the next gap; the longer run's segments read as the design's §10 says — survival and the gap
 both rising: patience; survival rising but the gap not: E1, E2; survival below ~5%: B1′,
 or C7 with the user's word — then its evaluation (against N121 and the players without a
 network); the regression
