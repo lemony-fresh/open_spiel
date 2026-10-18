@@ -344,7 +344,7 @@ weight 0.7 on the dwarfs' positions, 0.3 on the trolls'; value-loss weight 1). T
 (`num_batches_tracked`): in step 161 of the 64 learning batches the input batch norm ran 7
 in training mode, the deeper ones 11-51 (rising with depth: inference calls under way when
 the learner switches to training finish their deeper layers in training mode); run H's
-step 65 alike. **Next:** the segments' results (the design's §10);
+step 65 alike. **Next:** the segments' results (the design's §10), Np201's evaluation, then the teacher's weight revisited (the user, 2026-10-18: after step 201; a taper branched from the same network);
 the upstream PR for the race opened as
 [#1646](https://github.com/google-deepmind/open_spiel/pull/1646) (2026-10-17, after the
 user's review; the CLA check passed; waiting for upstream's CI and review — the
