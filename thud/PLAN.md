@@ -4527,7 +4527,11 @@ Found while building the GPU checklist's features; each checked in upstream's ow
    in `vpnet_test.cc` (Connect Four: two copies learn the same batches, one beside a thread
    calling Inference; equal losses required) — failing on unchanged upstream at the first
    step in 3 runs of 3, passing with the fix in 3 of 3; `torch_model_test`,
-   `torch_integration_test` and the tic-tac-toe example pass.
+   `torch_integration_test` and the tic-tac-toe example pass. The comments shortened at
+   the user's review (commit `cb154b7b`). **Opened 2026-10-17 as
+   [#1646](https://github.com/google-deepmind/open_spiel/pull/1646)** (the user's
+   go-ahead; only the noreply identity, no co-author line): the CLA check passed;
+   upstream's CI (`check-changes`) and the maintainers' review next.
 
 ## Deferred decisions
 

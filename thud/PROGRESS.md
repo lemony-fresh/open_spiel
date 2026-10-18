@@ -325,9 +325,10 @@ hours, results in `~/thud-runs/bn_fix_2026-10-17/`). The race measured by the ba
 in training mode, the deeper ones 11-51 (rising with depth: inference calls under way when
 the learner switches to training finish their deeper layers in training mode); run H's
 step 65 alike. **Next:** N′ against w1s1, then the arms' results (the design's §10);
-the upstream PR for the race, prepared (`~/open_spiel-bn-race`, commit `cb154b7b`, the
-description `~/open_spiel-bn-race_PR.md`): the user reviews it before anything is pushed
-(it touches other files than #1637, so it need not wait for it); E1 only after the arms; the Net2Net live test in the next gap; the longer run's segments read as the design's §10 says — survival and the gap
+the upstream PR for the race opened as
+[#1646](https://github.com/google-deepmind/open_spiel/pull/1646) (2026-10-17, after the
+user's review; the CLA check passed; waiting for upstream's CI and review); E1 only after
+the arms; the Net2Net live test in the next gap; the longer run's segments read as the design's §10 says — survival and the gap
 both rising: patience; survival rising but the gap not: E1, E2; survival below ~5%: B1′,
 or C7 with the user's word — then its evaluation (against N121 and the players without a
 network); the regression
@@ -3338,5 +3339,11 @@ the push's and the rename's tests ran (memory beside the trainer), to resume.
   steps) pass; the description drafted in `~/open_spiel-bn-race_PR.md`, for the user's
   review. A safety check refused an `rm -rf` of a command substitution; the paths were
   listed first and removed by name.
+
+- **2026-10-17, ~19:00-19:30: the upstream PR opened.** At the user's review its comments
+  were shortened (19 lines to 13; "so the losses" reworded), then, on the user's word,
+  the branch pushed to the fork and the PR opened:
+  [#1646](https://github.com/google-deepmind/open_spiel/pull/1646), commit `cb154b7b`, three
+  files; the CLA check passed.
 
 **Next step:** as recorded in `## Current status` — N′ against w1s1, then the arms.
