@@ -327,8 +327,9 @@ the learner switches to training finish their deeper layers in training mode); r
 step 65 alike. **Next:** N′ against w1s1, then the arms' results (the design's §10);
 the upstream PR for the race opened as
 [#1646](https://github.com/google-deepmind/open_spiel/pull/1646) (2026-10-17, after the
-user's review; the CLA check passed; waiting for upstream's CI and review); E1 only after
-the arms; the Net2Net live test in the next gap; the longer run's segments read as the design's §10 says — survival and the gap
+user's review; the CLA check passed; waiting for upstream's CI and review — the
+maintainers changed in September, so the user: wait, and ping them on #1637 and #1646
+around 2026-11-07 if nothing has moved); E1 only after the arms; the Net2Net live test in the next gap; the longer run's segments read as the design's §10 says — survival and the gap
 both rising: patience; survival rising but the gap not: E1, E2; survival below ~5%: B1′,
 or C7 with the user's word — then its evaluation (against N121 and the players without a
 network); the regression

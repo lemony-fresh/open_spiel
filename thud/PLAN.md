@@ -668,6 +668,7 @@ the search and trainer*, run C'.
 | 2026-10-17 | E1 tested offline first: N161 trained on on run N's last buffer as the trainer learns (its own optimizer, the batch norms in evaluation mode), 640 batches at value-loss weights 1, 4 and 16 and a control at twice the rate, seeds 1 and 2; read by measurement 4 with intervals that resample whole games, paired between networks; the best weight then online against weight 1 (10 steps each); a finer sweep around it only if its neighbours differ beyond the seeds' noise — **stopped the same day** (the user: the batch-norm finding first, kept apart from E1) | user (Claude proposed) | the design's §10, *E1's offline sweep* |
 | 2026-10-17 | The batch-norm race first, kept apart from E1 (with proper batch norms the gap may change): fixed in our copy (a lock on the network; each learning step checks its batch norms' counts and stops the program if they are off), no upstream change; N161 converted (its batch norms set to the true statistics of what reaches them, the function unchanged — Net2Net's step — not retrained from scratch: the buffer holds only ~21 steps, and a start other than N161 would confound the comparison); **N′** = the converted N161 trained on 640 batches in training mode, against w1s1 (the same the old way): held-out losses, measurement 4, a match; then 10 self-play steps each, the fix (our trainer, two copies, `explicit_learning`) against the control (`az_trainer_d1`, the race), value-loss weight 1 | user (Claude proposed; the user named N′) | the design's §10; *Upstreaming*, candidate 4 |
 | 2026-10-17 | Upstream: the race's fix as a PR with a reproduction on Connect Four, prepared in a separate worktree once tonight's runs are going (a slow PR review says nothing about upstream's upkeep: the user) | user | *Upstreaming*, candidate 4 |
+| 2026-10-17 | Upstream: wait for the new maintainers (#1621) a few weeks, then ping them on #1637 and #1646 — around 2026-11-07 if nothing has moved | user | *Upstreaming*, upstream's state |
 
 **Considered and set aside** (with the reason): the Python AlphaZero (a layout bug, and
 slow; fallback note below); a 32 x 2 network (its convolutions see 11 x 11 squares);
@@ -4480,7 +4481,8 @@ Schultz (@jhtschultz) and Zun Li (@rezunli96) (issue #1621; accepted 09-21). Sin
 merge, and on 10-01 Lanctot wrote that he "can't import PRs anymore" (PRs are imported
 into Google's repository and synced out, hence the batches). Open PRs are piling up (51:
 17 opened in September, 11 in October so far). So: maintained, in a handover — our #1637
-and #1646 wait for the new maintainers' first batch.
+and #1646 wait for the new maintainers' first batch. **Decided (the user):** wait a few
+weeks, then ping them — around 2026-11-07 if nothing has moved.
 
 ### Further upstream candidates (2026-10-15)
 
