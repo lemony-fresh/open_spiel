@@ -344,7 +344,7 @@ weight 0.7 on the dwarfs' positions, 0.3 on the trolls'; value-loss weight 1). T
 (`num_batches_tracked`): in step 161 of the 64 learning batches the input batch norm ran 7
 in training mode, the deeper ones 11-51 (rising with depth: inference calls under way when
 the learner switches to training finish their deeper layers in training mode); run H's
-step 65 alike. **Next:** the segments' results (the design's §10), Np201's evaluation, then the teacher's weight revisited (the user, 2026-10-18: after step 201; a taper branched from the same network);
+step 65 alike. **Next:** the capacity tests (`~/thud-runs/capacity_2026-10-18.sh`, the run paused after step 181), then the user's decision: keep Np181 or reset; then the segments' results (the design's §10), Np201's evaluation, then the teacher's weight revisited (the user, 2026-10-18: after step 201; a taper branched from the same network);
 the upstream PR for the race opened as
 [#1646](https://github.com/google-deepmind/open_spiel/pull/1646) (2026-10-17, after the
 user's review; the CLA check passed; waiting for upstream's CI and review — the
@@ -3439,5 +3439,27 @@ the push's and the rename's tests ran (memory beside the trainer), to resume.
   this machine's limit (the trainer 8.8 GB, 4.4 GB of WSL's 15 GB free; `memory=20GB` would
   leave room for about twice the buffer, to be measured).
 
-**Next step:** as recorded in `## Current status` — the segments' results, then Np201's
-evaluation.
+- **2026-10-18, ~14:50-15:40: the capacity tests built; N′'s run paused after 181.** The
+  user: worried the race cost capacity that a larger network would not bring back; if it
+  cannot be ruled out, restart (cheaply) — so the tests today, not tomorrow. N′'s run ends
+  after segment 181's measurements (`np_cont.stop`; segment 181: 85.7% of self-play games
+  kept dwarfs, batch norms exact); `eval_Np` stopped while waiting. Built and tested (commit
+  `e23a7e9d`, `e1c4745d`): `az_dormant_probe` (dead and τ-dormant channels per rectifier,
+  Sokar et al. 2023; `ModelImpl::ReluOutputs`; its fatal tests: the values after its
+  rectifiers equal Inference's, a killed channel found; the fresh reference normalised by
+  `ConvertBatchNorms(compensate=false)` — without it a fresh network's placeholder
+  statistics showed 24 dead channels), `az_plasticity` (random targets, Lyle et al. 2023;
+  fresh widths as the scale; weight norms), `az_restructure copy=none` (a reset that keeps
+  the buffer, Nikishin et al. 2022); `batch_norm_test` 5 and `trainer_test.sh` 7. First
+  readings (an old buffer, stage 3a's, 1,024 positions): the trunk's 576 channels have none
+  dead or dormant in N161 and Np180, the value head's 64-unit hidden layer 3 and 6 dead
+  (8-9 and 10-14 dormant) — C16 alike (6 dead). The plasticity pilot (2,048 positions, 200
+  batches, beside a match): fresh 64 fits the random targets (policy 3.75 -> 0.15), fresh
+  32 nearly (0.29), **Np181 hardly (4.20 -> 3.88)**; weight norms Np181 44.8, N161c 48.1,
+  fresh 30.3. Whether that is the race's or training's own loss of plasticity, the control
+  says: the same test on the reset network's checkpoints. Queued:
+  `~/thud-runs/capacity_2026-10-18.sh` (A, the planes' cost, B beside C, C's matches, the
+  control).
+
+**Next step:** as recorded in `## Current status` — the capacity tests' results, then the
+user's decision (keep Np181 or reset).
