@@ -3423,5 +3423,21 @@ the push's and the rename's tests ran (memory beside the trainer), to resume.
   positions, 0.3 on the trolls') for this run — one change at a time, so the run differs
   from run N by the fix alone; a taper of the teacher stays on the list for later.
 
+- **2026-10-18, ~14:30: #1646's description extended.** The user asked why learning and
+  inference ran at once and whether others do it: it is upstream's design (the actors and
+  evaluators keep playing while the learner trains, as in AlphaZero; the
+  `explicit_learning` flag's text: by default "while learning, the first device also takes
+  on inference requests"), so every run without `explicit_learning` has the race —
+  upstream's default configuration (one device) included, and multi-device runs that keep
+  the default. A section *Who is affected* says so in the PR (posted through the REST API:
+  `gh pr edit` fails on GitHub's retired classic projects), with our arms' result (30 of 40
+  pairs); the same in `~/open_spiel-bn-race_PR.md`. The models: upstream's `resnet` (the
+  default) has batch norms in every block, `mlp` none. Also answered: the learning rate is
+  in the GPU tuning list (group 2, never tuned); the input planes' inference cost was never
+  measured cleanly (run M's steps took a median 28.1 minutes, run L's 23.7, at different
+  times — a hint only; to measure with `az_search_cost` between runs); the buffer is near
+  this machine's limit (the trainer 8.8 GB, 4.4 GB of WSL's 15 GB free; `memory=20GB` would
+  leave room for about twice the buffer, to be measured).
+
 **Next step:** as recorded in `## Current status` — the segments' results, then Np201's
 evaluation.
