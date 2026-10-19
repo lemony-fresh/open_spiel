@@ -43,13 +43,19 @@ standard errors (the blunders at 4 percentage points):
                        anchor's and a fresh network's of the same width
                        (from the candidate's file first), and the
                        weights' norm (2026-10-18)
+  trunk gradients      az_restructure's report before its first batch:   never fails: monitored
+                       the value loss's pull on the shared layers against
+                       the policy loss's (the ratio of the gradients'
+                       sizes, weighted) and the cosine between the two —
+                       +1 the same direction, 0 unrelated, -1 opposed
+                       (2026-10-19)
 
 Inputs: az_match games files (games=PATH) of both networks against alpha-beta 1, alpha-beta
 2 and hexparrot on the same openings (the same seed); az_long_capture_probe output holding
 both networks (net = their names); and az_capture_targets output of each on the same logs
 (the same positions in the same order, checked by their legal moves and captures);
 az_dormant_probe and az_plasticity output holding the candidate (and the anchor, if
-measured). A gate whose files are not given is skipped,
+measured); az_restructure output per network for the trunk's gradients (NAME=FILE). A gate whose files are not given is skipped,
 and said so. A failed gate means "look into it" (a rerun with more battles first), not an
 automatic verdict: seven measures at 2 standard errors trip ~15% of the time on an
 unchanged network (section 7).
@@ -57,7 +63,7 @@ unchanged network (section 7).
   python3 thud/experiments/regression_gates.py --candidate N121 --anchor M102 \\
     --games N121:ab1=FILE,ab2=FILE,hexparrot=FILE --games M102:ab1=FILE,ab2=FILE,hexparrot=FILE \\
     --probe FILE [--probe FILE ...] --captures N121=FILE --captures M102=FILE \\
-    [--dormant FILE ...] [--plasticity FILE ...] [--json]
+    [--dormant FILE ...] [--plasticity FILE ...] [--gradients NAME=FILE ...] [--json]
 """
 
 import argparse
@@ -216,6 +222,9 @@ def main():
                       help="az_dormant_probe output (monitored)")
   parser.add_argument("--plasticity", action="append", default=[],
                       help="az_plasticity output (monitored)")
+  parser.add_argument("--gradients", action="append", default=[],
+                      help="NAME=FILE: az_restructure output, its report before the first "
+                           "batch (monitored)")
   parser.add_argument("--bootstrap", type=int, default=2000)
   parser.add_argument("--json", action="store_true", help="one JSON line per gate")
   args = parser.parse_args()
@@ -336,6 +345,24 @@ def main():
                     "fresh": fit(fresh[0]) if fresh else None, "batches": c["batches"]})
   else:
     results.append({"gate": gate, "skipped": f"no az_plasticity file with {args.candidate}"})
+
+  gate = "trunk gradients (the value's pull against the policy's, their cosine)"
+  pulls = {}
+  for spec in args.gradients:
+    name, path = spec.split("=", 1)
+    for line in open(path):
+      if line.strip() and json.loads(line).get("batches") == 0:
+        pulls[name] = json.loads(line)["gradients"]
+        break
+  if args.candidate in pulls:
+    says = lambda g: f"{g['weighted_value_to_policy']:.2f}x, cosine {g['cosine']:+.2f}"
+    text = f"{args.candidate} {says(pulls[args.candidate])}"
+    if args.anchor in pulls:
+      text += f"; {args.anchor} {says(pulls[args.anchor])}"
+    results.append({"gate": gate, "monitored": True, "fails": False, "text": text,
+                    "candidate": pulls[args.candidate], "anchor": pulls.get(args.anchor)})
+  else:
+    results.append({"gate": gate, "skipped": f"no az_restructure report for {args.candidate}"})
 
   failed = [r["gate"] for r in results if r.get("fails")]
   if args.json:

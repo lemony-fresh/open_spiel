@@ -36,6 +36,10 @@ az_capture_targets files.
      and a fresh network's, as written; the control: a candidate with every channel dead
      and no fit at all is reported, never failed (exit 0); without the files both rows
      are skipped.
+  6. The trunk's gradients (2026-10-19), monitored: from az_restructure reports made here,
+     the weighted ratio and the cosine of the report before the first batch (not a later
+     one), the candidate's and the anchor's; the control: opposed gradients (cosine -1)
+     are reported, never failed; without a report the row is skipped.
 
 (The blunder count also equals az_blunder_probe's on real games — M102, N121, C121 and
 N2121 against hexparrot, checked 2026-10-15 — which needs run folders, so not here.)
@@ -265,6 +269,29 @@ def main():
   check(status == 0 and "skipped" in results["dead channels (trunk, heads)"] and
         "skipped" in results["plasticity (random targets: policy + value loss at the end)"],
         "5. without the files both rows are skipped")
+  # 6. The trunk's gradients.
+  def report(path, ratio, cosine):
+    write(path, [{"source": True, "policy": 3.7},
+                 {"batches": 0, "gradients": {"policy": 0.5, "value": 1.0, "l2": 0.01,
+                                              "cosine": cosine, "weighted_value_to_policy": ratio}},
+                 {"batches": 1, "gradients": {"policy": 0.4, "value": 0.9, "l2": 0.01,
+                                              "cosine": 0.9, "weighted_value_to_policy": 9.0}}])
+  report(f"{tmp}/grad_C.jsonl", 2.5, 0.2)
+  report(f"{tmp}/grad_A.jsonl", 7.8, -1.0)
+  results, status = gates(tmp, "--candidate", "C", "--anchor", "A", "--gradients",
+                          f"C={tmp}/grad_C.jsonl", "--gradients", f"A={tmp}/grad_A.jsonl")
+  row = results["trunk gradients (the value's pull against the policy's, their cosine)"]
+  check(status == 0 and row["monitored"] and not row["fails"] and
+        row["candidate"]["weighted_value_to_policy"] == 2.5 and row["candidate"]["cosine"] == 0.2
+        and row["anchor"]["cosine"] == -1.0, f"6. the trunk's gradients, monitored: {row['text']}")
+  results, status = gates(tmp, "--candidate", "A", "--anchor", "C", "--gradients",
+                          f"A={tmp}/grad_A.jsonl")
+  row = results["trunk gradients (the value's pull against the policy's, their cosine)"]
+  check(status == 0 and not row["fails"] and row["candidate"]["cosine"] == -1.0,
+        "6. control: opposed gradients reported, never failed (exit 0)")
+  results, status = gates(tmp, "--candidate", "C", "--anchor", "A")
+  check("skipped" in results["trunk gradients (the value's pull against the policy's, their cosine)"],
+        "6. without a report the row is skipped")
   print("ALL PASSED" if failures == 0 else f"{failures} FAILED")
   return 1 if failures else 0
 

@@ -835,6 +835,7 @@ network must pass both. **The anchor is the top anchor, M102.**
 | Long hurls (4+ squares) | the same probe | never fails: monitored now, a target for later |
 | Dead channels (2026-10-18) | `az_dormant_probe` on 4,096 buffer positions: channels never above 0, in the trunk and in the heads, and dormant ones (τ 0.1), beside the anchor's and a fresh network's | never fails: monitored, recorded below |
 | Plasticity (2026-10-18) | `az_plasticity`: random targets on 8,192 positions, 1,000 batches at 0.001, the policy + value loss at the end, beside a fresh network's of the same width in the same run, and the weights' norm | never fails: monitored, recorded below |
+| Trunk gradients (2026-10-19) | `az_restructure`'s report before its first batch, on 1,024 positions of run N's last buffer: the weighted value loss's gradient on the shared layers against the policy loss's (the ratio of their sizes) and the cosine between the two (+1: both losses ask the same change, 0: unrelated, −1: opposed — the multi-task conflict) | never fails: monitored, recorded below |
 
 - **Standard errors analytic or by bootstrap** over battles or positions — not from one
   pair of checkpoints (M100 against M102 differ for real: the blunders were rising).
@@ -859,23 +860,25 @@ network must pass both. **The anchor is the top anchor, M102.**
 
 **The capacity record** (dead channels in the trunk and the heads, dormant at τ 0.1, of
 705 rectifier channels at 64 x 4; plasticity: random targets' policy + value loss after
-1,000 batches, lower is better; the weights' norm):
+1,000 batches, lower is better; the weights' norm; the trunk's gradients: the weighted
+value's pull against the policy's, and their cosine — in training mode, "eval." where
+measured in evaluation mode, as those networks learnt):
 
-| Measured | Network | Trunk dead | Heads dead | Dormant | Plasticity | Norm |
-|---|---|---|---|---|---|---|
-| 2026-10-18 | N161 | 0 | 8 | 11 | — | — |
-| 2026-10-18 | N161c (N161 converted) | — | — | — | 5.015 | 48.1 |
-| 2026-10-18 | N′ | 0 | 8 | 12 | — | — |
-| 2026-10-18 | Np171 | 0 | 8 | 13 | — | — |
-| 2026-10-18 | Np181 | 0 | 8 | 14 | 5.012 | 44.8 |
-| 2026-10-18 | No171 | 0 | 8 | 11 | — | — |
-| 2026-10-18 | the reset after 250 batches | — | — | — | 0.325 | 29.8 |
-| 2026-10-18 | the reset after 1,000 batches | 0 | 2 | 24 | 0.419 | 27.3 |
-| 2026-10-18 | the reset after 3,000 batches | 0 | 3 | 23 | 0.218 | 22.0 |
-| 2026-10-18 | R181 (the reset network) | 0 | 3 | 17 | 0.346 | 23.4 |
-| 2026-10-18 | a fresh network (B's run) | 0 | 0 | 8 | 0.127 | 30.3 |
-| 2026-10-18 | a fresh network (the control's run) | 0 | 0 | 8 | 0.157 | 30.3 |
-| 2026-10-19 | R191 (run R, segment 1) | 0 | 3 | 18 | 0.459 (fresh 0.188) | 23.1 |
+| Measured | Network | Trunk dead | Heads dead | Dormant | Plasticity | Norm | Value/policy | Cosine |
+|---|---|---|---|---|---|---|---|---|
+| 2026-10-18 | N161 | 0 | 8 | 11 | — | — | 2.60 | −0.52 (eval.) |
+| 2026-10-18 | N161c (N161 converted) | — | — | — | 5.015 | 48.1 | — | — |
+| 2026-10-18 | N′ | 0 | 8 | 12 | — | — | 3.67 | +0.06 |
+| 2026-10-18 | Np171 | 0 | 8 | 13 | — | — | 8.18 | −0.04 |
+| 2026-10-18 | Np181 | 0 | 8 | 14 | 5.012 | 44.8 | 7.79 | −0.20 |
+| 2026-10-18 | No171 | 0 | 8 | 11 | — | — | 10.24 | −0.51 (eval.) |
+| 2026-10-18 | the reset after 250 batches | — | — | — | 0.325 | 29.8 | — | — |
+| 2026-10-18 | the reset after 1,000 batches | 0 | 2 | 24 | 0.419 | 27.3 | — | — |
+| 2026-10-18 | the reset after 3,000 batches | 0 | 3 | 23 | 0.218 | 22.0 | — | — |
+| 2026-10-18 | R181 (the reset network) | 0 | 3 | 17 | 0.346 | 23.4 | — | — |
+| 2026-10-18 | a fresh network (B's run) | 0 | 0 | 8 | 0.127 | 30.3 | — | — |
+| 2026-10-18 | a fresh network (the control's run) | 0 | 0 | 8 | 0.157 | 30.3 | — | — |
+| 2026-10-19 | R191 (run R, segment 1) | 0 | 3 | 18 | 0.459 (fresh 0.188) | 23.1 | 2.54 | +0.19 |
 
 **Mechanism** (explains, does not decide) — each with the tools of §4, on the test run's,
 the control run's and M102's networks:

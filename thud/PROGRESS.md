@@ -3533,4 +3533,17 @@ the push's and the rename's tests ran (memory beside the trainer), to resume.
   network's 0.188 in the same run (R181 0.346 against 0.157) — recorded in the design's §7.
   Segment 201 from 09:35.
 
-**Next step:** as recorded in `## Current status` — run R's segments.
+- **2026-10-19, ~11:10: the trunk's gradients monitored too.** The user asked what the
+  cosine is and whether to watch it: the cosine between the policy loss's and the value
+  loss's gradients on the shared layers (+1 the same change, 0 unrelated, −1 opposed —
+  multi-task learning's gradient conflict). `regression_gates.py --gradients NAME=FILE`
+  reports it with the weighted ratio, monitored; `regression_gates_test.py` part 6 (the
+  control: opposed gradients reported, never failed); the capacity record gained the two
+  columns. Also found while answering: officially a battle ends by agreement that no more
+  captures can be made (our rules' stand-in, §9.4: 200 turns without a capture) — so
+  stalls are the designed ending; but in 3,000 of hexparrot's games no stretch without a
+  capture passed 41 turns, while ~90% of R's self-play games now end by the 200-turn
+  limit: ~35% of their positions are in the final stall.
+
+**Next step:** as recorded in `## Current status` — run R's segments; after R201, the
+teacher's weight (the user: lower it, so that the network may find ways to break stalls).
