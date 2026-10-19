@@ -1153,6 +1153,12 @@ pairs won, none lost)** and hexparrot:3 by +28.7 (Np181 +17.1): against hexparro
 dwarfs +11.7 better than Np181's on the same openings, its trolls equal. So the lineage
 (runs K, M, N, all with the race) held back what its own data could teach: the network,
 not the data, was the limit.
+The control for whether knowing Thud is what stops a network fitting random targets (the
+user's objection): the reset network's checkpoints after 250, 1,000 and 3,000 batches, and
+the reset network itself — as good on the buffer as Np181 or better — fit them to
+0.17-0.35 (policy), fresh 64 to 0.12: knowing the game does not stop it; Np181's rigidity
+is its own, the race's or its far longer training's. **Run R** (the user, 2026-10-18): the
+reset network continued in self-play, a plasticity test after each segment of 10 steps.
 
 ## Review log
 

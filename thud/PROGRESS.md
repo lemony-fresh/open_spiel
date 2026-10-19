@@ -344,7 +344,7 @@ weight 0.7 on the dwarfs' positions, 0.3 on the trolls'; value-loss weight 1). T
 (`num_batches_tracked`): in step 161 of the 64 learning batches the input batch norm ran 7
 in training mode, the deeper ones 11-51 (rising with depth: inference calls under way when
 the learner switches to training finish their deeper layers in training mode); run H's
-step 65 alike. **The capacity tests** (2026-10-18, `~/thud-runs/capacity_2026-10-18/`): Np181 hardly fits random targets that fresh networks memorise, and **a fresh network trained ~4 hours on N′'s run's buffer beats Np181 by +13.2 a pair (39 of 40 pairs won, none lost)** and hexparrot:3 by +28.7. **Next:** the control (the reset network's checkpoints in the random-target test), then the user's decision: the reset network as the new main line, continued in self-play with the fixed trainer; then the segments' results (the design's §10), Np201's evaluation, then the teacher's weight revisited (the user, 2026-10-18: after step 201; a taper branched from the same network);
+step 65 alike. **The capacity tests** (2026-10-18, `~/thud-runs/capacity_2026-10-18/`): Np181 hardly fits random targets that fresh networks memorise, and **a fresh network trained ~4 hours on N′'s run's buffer beats Np181 by +13.2 a pair (39 of 40 pairs won, none lost)** and hexparrot:3 by +28.7. The control: the reset network's checkpoints fit the random targets as fresh networks do — Np181's rigidity is its own. **Decided: the reset network is the main line, run R** (`~/thud-runs/r_run_2026-10-19.sh`, detached, waiting for 02:00 and 20 idle minutes; segments to 221, each with measurement 4, the gradients, matches against Np181 and hexparrot:3, the plasticity test). **Next:** run R's segments; the learning-rate sweep (the trainer may underfit: R's offline training gained much); then the segments' results (the design's §10), Np201's evaluation, then the teacher's weight revisited (the user, 2026-10-18: after step 201; a taper branched from the same network);
 the upstream PR for the race opened as
 [#1646](https://github.com/google-deepmind/open_spiel/pull/1646) (2026-10-17, after the
 user's review; the CLA check passed; waiting for upstream's CI and review — the
@@ -3483,5 +3483,26 @@ the push's and the rename's tests ran (memory beside the trainer), to resume.
   lapse of mine: B's result (18:26) waited for the user's question, as nothing woke this
   session; since then a background waiter does.
 
-**Next step:** as recorded in `## Current status` — the control's result, then the user's
-decision: the reset network as the new main line, continued in self-play.
+- **2026-10-18, ~22:35-23:45: the control; run R queued.** The control for the user's
+  objection (the random-target test on the reset network's checkpoints, which know Thud as
+  well as Np181 or better): r250, r1000, r3000 and the reset network fit the random
+  targets to 0.17-0.35 (policy; value 0.05-0.07) — fresh 64 0.12 — where Np181 and N161c
+  stayed near 4.05: knowing Thud does not stop a network learning; Np181's rigidity is its
+  own (the race's or its far longer training's; not told apart). The reset network's trunk
+  has no dead channels, its value head's hidden layer 3 dead (up to 24 dormant at τ 0.1)
+  after 3,500 clean batches: that layer loses units even without the race (a candidate for
+  ReDo, Sokar et al.). Decided (the user): the reset network is the main line, **run R**;
+  it starts after 02:00 once Windows has seen no keyboard or mouse input for 20 minutes
+  (`GetLastInputInfo` through PowerShell: tested, 7 s then 12 s idle). Queued:
+  `~/thud-runs/r_run_2026-10-19.sh` — runR from N′'s run's buffer and log at step 181 with
+  the reset network as R181, segments to 221, each followed by measurement 4, the
+  gradients, matches against Np181 and hexparrot:3 (the gates against N161), and the
+  plasticity test. Also discussed: R learnt from data a weaker network produced — the
+  search, the alpha-beta teacher (0.7 of the dwarfs' targets), the outcomes and the games
+  against alpha-beta made the targets better than its priors — and R trained harder than
+  the trainer does (~8 passes at 0.001 against ~3 samples a position at 0.0001), so the
+  trainer may also underfit its data (w1s1's +8.5 for the dwarfs from 640 offline batches
+  points the same way): the learning-rate sweep's priority rises; simulations stay at 100
+  (the limit was the learning, not the data; on the GPU tuning list).
+
+**Next step:** as recorded in `## Current status` — run R's segments.
