@@ -3448,7 +3448,7 @@ the push's and the rename's tests ran (memory beside the trainer), to resume.
   Sokar et al. 2023; `ModelImpl::ReluOutputs`; its fatal tests: the values after its
   rectifiers equal Inference's, a killed channel found; the fresh reference normalised by
   `ConvertBatchNorms(compensate=false)` — without it a fresh network's placeholder
-  statistics showed 24 dead channels), `az_plasticity` (random targets, Lyle et al. 2023;
+  statistics showed 24 dead channels), `az_plasticity` (random targets, after Lyle, Rowland and Dabney, ICLR 2022 — first cited as Lyle et al.'s ICML 2023 paper, which studies plasticity with other tasks: corrected after a search, 2026-10-18;
   fresh widths as the scale; weight norms), `az_restructure copy=none` (a reset that keeps
   the buffer, Nikishin et al. 2022); `batch_norm_test` 5 and `trainer_test.sh` 7. First
   readings (an old buffer, stage 3a's, 1,024 positions): the trunk's 576 channels have none

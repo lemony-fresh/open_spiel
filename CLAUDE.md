@@ -310,7 +310,7 @@ every position's values, for `thud/experiments/dwarf_value_report.py`'s interval
 resample whole games) and `teacher_mix_test`;
 `az_dormant_probe` and `az_plasticity` (2026-10-18, the capacity tests: dead and dormant
 channels per rectifier, Sokar et al.; random targets fitted against fresh networks of
-other widths, Lyle et al.), `az_batch_norm_convert` (2026-10-17, the race's fix: a network's batch norms set to the
+other widths, after Lyle, Rowland and Dabney, ICLR 2022), `az_batch_norm_convert` (2026-10-17, the race's fix: a network's batch norms set to the
 true statistics of what reaches them, its function unchanged), `batch_norm_test` (the
 lock against upstream's class, the counts' check, the conversion),
 `az_restructure`, which builds a network of a new structure from a trained one and

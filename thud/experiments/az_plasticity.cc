@@ -14,12 +14,16 @@
 
 // Can a network still learn as much as a fresh one of its size? (The user, 2026-10-18: the
 // batch-norm race, thud/DESIGN_dwarf_signal.md §10, may have cost capacity that a larger
-// network would not bring back.) The plasticity test of Lyle, Zheng, Nikishin, Pires,
-// Pascanu and Dabney ("Understanding Plasticity in Neural Networks", ICML 2023): each
-// network learns random targets on the same `positions` positions of a replay buffer — a
-// random legal move as the policy target, a random -1 or 1 as the value — which no prior
-// knowledge helps with, so how far the losses fall in `batches` learning steps measures
-// what it can still fit. Every network gets a fresh optimizer (Adam at `learning_rate`) and
+// network would not bring back.) After the capacity probe of Lyle, Rowland and Dabney
+// ("Understanding and Preventing Capacity Loss in Reinforcement Learning", ICLR 2022,
+// arXiv 2204.09560: agents' checkpoints fitted to random targets — a random network's
+// outputs — fit them worse as training went on): each network learns random targets on
+// the same `positions` positions of a replay buffer — a random legal move as the policy
+// target, a random -1 or 1 as the value — which no knowledge of the game helps with, so
+// how far the losses fall in `batches` learning steps measures what it can still fit.
+// (It cannot tell lost capacity from features too specialised to the game to fit
+// arbitrary targets — the user, 2026-10-18; a network trained as long on the game from a
+// fresh start is the control.) Every network gets a fresh optimizer (Adam at `learning_rate`) and
 // learns as the trainer does (training mode, the trainer's loss, no symmetries); the
 // trained ones keep their weights (VPNetModel::LoadWeights). Fresh networks of other widths
 // (`NAME=fresh:WIDTH`, the first network's structure otherwise) give the scale: a trained
