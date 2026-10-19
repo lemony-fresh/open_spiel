@@ -880,6 +880,7 @@ measured in evaluation mode, as those networks learnt):
 | 2026-10-18 | a fresh network (B's run) | 0 | 0 | 8 | 0.127 | 30.3 | — | — |
 | 2026-10-18 | a fresh network (the control's run) | 0 | 0 | 8 | 0.157 | 30.3 | — | — |
 | 2026-10-19 | R191 (run R, segment 1) | 0 | 3 | 18 | 0.459 (fresh 0.188) | 23.1 | 2.54 | +0.19 |
+| 2026-10-19 | R201 (run R, segment 2) | 0 | 3 | 18 | 0.455 (fresh 0.223) | 22.8 | 3.03 | +0.08 |
 
 **Mechanism** (explains, does not decide) — each with the tools of §4, on the test run's,
 the control run's and M102's networks:

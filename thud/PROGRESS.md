@@ -3593,6 +3593,15 @@ the push's and the rename's tests ran (memory beside the trainer), to resume.
   `replay_buffer_reuse` 63 to keep a step every 21,845 new positions (the samples a
   position gets over its life stay ~3) — proposed as its own arm after RL and RLT.
 
+- **2026-10-19, 15:40: R201's results.** **R201 beats Np181 by +18.7** (+16.4 to +21.1; 40
+  of 40 pairs; R191 +14.2, R181 +13.2) and hexparrot:3 by +36.0 (40 of 40; dwarfs +29.1,
+  trolls +11.5 against N161's on the same openings; blunders 3.5%). Measurement 4: in the
+  games against alpha-beta the dwarf-to-move ratio 1.06 (R191 0.93; R201 − R191 +0.13,
+  +0.10 to +0.16) — the gap closed there; in self-play positions 0.80 (unchanged). The
+  monitored rows: trunk gradients 3.0x, cosine +0.08; dead channels 0 + 3, dormant 18;
+  plasticity 0.455 (fresh 0.223); late captures as trolls 0.05 (R191 0.12, N161 0.25).
+  Segment 211 (A) started 15:40; `limit_teacher` touched `r_run.stop`.
+
 **Next step:** as recorded in `## Current status` — R211, then RL and RLT (results ~09:00
 2026-10-20; they run on the compact buffer, merged before their build); then the window's
 arm (3x with KataGo's rule).
