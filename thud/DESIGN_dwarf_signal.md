@@ -875,6 +875,7 @@ network must pass both. **The anchor is the top anchor, M102.**
 | 2026-10-18 | R181 (the reset network) | 0 | 3 | 17 | 0.346 | 23.4 |
 | 2026-10-18 | a fresh network (B's run) | 0 | 0 | 8 | 0.127 | 30.3 |
 | 2026-10-18 | a fresh network (the control's run) | 0 | 0 | 8 | 0.157 | 30.3 |
+| 2026-10-19 | R191 (run R, segment 1) | 0 | 3 | 18 | 0.459 (fresh 0.188) | 23.1 |
 
 **Mechanism** (explains, does not decide) — each with the tools of §4, on the test run's,
 the control run's and M102's networks:

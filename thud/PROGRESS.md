@@ -3518,4 +3518,19 @@ the push's and the rename's tests ran (memory beside the trainer), to resume.
   both rows in the gates' report, its match step tested with a stand-in az_match on the
   reset network's hexparrot games, and restarted.
 
+- **2026-10-19, 03:17-09:35: run R's first segment** (`~/thud-runs/r_run_2026-10-19.sh`;
+  started at 03:17 after 1,250 s without input; steps 182-191 to 07:58, 28 minutes a step).
+  Self-play kept dwarfs in **100%** of its 292 games (none ended with the dwarfs gone; ~90%
+  by the no-capture limit — stalls, the dwarfs' margin −12.1), batch norms exact; value loss
+  0.027 → 0.026. **R191 beats Np181 by +14.2** (+11.7 to +16.6; 39 of 40 pairs) and
+  hexparrot:3 by +31.5 (39 of 40; dwarfs +25.8 and trolls +10.3 against N161's on the same
+  openings, blunders 3.0%). Measurement 4 (steps 142-161's positions): in the games
+  against alpha-beta, where N161 gave a far dwarf no worth, R191's dwarf-to-move worth is
+  0.0192 and its ratio to the trolls-to-move worth **0.93** (R181 0.74, Np181 0.39, N161
+  −0.01; R191 − R181 +0.19, +0.15 to +0.23); in self-play positions 0.82. The trunk's
+  gradients: the weighted value 2.5x the policy's, cosine +0.19 (Np181 7.8x, −0.20). The
+  capacity tests: 3 dead channels (heads), 18 dormant; plasticity 0.459 against a fresh
+  network's 0.188 in the same run (R181 0.346 against 0.157) — recorded in the design's §7.
+  Segment 201 from 09:35.
+
 **Next step:** as recorded in `## Current status` — run R's segments.
