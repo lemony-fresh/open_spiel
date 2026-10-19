@@ -3505,4 +3505,17 @@ the push's and the rename's tests ran (memory beside the trainer), to resume.
   points the same way): the learning-rate sweep's priority rises; simulations stay at 100
   (the limit was the learning, not the data; on the GPU tuning list).
 
+- **2026-10-18, ~23:30-23:55: the capacity tests join the gates, monitored.** The user:
+  run the dead-channel probe and the plasticity test with every new best network, not to
+  block a release but to watch how they develop in the docs. `regression_gates.py` has two
+  monitored rows (`--dormant`, `--plasticity`: dead channels by trunk and heads, dormant at
+  the largest τ, the random targets' fit and the weights' norm, beside the anchor's and a
+  fresh network's), never failing; `regression_gates_test.py` part 5 (made inputs; the
+  control: a network with every channel dead and no fit is reported, exit 0);
+  `az_plasticity` marks its fresh networks (older files: by the name f<width>). The design's
+  §7 lists both and starts **the capacity record** (today's networks). Run R's queue
+  (still waiting for 02:00) stopped, given both tests per segment before the matches and
+  both rows in the gates' report, its match step tested with a stand-in az_match on the
+  reset network's hexparrot games, and restarted.
+
 **Next step:** as recorded in `## Current status` — run R's segments.

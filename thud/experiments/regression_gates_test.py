@@ -30,6 +30,13 @@ az_capture_targets files.
      takes it counts 1 blunder of the dwarf moves after the opening; the same battle with
      that capture replaced by another move counts 0.
 
+  5. The capacity tests' rows (2026-10-18), monitored: from an az_dormant_probe file and
+     an az_plasticity file made here, the dead channels split by trunk and heads and the
+     dormant ones at the largest τ, and the random targets' fit, each beside the anchor's
+     and a fresh network's, as written; the control: a candidate with every channel dead
+     and no fit at all is reported, never failed (exit 0); without the files both rows
+     are skipped.
+
 (The blunder count also equals az_blunder_probe's on real games — M102, N121, C121 and
 N2121 against hexparrot, checked 2026-10-15 — which needs run folders, so not here.)
 
@@ -220,6 +227,44 @@ def main():
     check(n_t - before_n == 1 and n_s - before_n == 0 and ours_t == ours_s,
           f"4. the blunder rule by hand: the dwarf taken counts 1 more blunder ({n_t} against "
           f"{before_n} before the move), the dwarf spared none ({n_s}); dwarf moves {ours_t}")
+  # 5. The capacity tests' rows.
+  layers = [("input", 64), ("torso_1_a", 64), ("torso_1_b", 64), ("value_linear", 64)]
+  def dormant_lines(net, dead):
+    return [{"net": net, "layer": l, "channels": c, "dead": dead.get(l, 0),
+             "dormant": {"0.025": dead.get(l, 0), "0.1": dead.get(l, 0) + 1},
+             "median_active_share": 0.5} for l, c in layers]
+  write(f"{tmp}/dormant.jsonl", dormant_lines("C", {"torso_1_a": 2, "value_linear": 3}) +
+        dormant_lines("A", {"value_linear": 1}) + dormant_lines("fresh", {}) +
+        dormant_lines("dead", {l: c for l, c in layers}) +
+        [{"summary": True, "net": "C", "channels": 256, "dead": 5}])
+  def plastic(net, fresh, policy, value):
+    return [{"net": net, "batches": 100, "policy": policy + 1, "value": value + 1},
+            {"net": net, "batches": 200, "policy": policy, "value": value},
+            {"summary": True, "net": net, "fresh": fresh, "width": 64, "last_policy": policy,
+             "last_value": value, "mean_policy": policy, "mean_value": value,
+             "weight_norm": 40.0}]
+  write(f"{tmp}/plastic.jsonl", plastic("C", False, 0.3, 0.05) + plastic("A", False, 4.0, 1.0)
+        + plastic("f64", True, 0.1, 0.02) + plastic("dead", False, 4.3, 1.0))
+  results, status = gates(tmp, "--candidate", "C", "--anchor", "A", "--dormant",
+                          f"{tmp}/dormant.jsonl", "--plasticity", f"{tmp}/plastic.jsonl")
+  dead = results["dead channels (trunk, heads)"]
+  fit = results["plasticity (random targets: policy + value loss at the end)"]
+  check(status == 0 and dead["monitored"] and not dead["fails"] and
+        (dead["candidate"]["trunk_dead"], dead["candidate"]["head_dead"],
+         dead["candidate"]["dormant"], dead["anchor"]["head_dead"], dead["fresh"]["dead"]) ==
+        (2, 3, 9, 1, 0) and abs(fit["candidate"] - 0.35) < 1e-9 and
+        abs(fit["anchor"] - 5.0) < 1e-9 and abs(fit["fresh"] - 0.12) < 1e-9 and
+        fit["batches"] == 200 and not fit["fails"],
+        f"5. the capacity rows, monitored: {dead['text']} | {fit['text']}")
+  results, status = gates(tmp, "--candidate", "dead", "--anchor", "A", "--dormant",
+                          f"{tmp}/dormant.jsonl", "--plasticity", f"{tmp}/plastic.jsonl")
+  check(status == 0 and results["dead channels (trunk, heads)"]["candidate"]["dead"] == 256 and
+        not any(r.get("fails") for r in results.values()),
+        "5. control: every channel dead and no fit — reported, never failed (exit 0)")
+  results, status = gates(tmp, "--candidate", "C", "--anchor", "A")
+  check(status == 0 and "skipped" in results["dead channels (trunk, heads)"] and
+        "skipped" in results["plasticity (random targets: policy + value loss at the end)"],
+        "5. without the files both rows are skipped")
   print("ALL PASSED" if failures == 0 else f"{failures} FAILED")
   return 1 if failures else 0
 

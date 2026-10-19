@@ -221,10 +221,12 @@ int main(int argc, char** argv) {
     r.mean_policy = sum_policy / std::max(reports, 1);
     r.mean_value = sum_value / std::max(reports, 1);
     std::cout << absl::StrFormat(
-                     "{\"summary\": true, \"net\": \"%s\", \"width\": %d, \"last_policy\": %.4f, "
+                     "{\"summary\": true, \"net\": \"%s\", \"fresh\": %s, \"width\": %d, "
+                     "\"last_policy\": %.4f, "
                      "\"last_value\": %.4f, \"mean_policy\": %.4f, \"mean_value\": %.4f, "
                      "\"weight_norm\": %.2f}",
-                     n.name, n.width > 0 ? n.width : structure.nn_width, r.last_policy,
+                     n.name, n.width > 0 ? "true" : "false",
+                     n.width > 0 ? n.width : structure.nn_width, r.last_policy,
                      r.last_value, r.mean_policy, r.mean_value, r.norm)
               << std::endl;
     if (n.width > 0) fresh_by_width[n.width] = r.last_policy + r.last_value;

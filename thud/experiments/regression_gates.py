@@ -34,18 +34,30 @@ standard errors (the blunders at 4 percentage points):
                        (az_capture_targets on the same logs): the
                        prior's top move a capture
   long hurls           built hurls of 4+ squares                         never fails: monitored
+  dead channels        az_dormant_probe: channels never above 0, in the  never fails: monitored
+                       trunk and in the heads, and τ-dormant ones (the
+                       largest τ measured), beside the anchor's and a
+                       fresh network's (2026-10-18, the capacity tests)
+  plasticity           az_plasticity: how far random targets are fitted  never fails: monitored
+                       (policy + value loss at the end), beside the
+                       anchor's and a fresh network's of the same width
+                       (from the candidate's file first), and the
+                       weights' norm (2026-10-18)
 
 Inputs: az_match games files (games=PATH) of both networks against alpha-beta 1, alpha-beta
 2 and hexparrot on the same openings (the same seed); az_long_capture_probe output holding
 both networks (net = their names); and az_capture_targets output of each on the same logs
-(the same positions in the same order, checked by their legal moves and captures). A gate whose files are not given is skipped,
+(the same positions in the same order, checked by their legal moves and captures);
+az_dormant_probe and az_plasticity output holding the candidate (and the anchor, if
+measured). A gate whose files are not given is skipped,
 and said so. A failed gate means "look into it" (a rerun with more battles first), not an
 automatic verdict: seven measures at 2 standard errors trip ~15% of the time on an
 unchanged network (section 7).
 
   python3 thud/experiments/regression_gates.py --candidate N121 --anchor M102 \\
     --games N121:ab1=FILE,ab2=FILE,hexparrot=FILE --games M102:ab1=FILE,ab2=FILE,hexparrot=FILE \\
-    --probe FILE [--probe FILE ...] --captures N121=FILE --captures M102=FILE [--json]
+    --probe FILE [--probe FILE ...] --captures N121=FILE --captures M102=FILE \\
+    [--dormant FILE ...] [--plasticity FILE ...] [--json]
 """
 
 import argparse
@@ -137,6 +149,46 @@ def probe_cases(paths, net, keep):
   return out
 
 
+def dormant_nets(paths):
+  """{net: dead and dormant channels} from az_dormant_probe outputs; a later file's
+  measurement of a network replaces an earlier one's."""
+  out = {}
+  for path in paths:
+    nets = {}
+    for line in open(path):
+      if not line.strip():
+        continue
+      d = json.loads(line)
+      if d.get("summary"):
+        continue
+      tau = max(d["dormant"], key=float)
+      n = nets.setdefault(d["net"], {"channels": 0, "dead": 0, "trunk_dead": 0,
+                                     "head_dead": 0, "dormant": 0, "tau": tau})
+      n["channels"] += d["channels"]
+      n["dead"] += d["dead"]
+      n["dormant"] += d["dormant"][tau]
+      trunk = d["layer"] == "input" or d["layer"].startswith("torso_")
+      n["trunk_dead" if trunk else "head_dead"] += d["dead"]
+    out.update(nets)
+  return out
+
+
+def plasticity_nets(paths):
+  """{net: az_plasticity's summary, with the batches learnt and the file's index}."""
+  out = {}
+  for i, path in enumerate(paths):
+    batches = {}
+    for line in open(path):
+      if not line.strip():
+        continue
+      d = json.loads(line)
+      if d.get("summary"):
+        out[d["net"]] = dict(d, batches=batches.get(d["net"], 0), file=i)
+      else:
+        batches[d["net"]] = max(batches.get(d["net"], 0), d["batches"])
+  return out
+
+
 def proportion_gate(name, cand, anchor, threshold_se=2.0, monitored=False):
   keys = [k for k in cand if k in anchor]
   if not keys:
@@ -160,6 +212,10 @@ def main():
   parser.add_argument("--probe", action="append", default=[])
   parser.add_argument("--captures", action="append", default=[],
                       help="NAME=FILE: az_capture_targets output, one per network")
+  parser.add_argument("--dormant", action="append", default=[],
+                      help="az_dormant_probe output (monitored)")
+  parser.add_argument("--plasticity", action="append", default=[],
+                      help="az_plasticity output (monitored)")
   parser.add_argument("--bootstrap", type=int, default=2000)
   parser.add_argument("--json", action="store_true", help="one JSON line per gate")
   args = parser.parse_args()
@@ -240,6 +296,47 @@ def main():
   else:
     results.append({"gate": gate, "skipped": "no az_capture_targets files of both"})
 
+  # Monitored, never failing (2026-10-18): the capacity tests.
+  gate = "dead channels (trunk, heads)"
+  dormant = dormant_nets(args.dormant)
+  if args.candidate in dormant:
+    def says(n):
+      return (f"{n['trunk_dead']} in the trunk, {n['head_dead']} in the heads of "
+              f"{n['channels']} (dormant at τ {n['tau']}: {n['dormant']})")
+    c = dormant[args.candidate]
+    text = f"{args.candidate} {says(c)}"
+    if args.anchor in dormant:
+      text += f"; {args.anchor} {says(dormant[args.anchor])}"
+    if "fresh" in dormant:
+      text += f"; a fresh network {says(dormant['fresh'])}"
+    results.append({"gate": gate, "monitored": True, "fails": False, "text": text,
+                    "candidate": c, "anchor": dormant.get(args.anchor),
+                    "fresh": dormant.get("fresh")})
+  else:
+    results.append({"gate": gate, "skipped": f"no az_dormant_probe file with {args.candidate}"})
+  gate = "plasticity (random targets: policy + value loss at the end)"
+  plastic = plasticity_nets(args.plasticity)
+  if args.candidate in plastic:
+    c = plastic[args.candidate]
+    fit = lambda n: n["last_policy"] + n["last_value"]
+    # Files written before az_plasticity marked its fresh networks: named f<width>.
+    is_fresh = lambda n: n.get("fresh", n["net"] == f"f{n['width']}")
+    fresh = sorted((n for n in plastic.values() if is_fresh(n) and n["width"] == c["width"]),
+                   key=lambda n: n["file"] != c["file"])
+    text = (f"{args.candidate} {fit(c):.3f} after {c['batches']} batches (weights' norm "
+            f"{c['weight_norm']:.1f})")
+    if args.anchor in plastic:
+      a = plastic[args.anchor]
+      text += f"; {args.anchor} {fit(a):.3f} (norm {a['weight_norm']:.1f})"
+    if fresh:
+      text += f"; a fresh network of width {c['width']} {fit(fresh[0]):.3f}"
+    results.append({"gate": gate, "monitored": True, "fails": False, "text": text,
+                    "candidate": fit(c), "candidate_norm": c["weight_norm"],
+                    "anchor": fit(plastic[args.anchor]) if args.anchor in plastic else None,
+                    "fresh": fit(fresh[0]) if fresh else None, "batches": c["batches"]})
+  else:
+    results.append({"gate": gate, "skipped": f"no az_plasticity file with {args.candidate}"})
+
   failed = [r["gate"] for r in results if r.get("fails")]
   if args.json:
     for r in results:
@@ -253,6 +350,9 @@ def main():
         print(f"  SKIP  {r['gate']}: {r['skipped']}")
         continue
       verdict = "MONITOR" if r.get("monitored") else ("FAIL" if r["fails"] else "pass")
+      if "text" in r:
+        print(f"  {verdict:7} {r['gate']}: {r['text']}")
+        continue
       extra = ""
       if "candidate" in r:
         extra = f" ({r['candidate']:.3f} against {r['anchor']:.3f})"

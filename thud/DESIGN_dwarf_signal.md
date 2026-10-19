@@ -833,6 +833,8 @@ network must pass both. **The anchor is the top anchor, M102.**
 | Short hurls (2-3 squares) | `az_long_capture_probe`'s built positions: the hurl's top-move share and its ratio to a blind prior | lower than the anchor's by more than 2 standard errors (bootstrap over positions) |
 | The trolls' captures | at troll positions with a capture, the prior's top move a capture (K83: 100%) | lower by more than 2 standard errors |
 | Long hurls (4+ squares) | the same probe | never fails: monitored now, a target for later |
+| Dead channels (2026-10-18) | `az_dormant_probe` on 4,096 buffer positions: channels never above 0, in the trunk and in the heads, and dormant ones (τ 0.1), beside the anchor's and a fresh network's | never fails: monitored, recorded below |
+| Plasticity (2026-10-18) | `az_plasticity`: random targets on 8,192 positions, 1,000 batches at 0.001, the policy + value loss at the end, beside a fresh network's of the same width in the same run, and the weights' norm | never fails: monitored, recorded below |
 
 - **Standard errors analytic or by bootstrap** over battles or positions — not from one
   pair of checkpoints (M100 against M102 differ for real: the blunders were rising).
@@ -845,6 +847,34 @@ network must pass both. **The anchor is the top anchor, M102.**
 - The short-hurl gate guards a skill the convolutional head brought; it does not watch
   D1's own risk (an available hurl is a one-ply capture, which the teacher rewards) —
   that is the troll-kills gate.
+- **The capacity tests, monitored** (the user, 2026-10-18: not to block a release, but to
+  watch how they develop): every evaluation of a candidate runs `az_dormant_probe` and
+  `az_plasticity` beside the matches, `regression_gates.py --dormant --plasticity` reports
+  them, and each network measured gets a row in the record below. What they caught: Np181,
+  a strong network, fitted random targets to 5.0 where fresh networks reach 0.13-0.16 —
+  and a fresh network trained on its buffer beat it by +13.2 (§10, *The capacity tests*).
+  Dormancy at τ 0.1 has a floor of ~8 (a fresh network's value head); a fresh network's
+  plasticity varies 0.13-0.16 between runs (its initialisation), so compare a network with
+  the fresh one of its own run.
+
+**The capacity record** (dead channels in the trunk and the heads, dormant at τ 0.1, of
+705 rectifier channels at 64 x 4; plasticity: random targets' policy + value loss after
+1,000 batches, lower is better; the weights' norm):
+
+| Measured | Network | Trunk dead | Heads dead | Dormant | Plasticity | Norm |
+|---|---|---|---|---|---|---|
+| 2026-10-18 | N161 | 0 | 8 | 11 | — | — |
+| 2026-10-18 | N161c (N161 converted) | — | — | — | 5.015 | 48.1 |
+| 2026-10-18 | N′ | 0 | 8 | 12 | — | — |
+| 2026-10-18 | Np171 | 0 | 8 | 13 | — | — |
+| 2026-10-18 | Np181 | 0 | 8 | 14 | 5.012 | 44.8 |
+| 2026-10-18 | No171 | 0 | 8 | 11 | — | — |
+| 2026-10-18 | the reset after 250 batches | — | — | — | 0.325 | 29.8 |
+| 2026-10-18 | the reset after 1,000 batches | 0 | 2 | 24 | 0.419 | 27.3 |
+| 2026-10-18 | the reset after 3,000 batches | 0 | 3 | 23 | 0.218 | 22.0 |
+| 2026-10-18 | R181 (the reset network) | 0 | 3 | 17 | 0.346 | 23.4 |
+| 2026-10-18 | a fresh network (B's run) | 0 | 0 | 8 | 0.127 | 30.3 |
+| 2026-10-18 | a fresh network (the control's run) | 0 | 0 | 8 | 0.157 | 30.3 |
 
 **Mechanism** (explains, does not decide) — each with the tools of §4, on the test run's,
 the control run's and M102's networks:
