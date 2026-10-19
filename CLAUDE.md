@@ -112,7 +112,13 @@ options*).
   itself: use `OMP_NUM_THREADS=1`. With batched inference, much faster for Thud's small
   networks, only the inference threads call it: 2 inference threads with
   `OMP_NUM_THREADS=4` was best for every network size tried, and matched in the trainer
-  (`thud/PLAN.md` Phase 6, throughput final report, 2026-09-26). For matches
+  (`thud/PLAN.md` Phase 6, throughput final report, 2026-09-26). **Since 2026-10-19, with
+  today's network (64 x 4, the 50 input planes, the convolutional head) the network is ~90%
+  of a self-play step** (`az_search_cost`: 15,578 simulations/s behind a nearly free
+  network, 1,526 with R201), and batches of 16 beat 32: 32 actors, 2 inference threads,
+  `OMP_NUM_THREADS=4` — 2,828 simulations/s against 1,512 (64 actors, 4 inference threads,
+  `OMP_NUM_THREADS=2`: 3,038); with 32 actors a batch of 32 waits for every actor, so the
+  two inference threads take turns. For matches
   (`az_match`, one evaluator per network; games are identical whatever these settings):
   a match of 64+ pairs alone with `threads=64 batch=32` and `OMP_NUM_THREADS=4` (1,923
   simulations/s for 64 x 4); smaller matches up to 3 at once with `OMP_NUM_THREADS=1`
