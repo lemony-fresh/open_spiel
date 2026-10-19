@@ -21,8 +21,15 @@
 // overlapping inputs — a run's archive and its later buffer — give each position once.
 // Then reads the file back and checks that it holds exactly those positions.
 //
-//   thud/az/build.sh thud/experiments/az_merge_buffers.cc
-//   build-shared/az_merge_buffers OUT MAX_SIZE IN1 IN2 ...
+// Since 2026-10-19 (thud/az/position_buffer.h) the inputs may be in either format — the
+// compact one or upstream's — and OUT is written compact, or with --legacy in upstream's
+// format (for programs on upstream's AlphaZero and az_trainer_d1). A position's policy
+// target comes through as the floats the learner reads (position_buffer.h), so a
+// position of an upstream file and the same position of a compact one are one position.
+// One input is a conversion: az_merge_buffers OUT SIZE IN [--legacy].
+//
+//   thud/build_programs.sh az_merge_buffers
+//   build-shared/az_merge_buffers OUT MAX_SIZE IN1 IN2 ... [--legacy]
 
 #include <algorithm>
 #include <cstdint>
@@ -33,29 +40,17 @@
 #include <unordered_set>
 #include <vector>
 
-#include <nop/serializer.h>
-#include <nop/utility/stream_reader.h>
-
 #include "open_spiel/abseil-cpp/absl/hash/hash.h"
 #include "open_spiel/abseil-cpp/absl/strings/str_cat.h"
 #include "open_spiel/abseil-cpp/absl/strings/str_format.h"
 #include "open_spiel/spiel_utils.h"
-#include "open_spiel/utils/serializable_circular_buffer.h"
+#include "thud/az/position_buffer.h"
 #include "thud/az/vpnet.h"
 
 namespace {
 
 using open_spiel::thud_az::torch_az::VPNetModel;
-using Buffer = open_spiel::SerializableCircularBuffer<VPNetModel::TrainInputs>;
-
-int SavedMaxSize(const std::string& path) {
-  int max_size;
-  nop::Deserializer<nop::StreamReader<std::ifstream>> deserializer{path};
-  if (!deserializer.Read(&max_size)) {
-    open_spiel::SpielFatalError(absl::StrCat("Cannot read ", path));
-  }
-  return max_size;
-}
+using Buffer = open_spiel::thud_az::PositionBuffer<VPNetModel::TrainInputs>;
 
 uint64_t Fingerprint(const VPNetModel::TrainInputs& p) {
   return absl::Hash<std::tuple<std::vector<open_spiel::Action>, std::vector<float>,
@@ -66,26 +61,26 @@ uint64_t Fingerprint(const VPNetModel::TrainInputs& p) {
 }  // namespace
 
 int main(int argc, char** argv) {
-  if (argc < 4) {
-    std::cerr << "Usage: " << argv[0] << " OUT MAX_SIZE IN1 IN2 ..." << std::endl;
+  std::vector<std::string> args(argv + 1, argv + argc);
+  const bool legacy = std::find(args.begin(), args.end(), "--legacy") != args.end();
+  args.erase(std::remove(args.begin(), args.end(), "--legacy"), args.end());
+  if (args.size() < 3) {
+    std::cerr << "Usage: " << argv[0] << " OUT MAX_SIZE IN1 IN2 ... [--legacy]" << std::endl;
     return 1;
   }
-  const std::string out_path = argv[1];
-  const int max_size = std::stoi(argv[2]);
+  const std::string out_path = args[0];
+  const int max_size = std::stoi(args[1]);
   std::vector<uint64_t> expected;  // Fingerprints, in the order added.
   std::unordered_set<uint64_t> seen;
   int64_t skipped = 0;
   {
     Buffer merged(max_size);
-    for (int i = 3; i < argc; ++i) {
-      Buffer in(SavedMaxSize(argv[i]));
-      in.LoadBuffer(argv[i]);
-      const std::vector<VPNetModel::TrainInputs>& data = in.Data();
-      const int n = data.size();
-      // A full buffer overwrote in place: its oldest position is at total_added % n.
-      const int start = n == SavedMaxSize(argv[i]) ? in.TotalAdded() % n : 0;
-      for (int k = 0; k < n; ++k) {
-        const VPNetModel::TrainInputs& p = data[(start + k) % n];
+    for (size_t i = 2; i < args.size(); ++i) {
+      Buffer in(Buffer::FileMaxSize(args[i]));
+      in.LoadBuffer(args[i]);
+      const int n = in.Size();
+      for (int64_t slot : in.OldestFirst()) {
+        const VPNetModel::TrainInputs p = in.At(slot);
         const uint64_t fingerprint = Fingerprint(p);
         if (!seen.insert(fingerprint).second) {
           ++skipped;  // Already added from an earlier input.
@@ -94,10 +89,14 @@ int main(int argc, char** argv) {
         merged.Add(p);
         expected.push_back(fingerprint);
       }
-      std::cerr << absl::StrFormat("%s: %d positions (total added %d)\n", argv[i], n,
+      std::cerr << absl::StrFormat("%s: %d positions (total added %d)\n", args[i], n,
                                    in.TotalAdded());
     }
-    merged.SaveBuffer(out_path);
+    if (legacy) {
+      merged.SaveLegacyBuffer(out_path);
+    } else {
+      merged.SaveBuffer(out_path);
+    }
   }
   if (expected.size() > max_size) {
     expected.erase(expected.begin(), expected.end() - max_size);
@@ -106,7 +105,7 @@ int main(int argc, char** argv) {
   Buffer check(max_size);
   check.LoadBuffer(out_path);
   std::vector<uint64_t> got;
-  for (const VPNetModel::TrainInputs& p : check.Data()) got.push_back(Fingerprint(p));
+  for (int i = 0; i < check.Size(); ++i) got.push_back(Fingerprint(check.At(i)));
   std::vector<uint64_t> a = expected, b = got;
   std::sort(a.begin(), a.end());
   std::sort(b.begin(), b.end());
@@ -116,9 +115,10 @@ int main(int argc, char** argv) {
   std::cout << absl::StrFormat(
                    "{\"out\": \"%s\", \"max_size\": %d, \"positions\": %d, "
                    "\"total_added\": %d, \"distinct_fingerprints\": %d, "
-                   "\"duplicates_skipped\": %d, \"same_positions_as_inputs\": %s}",
+                   "\"duplicates_skipped\": %d, \"same_positions_as_inputs\": %s, "
+                   "\"format\": \"%s\", \"compact_bytes\": %d}",
                    out_path, max_size, check.Size(), check.TotalAdded(), distinct, skipped,
-                   same ? "true" : "false")
+                   same ? "true" : "false", legacy ? "legacy" : "compact", check.Bytes())
             << std::endl;
   return same ? 0 : 1;
 }

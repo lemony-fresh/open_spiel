@@ -76,6 +76,7 @@ tests=(
   "unsafe_targets_test|quick|1.0|$bin/unsafe_targets_test"
   "features_test|quick|3|$bin/features_test"
   "replay_buffer_test|quick|0.5|$bin/replay_buffer_test $logs"
+  "position_buffer_test|quick|2|$bin/position_buffer_test $logs"
   "az_buffer_truncate|quick|0|$bin/az_buffer_truncate self_test"
   "pruning_test|quick|13|$bin/pruning_test $nets/peaked 0"
   "trainer_test|quick|26|thud/az/trainer_test.sh $bin"
@@ -128,7 +129,7 @@ EOF
     # The tests without LibTorch under AddressSanitizer and UBSan; the control: the
     # binaries are instrumented (a sanitizer that is not there reports nothing).
     status=0
-    for b in replay_buffer_test features_test az_buffer_truncate; do
+    for b in replay_buffer_test position_buffer_test features_test az_buffer_truncate; do
       # grep -c reads all of nm's output (grep -q would stop early: nm's SIGPIPE fails
       # the pipe under pipefail).
       nm "$bin/sanitized/$b" | grep -c __asan_report_load > /dev/null ||
@@ -136,6 +137,7 @@ EOF
     done
     mkdir -p "$logs/sanitized_scratch"
     "$bin/sanitized/replay_buffer_test" "$logs/sanitized_scratch" &&
+      "$bin/sanitized/position_buffer_test" "$logs/sanitized_scratch" &&
       "$bin/sanitized/features_test" && "$bin/sanitized/az_buffer_truncate" self_test || status=1
     exit $status ;;
 esac

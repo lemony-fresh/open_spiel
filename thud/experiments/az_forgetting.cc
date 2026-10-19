@@ -48,7 +48,7 @@
 #include "open_spiel/abseil-cpp/absl/strings/str_format.h"
 #include "open_spiel/abseil-cpp/absl/strings/str_split.h"
 #include "open_spiel/spiel.h"
-#include "open_spiel/utils/serializable_circular_buffer.h"
+#include "thud/az/position_buffer.h"
 #include "thud/az/vpnet.h"
 
 namespace {
@@ -74,16 +74,12 @@ std::vector<int> IntList(const std::string& text) {
 // The positions of one archive: a fixed random sample.
 std::vector<VPNetModel::TrainInputs> Sample(const std::string& path, int sample,
                                             int seed) {
-  int max_size;
-  {
-    nop::Deserializer<nop::StreamReader<std::ifstream>> deserializer{path};
-    if (!deserializer.Read(&max_size)) {
-      open_spiel::SpielFatalError(absl::StrCat("Cannot read ", path));
-    }
-  }
-  open_spiel::SerializableCircularBuffer<VPNetModel::TrainInputs> buffer(max_size);
+  // Either buffer format (thud/az/position_buffer.h, 2026-10-19).
+  using Buffer = open_spiel::thud_az::PositionBuffer<VPNetModel::TrainInputs>;
+  Buffer buffer(Buffer::FileMaxSize(path));
   buffer.LoadBuffer(path);
-  std::vector<VPNetModel::TrainInputs> all = buffer.Data();
+  std::vector<VPNetModel::TrainInputs> all;
+  for (int i = 0; i < buffer.Size(); ++i) all.push_back(buffer.At(i));
   std::mt19937 rng(seed);
   std::shuffle(all.begin(), all.end(), rng);
   if (all.size() > sample) all.resize(sample);

@@ -3564,5 +3564,35 @@ the push's and the rename's tests ran (memory beside the trainer), to resume.
   limit, the config recorded both. The observation holds the no-capture count as a
   fraction of the limit, so a network trained at 100 reads it right at 200.
 
+- **2026-10-19, ~14:40-15:50: the compact buffer; the fourth monitored row.** The user:
+  compact the storage, with unit tests; a larger window from what is on disk ("3x?"); late
+  captures as a monitored gate row. The row (`regression_gates.py`, commit `44ca0cfc`;
+  `regression_gates_test.py` part 7: the count equals one by hand, the control — battles
+  cut short — fewer): R191 as trolls 0.12 a battle against hexparrot, R201 0.05, N161
+  0.25. The compact buffer, built in a worktree (`~/thud-compact`, branch `compact-buffer`)
+  so that tonight's queues could not build half of it: `thud/az/position_buffer.h` — the
+  observation as a palette of its floats and 1-8-bit indices, the moves as 16-bit numbers,
+  the policy's probabilities as the floats the learner reads, a byte vector a position;
+  `PositionBuffer`: upstream's samples (std::sample over as many elements), SampleNewest
+  alpha_zero.h's, both file formats in, compact out (`SaveLegacyBuffer` for upstream's),
+  a smaller buffer's file loads into a larger one (oldest first, the slots' offset kept).
+  The trainer, `az_restructure`, `az_batch_norm_convert`, `az_dormant_probe`,
+  `az_plasticity`, `az_forgetting`, `az_merge_buffers` (both formats, `--legacy`) and
+  `learning_settings_test` use it; `az_buffer_truncate` and `az_buffer_stats` stay on
+  upstream's format. Tests: `position_buffer_test` (new, 7 parts with controls; under the
+  sanitizers too), `growing_buffer_test` part 3; all 34 pass in the worktree. Measured on
+  R201's buffer (`az_merge_buffers`): 4.47 GB → 0.66 GB (6.8x; 450,908 positions, 1,455
+  bytes each; the read-back the same positions); and **training is bit for bit the same**:
+  `az_restructure` from R201 on 100,000 of its positions, the old binary against the new,
+  the same seed — the weights after 10 and 20 batches identical byte for byte (their
+  optimizer files differ, as two runs of the old binary's do: LibTorch keys the state by
+  memory addresses). The window ("3x?"): KataGo's rule (the trainer's
+  `--replay_buffer_start_size`, alpha_zero.h's GrowingBufferSize) with KataGo's start of
+  250,000 gives ~2.3x our window at the 3.3 million positions generated so far, 3x at ~5
+  million: so a cap of 3x (1,376,256 positions, ~2.1 GB compact) with that rule, and
+  `replay_buffer_reuse` 63 to keep a step every 21,845 new positions (the samples a
+  position gets over its life stay ~3) — proposed as its own arm after RL and RLT.
+
 **Next step:** as recorded in `## Current status` — R211, then RL and RLT (results ~09:00
-2026-10-20).
+2026-10-20; they run on the compact buffer, merged before their build); then the window's
+arm (3x with KataGo's rule).

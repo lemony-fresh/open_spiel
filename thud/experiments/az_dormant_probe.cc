@@ -60,12 +60,12 @@
 #include "open_spiel/abseil-cpp/absl/strings/str_format.h"
 #include "open_spiel/abseil-cpp/absl/strings/str_split.h"
 #include "open_spiel/spiel.h"
-#include "thud/az/replay_buffer.h"
+#include "thud/az/position_buffer.h"
 #include "thud/az/vpnet.h"
 
 namespace {
 
-using open_spiel::thud_az::ReplayBuffer;
+using open_spiel::thud_az::PositionBuffer;
 using open_spiel::thud_az::torch_az::VPNetModel;
 
 // Per channel of one rectifier, over every position and square.
@@ -217,7 +217,7 @@ int main(int argc, char** argv) {
   std::mt19937 rng(std::stoull(get("seed", "1")));
 
   std::shared_ptr<const open_spiel::Game> game = open_spiel::LoadGame("thud");
-  ReplayBuffer<VPNetModel::TrainInputs> buffer(std::stoi(get("buffer_size", "458752")));
+  PositionBuffer<VPNetModel::TrainInputs> buffer(std::stoi(get("buffer_size", "458752")));
   buffer.LoadBuffer(buffer_path);
   if (buffer.Size() < count) {
     open_spiel::SpielFatalError(absl::StrFormat("The buffer has %d positions, %d needed",

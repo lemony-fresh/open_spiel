@@ -103,23 +103,19 @@
 #include "open_spiel/games/thud/thud.h"
 #include "open_spiel/spiel.h"
 #include "thud/az/model.h"
-#include "thud/az/replay_buffer.h"
+#include "thud/az/position_buffer.h"
 #include "thud/az/thud_features.h"
 #include "thud/az/vpnet.h"
 
 namespace {
 
-using open_spiel::thud_az::ReplayBuffer;
+using open_spiel::thud_az::PositionBuffer;
 using open_spiel::thud_az::torch_az::ModelConfig;
 using open_spiel::thud_az::torch_az::VPNetModel;
 namespace thud = open_spiel::thud;
 
-// The trainer's buffer, its positions readable in place.
-class Buffer : public ReplayBuffer<VPNetModel::TrainInputs> {
- public:
-  using ReplayBuffer<VPNetModel::TrainInputs>::ReplayBuffer;
-  const std::vector<VPNetModel::TrainInputs>& Positions() const { return this->data_; }
-};
+// The trainer's buffer (its positions compact: At(i) decompresses one).
+using Buffer = PositionBuffer<VPNetModel::TrainInputs>;
 
 // The held-out losses over `positions`, in batches.
 VPNetModel::LossInfo HeldOut(VPNetModel& model,
@@ -362,18 +358,17 @@ int main(int argc, char** argv) {
 
   Buffer buffer(buffer_size);
   buffer.LoadBuffer(buffer_path);
-  const auto& positions = buffer.Positions();
   std::vector<int> train;
   std::vector<VPNetModel::TrainInputs> held_out;
-  for (int i = 0; i < positions.size(); ++i) {
+  for (int i = 0; i < buffer.Size(); ++i) {
     if ((i / 1024) % 20 == 0) {
-      held_out.push_back(positions[i]);
+      held_out.push_back(buffer.At(i));
     } else {
       train.push_back(i);
     }
   }
   std::cerr << absl::StrFormat("%d positions: %d to train on, %d held out\n",
-                               positions.size(), train.size(), held_out.size());
+                               buffer.Size(), train.size(), held_out.size());
   const std::vector<VPNetModel::TrainInputs> check(
       held_out.begin(), held_out.begin() + std::min<size_t>(1024, held_out.size()));
 
@@ -441,7 +436,7 @@ int main(int argc, char** argv) {
     std::vector<VPNetModel::TrainInputs> batch;
     batch.reserve(batch_size);
     for (int j = 0; j < batch_size; ++j) {
-      const VPNetModel::TrainInputs& position = positions[train[pick(rng)]];
+      const VPNetModel::TrainInputs position = buffer.At(train[pick(rng)]);
       batch.push_back(augment ? open_spiel::thud_az::torch_az::SymmetricTrainInputs(
                                     position, symmetry(rng))
                               : position);

@@ -55,7 +55,7 @@
 #include "thud/az/vpevaluator.h"
 #include "thud/az/vpnet.h"
 #include "thud/az/mcts.h"
-#include "thud/az/replay_buffer.h"
+#include "thud/az/position_buffer.h"
 #include "open_spiel/spiel.h"
 #include "open_spiel/spiel_utils.h"
 #include "open_spiel/utils/circular_buffer.h"
@@ -826,9 +826,10 @@ void learner(const open_spiel::Game& game, const AlphaZeroConfig& config,
   logger.Print("Running the learner on device %d: %s", device_id,
                device_manager->Get(0, device_id)->Device());
 
-  // Our change (thud/PLAN.md, Instrumentation: the buffer's memory): a buffer whose Add
-  // moves each position into its slot, so each slot holds its own position's size.
-  ReplayBuffer<VPNetModel::TrainInputs> replay_buffer(config.replay_buffer_size);
+  // Our change (thud/PLAN.md, Instrumentation: the buffer's memory; since 2026-10-19 its
+  // positions compact, thud/az/position_buffer.h: ~7x fewer bytes, the same samples, and
+  // an older or smaller buffer's file loads too).
+  PositionBuffer<VPNetModel::TrainInputs> replay_buffer(config.replay_buffer_size);
   if (start_info.start_step > 1) {
     replay_buffer.LoadBuffer(config.path + "/replay_buffer.data");
   }
@@ -1002,7 +1003,7 @@ void learner(const open_spiel::Game& game, const AlphaZeroConfig& config,
       }
       auto sample = [&](std::mt19937* r, int num) {
         return config.replay_buffer_start_size > 0
-                   ? SampleNewest(replay_buffer, r, buffer_size, num)
+                   ? replay_buffer.SampleNewest(r, buffer_size, num)
                    : replay_buffer.Sample(r, num);
       };
       std::uniform_int_distribution<int> symmetry(0, thud::kNumSymmetries - 1);

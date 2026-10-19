@@ -59,7 +59,7 @@ TORCH_TESTS := alphabeta_training_test augmentation_test conv_policy_test grow_t
 TORCH_PROGRAMS := az_trainer az_grow az_restructure az_fresh_optimizer az_batch_norm_convert
 EXPERIMENT_PROGRAMS := az_match teacher_mix_test az_search_cost az_dwarf_value_probe az_unsafe_targets \
   az_dormant_probe az_plasticity
-PLAIN_TESTS := features_test replay_buffer_test
+PLAIN_TESTS := features_test replay_buffer_test position_buffer_test
 PLAIN_EXPERIMENTS := az_buffer_truncate position_edits_test unsafe_targets_test
 
 # The tests without LibTorch again under AddressSanitizer and UndefinedBehaviorSanitizer

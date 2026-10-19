@@ -71,7 +71,7 @@
 #include "open_spiel/games/thud/thud.h"
 #include "open_spiel/spiel.h"
 #include "thud/az/alpha_zero.h"
-#include "thud/az/replay_buffer.h"
+#include "thud/az/position_buffer.h"
 #include "thud/az/vpnet.h"
 
 namespace {
@@ -301,7 +301,7 @@ int main() {
     VPNetModel loaded(*game, dir, "vpnet.pb", "/cpu:0");
     loaded.LoadCheckpoint(7);
     const double d = MaxDifference(*m, loaded, probe);
-    open_spiel::thud_az::ReplayBuffer<VPNetModel::TrainInputs> buffer(100), back(100);
+    open_spiel::thud_az::PositionBuffer<VPNetModel::TrainInputs> buffer(100), back(100);
     for (VPNetModel::TrainInputs b : batch) buffer.Add(std::move(b));
     const std::string path = dir + "/replay_buffer.data";
     buffer.SaveBuffer(path);

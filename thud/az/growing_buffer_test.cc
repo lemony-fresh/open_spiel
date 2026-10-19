@@ -24,6 +24,11 @@
 //      (statistic below its 99.9% point for 299 degrees of freedom, ~375).
 //      Control: CircularBuffer::Sample (upstream's, the whole buffer) draws older
 //      elements too.
+//   3. The compact buffer's SampleNewest (thud/az/position_buffer.h, 2026-10-19), which the
+//      trainer now calls: the same positions as SampleNewest on upstream's CircularBuffer
+//      given the same positions and seeds, before and after it wraps around (the
+//      positions' values numbered, so a different draw shows). Control: a different seed
+//      draws other positions.
 //
 //   thud/run_tests.sh growing_buffer_test   # builds and runs it
 //   build-tests/bin/growing_buffer_test
@@ -42,6 +47,8 @@
 #include "open_spiel/abseil-cpp/absl/strings/str_cat.h"
 #include "open_spiel/utils/circular_buffer.h"
 #include "thud/az/alpha_zero.h"
+#include "thud/az/position_buffer.h"
+#include "thud/az/vpnet.h"
 
 namespace {
 
@@ -104,6 +111,40 @@ int main() {
     Expect(std::any_of(upstream.begin(), upstream.end(),
                        [&](int x) { return x < added - newest; }),
            absl::StrCat(added, " added: control, upstream's Sample draws older ones too"));
+  }
+  // 3. The compact buffer's SampleNewest against upstream's buffer.
+  {
+    using open_spiel::thud_az::torch_az::VPNetModel;
+    open_spiel::CircularBuffer<VPNetModel::TrainInputs> upstream(1000);
+    open_spiel::thud_az::PositionBuffer<VPNetModel::TrainInputs> compact(1000);
+    auto numbers = [](const std::vector<VPNetModel::TrainInputs>& v) {
+      std::vector<double> out;
+      for (const auto& p : v) out.push_back(p.value);
+      return out;
+    };
+    bool same = true, control = false;
+    for (int added = 1; added <= 2600; ++added) {
+      VPNetModel::TrainInputs p;
+      p.legal_actions = {added % 19800};
+      p.policy = {{added % 19800, 1.0}};
+      p.observations = {0.0f, 1.0f};
+      p.value = added;  // Numbered.
+      upstream.Add(p);
+      compact.Add(p);
+      if (added == 300 || added == 1000 || added == 1700 || added == 2600) {
+        for (int seed = 0; seed < 5; ++seed) {
+          std::mt19937 r1(seed), r2(seed), r3(seed + 100);
+          const auto a = numbers(SampleNewest(upstream, &r1, 400, 50));
+          const auto b = numbers(compact.SampleNewest(&r2, 400, 50));
+          const auto c = numbers(compact.SampleNewest(&r3, 400, 50));
+          same = same && a == b;
+          control = control || c != b;
+        }
+      }
+    }
+    Expect(same && control,
+           "3. the compact buffer's SampleNewest draws what upstream's buffer's does, before "
+           "and after it wraps around (control: another seed draws other positions)");
   }
   std::cout << (failures ? "GROWING BUFFER TEST FAILED" : "growing buffer test passed")
             << std::endl;

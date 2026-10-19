@@ -286,7 +286,10 @@ schedule on the network's own rate, logged per step, and the value loss's weight
 default), `--playout_cap_full_share` and `--playout_cap_fast_simulations` (2026-10-15:
 KataGo's playout cap randomisation; off by default); since 2026-10-15 crash-safe saving (the buffer and the checkpoints written under
 a temporary name and renamed, a truncated last record skipped on resume, a cut-off buffer
-refused) and **the legal policy by default** (`VPNetModel::SetLegalPolicy`: the priors
+refused; since 2026-10-19 the buffer compact, `thud/az/position_buffer.h`: ~7x fewer bytes,
+bit for bit the same training, older and smaller buffers' files load, `az_merge_buffers OUT
+SIZE IN... [--legacy]` merges and converts — `--legacy` for programs on upstream's
+AlphaZero such as `az_buffer_stats`, and for `az_trainer_d1`) and **the legal policy by default** (`VPNetModel::SetLegalPolicy`: the priors
 from the legal moves' logits alone, equal to upstream's mask-and-softmax over all 19,800
 actions to ~1e-7; `SetLegalPolicy(false)` is upstream's, bit for bit); since 2026-10-05 a replay buffer that moves
 positions into their slots and compacts itself after loading (`thud/az/replay_buffer.h`)

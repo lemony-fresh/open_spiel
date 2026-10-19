@@ -46,12 +46,12 @@
 #include "open_spiel/abseil-cpp/absl/strings/str_format.h"
 #include "open_spiel/games/thud/thud.h"
 #include "open_spiel/spiel.h"
-#include "thud/az/replay_buffer.h"
+#include "thud/az/position_buffer.h"
 #include "thud/az/vpnet.h"
 
 namespace {
 
-using open_spiel::thud_az::ReplayBuffer;
+using open_spiel::thud_az::PositionBuffer;
 using open_spiel::thud_az::torch_az::VPNetModel;
 
 double MaxDifference(VPNetModel& a, VPNetModel& b,
@@ -115,7 +115,7 @@ int main(int argc, char** argv) {
   if (std::filesystem::exists(to)) open_spiel::SpielFatalError(to + " exists already");
 
   std::shared_ptr<const open_spiel::Game> game = open_spiel::LoadGame("thud");
-  ReplayBuffer<VPNetModel::TrainInputs> buffer(buffer_size);
+  PositionBuffer<VPNetModel::TrainInputs> buffer(buffer_size);
   buffer.LoadBuffer(buffer_path);
   const int tests = 4;
   if (buffer.Size() < (batches + tests) * batch_size) {
