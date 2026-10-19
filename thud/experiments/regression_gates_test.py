@@ -40,6 +40,10 @@ az_capture_targets files.
      the weighted ratio and the cosine of the report before the first batch (not a later
      one), the candidate's and the anchor's; the control: opposed gradients (cosine -1)
      are reported, never failed; without a report the row is skipped.
+  7. Late captures (2026-10-19), monitored: late_captures counts what an independent
+     count by hand counts (our network's captures after more than 2 quiet turns, in the
+     random battles); the control: the same battles cut to their first 30 plies give
+     fewer, reported, never failed; without hexparrot games the row is skipped.
 
 (The blunder count also equals az_blunder_probe's on real games — M102, N121, C121 and
 N2121 against hexparrot, checked 2026-10-15 — which needs run folders, so not here.)
@@ -121,10 +125,13 @@ def main():
   results, status = gates(tmp, "--candidate", "A", "--anchor", "B", "--games", f"A:{files}",
                           "--games", f"B:{files}", "--probe", f"{tmp}/probe.jsonl",
                           "--captures", f"A={tmp}/caps.jsonl", "--captures", f"B={tmp}/caps.jsonl")
-  compared = [r for r in results.values() if "skipped" not in r]
+  compared = [r for r in results.values() if "skipped" not in r and "text" not in r]
+  late = results["late captures (after 100+ quiet turns, against hexparrot, a battle)"]
   check(status == 0 and len(compared) == 8 and all(not r["fails"] and r["difference"] == 0
-                                                     for r in compared),
-        f"1. against itself: all {len(compared)} measures pass, every difference 0")
+                                                     for r in compared)
+        and late["candidate"] == late["anchor"],
+        f"1. against itself: all {len(compared)} measures pass, every difference 0 (the "
+        f"late captures equal)")
 
   # 2. Controls.
   def variant(key, change):
@@ -292,6 +299,45 @@ def main():
   results, status = gates(tmp, "--candidate", "C", "--anchor", "A")
   check("skipped" in results["trunk gradients (the value's pull against the policy's, their cosine)"],
         "6. without a report the row is skipped")
+  # 7. Late captures.
+  spec7 = importlib.util.spec_from_file_location("gates7", GATES)
+  g7 = importlib.util.module_from_spec(spec7)
+  spec7.loader.exec_module(g7)
+  def by_hand(battle, after):
+    state = game.new_initial_state()
+    quiet = count = 0
+    for action in battle["actions"]:
+      if state.is_terminal():
+        break
+      ours = state.current_player() == battle["a_player"]
+      before = sum(str(state).split("to_move")[0].count(p) for p in "dT")
+      state.apply_action(state.string_to_action(action))
+      captured = sum(str(state).split("to_move")[0].count(p) for p in "dT") < before
+      if captured and quiet > after and ours:
+        count += 1
+      quiet = 0 if captured else quiet + 1
+    return count
+  hex_battles = base["hexparrot"]
+  ours7 = sum(g7.late_captures(b, game, 2) for b in hex_battles)
+  hand7 = sum(by_hand(b, 2) for b in hex_battles)
+  cut = [dict(b, actions=b["actions"][:30]) for b in hex_battles]
+  write(f"{tmp}/hex_cut.jsonl", cut)
+  cut7 = sum(g7.late_captures(b, game, 2) for b in cut)
+  results, status = gates(tmp, "--candidate", "C", "--anchor", "A", "--late_after", "2",
+                          "--games", f"C:hexparrot={tmp}/hex_cut.jsonl",
+                          "--games", f"A:hexparrot={tmp}/hexparrot.jsonl")
+  row = results["late captures (after 2+ quiet turns, against hexparrot, a battle)"]
+  # (The cut battles fail other gates, the blunders' and the kills': the exit status says
+  # nothing about this row.)
+  check(ours7 == hand7 and ours7 > 0 and cut7 < ours7 and row["monitored"]
+        and not row["fails"] and
+        row["candidate"]["trolls"] + row["candidate"]["dwarfs"] <
+        row["anchor"]["trolls"] + row["anchor"]["dwarfs"],
+        f"7. late captures: {ours7} counted, {hand7} by hand; the control cut to 30 plies "
+        f"{cut7}, reported, never failed: {row['text']}")
+  results, status = gates(tmp, "--candidate", "C", "--anchor", "A")
+  check("skipped" in results["late captures (after 100+ quiet turns, against hexparrot, a battle)"],
+        "7. without hexparrot games the row is skipped")
   print("ALL PASSED" if failures == 0 else f"{failures} FAILED")
   return 1 if failures else 0
 

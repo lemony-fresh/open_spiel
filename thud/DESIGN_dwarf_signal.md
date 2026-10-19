@@ -835,6 +835,7 @@ network must pass both. **The anchor is the top anchor, M102.**
 | Long hurls (4+ squares) | the same probe | never fails: monitored now, a target for later |
 | Dead channels (2026-10-18) | `az_dormant_probe` on 4,096 buffer positions: channels never above 0, in the trunk and in the heads, and dormant ones (τ 0.1), beside the anchor's and a fresh network's | never fails: monitored, recorded below |
 | Plasticity (2026-10-18) | `az_plasticity`: random targets on 8,192 positions, 1,000 batches at 0.001, the policy + value loss at the end, beside a fresh network's of the same width in the same run, and the weights' norm | never fails: monitored, recorded below |
+| Late captures (2026-10-19) | captures our network makes against hexparrot (the limit 200) after more than 100 turns without one, a battle, as trolls and as dwarfs, beside the anchor's — the indicator for self-play's no-capture limit of 100 (R191: trolls 0.12, dwarfs 0.03; N161: 0.25, 0.00) | never fails: monitored |
 | Trunk gradients (2026-10-19) | `az_restructure`'s report before its first batch, on 1,024 positions of run N's last buffer: the weighted value loss's gradient on the shared layers against the policy loss's (the ratio of their sizes) and the cosine between the two (+1: both losses ask the same change, 0: unrelated, −1: opposed — the multi-task conflict) | never fails: monitored, recorded below |
 
 - **Standard errors analytic or by bootstrap** over battles or positions — not from one

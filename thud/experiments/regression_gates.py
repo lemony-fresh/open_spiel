@@ -49,6 +49,13 @@ standard errors (the blunders at 4 percentage points):
                        sizes, weighted) and the cosine between the two —
                        +1 the same direction, 0 unrelated, -1 opposed
                        (2026-10-19)
+  late captures        captures our network makes against hexparrot      never fails: monitored
+                       after more than --late_after (100) turns without
+                       one, a battle, as trolls and as dwarfs, beside the
+                       anchor's — the indicator for self-play's
+                       no-capture limit of 100 (2026-10-19): does a
+                       network trained at it still grind out late
+                       captures in games at the limit 200?
 
 Inputs: az_match games files (games=PATH) of both networks against alpha-beta 1, alpha-beta
 2 and hexparrot on the same openings (the same seed); az_long_capture_probe output holding
@@ -195,6 +202,25 @@ def plasticity_nets(paths):
   return out
 
 
+QUIET = re.compile(r"turns_without_capture=(\d+)")
+
+
+def late_captures(battle, game, after):
+  """Captures our network (a_player) makes after more than `after` turns without one."""
+  state = game.new_initial_state()
+  quiet = ours = 0
+  for action in battle["actions"]:
+    if state.is_terminal():
+      break
+    mover = state.current_player()
+    state.apply_action(state.string_to_action(action))
+    turns = int(QUIET.search(str(state)).group(1))
+    if turns == 0 and quiet > after and mover == battle["a_player"]:
+      ours += 1
+    quiet = turns
+  return ours
+
+
 def proportion_gate(name, cand, anchor, threshold_se=2.0, monitored=False):
   keys = [k for k in cand if k in anchor]
   if not keys:
@@ -225,6 +251,8 @@ def main():
   parser.add_argument("--gradients", action="append", default=[],
                       help="NAME=FILE: az_restructure output, its report before the first "
                            "batch (monitored)")
+  parser.add_argument("--late_after", type=int, default=100,
+                      help="late captures: after more than this many turns without one")
   parser.add_argument("--bootstrap", type=int, default=2000)
   parser.add_argument("--json", action="store_true", help="one JSON line per gate")
   args = parser.parse_args()
@@ -363,6 +391,26 @@ def main():
                     "candidate": pulls[args.candidate], "anchor": pulls.get(args.anchor)})
   else:
     results.append({"gate": gate, "skipped": f"no az_restructure report for {args.candidate}"})
+
+  gate = f"late captures (after {args.late_after}+ quiet turns, against hexparrot, a battle)"
+  if "hexparrot" in cand:
+    import pyspiel
+    game = pyspiel.load_game("thud")
+    def per_side(path):
+      out = {}
+      for side, player in (("trolls", 1), ("dwarfs", 0)):
+        battles = list(by_pair(path, player).values())
+        out[side] = sum(late_captures(b, game, args.late_after) for b in battles) / max(len(battles), 1)
+      return out
+    c = per_side(cand["hexparrot"])
+    text = f"{args.candidate} as trolls {c['trolls']:.2f}, as dwarfs {c['dwarfs']:.2f}"
+    a = per_side(anch["hexparrot"]) if "hexparrot" in anch else None
+    if a:
+      text += f"; {args.anchor} as trolls {a['trolls']:.2f}, as dwarfs {a['dwarfs']:.2f}"
+    results.append({"gate": gate, "monitored": True, "fails": False, "text": text,
+                    "candidate": c, "anchor": a})
+  else:
+    results.append({"gate": gate, "skipped": f"no hexparrot games of {args.candidate}"})
 
   failed = [r["gate"] for r in results if r.get("fails")]
   if args.json:
