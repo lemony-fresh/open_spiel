@@ -344,7 +344,7 @@ weight 0.7 on the dwarfs' positions, 0.3 on the trolls'; value-loss weight 1). T
 (`num_batches_tracked`): in step 161 of the 64 learning batches the input batch norm ran 7
 in training mode, the deeper ones 11-51 (rising with depth: inference calls under way when
 the learner switches to training finish their deeper layers in training mode); run H's
-step 65 alike. **The capacity tests** (2026-10-18, `~/thud-runs/capacity_2026-10-18/`): Np181 hardly fits random targets that fresh networks memorise, and **a fresh network trained ~4 hours on N′'s run's buffer beats Np181 by +13.2 a pair (39 of 40 pairs won, none lost)** and hexparrot:3 by +28.7. The control: the reset network's checkpoints fit the random targets as fresh networks do — Np181's rigidity is its own. **Decided: the reset network is the main line, run R** (`~/thud-runs/r_run_2026-10-19.sh`, detached, waiting for 02:00 and 20 idle minutes; segments to 221, each with measurement 4, the gradients, matches against Np181 and hexparrot:3, the plasticity test). **Next:** run R's segments; the learning-rate sweep (the trainer may underfit: R's offline training gained much); then the segments' results (the design's §10), Np201's evaluation, then the teacher's weight revisited (the user, 2026-10-18: after step 201; a taper branched from the same network);
+step 65 alike. **The capacity tests** (2026-10-18, `~/thud-runs/capacity_2026-10-18/`): Np181 hardly fits random targets that fresh networks memorise, and **a fresh network trained ~4 hours on N′'s run's buffer beats Np181 by +13.2 a pair (39 of 40 pairs won, none lost)** and hexparrot:3 by +28.7. The control: the reset network's checkpoints fit the random targets as fresh networks do — Np181's rigidity is its own. **Decided: the reset network is the main line, run R** (`~/thud-runs/r_run_2026-10-19.sh`, detached, waiting for 02:00 and 20 idle minutes; segments to 221, each with measurement 4, the gradients, matches against Np181 and hexparrot:3, the plasticity test). **Next:** R211 (to ~20:30 2026-10-19), then the branches RL (the no-capture limit 100) and RLT (also the teacher 0.35) from R201 and their round robin (`~/thud-runs/limit_teacher_2026-10-19.sh`, results ~09:00 2026-10-20); compact buffer storage (4-8x the positions in the same memory); the learning-rate sweep (the trainer may underfit: R's offline training gained much); then the segments' results (the design's §10), Np201's evaluation, then the teacher's weight revisited (the user, 2026-10-18: after step 201; a taper branched from the same network);
 the upstream PR for the race opened as
 [#1646](https://github.com/google-deepmind/open_spiel/pull/1646) (2026-10-17, after the
 user's review; the CLA check passed; waiting for upstream's CI and review — the
@@ -3545,5 +3545,24 @@ the push's and the rename's tests ran (memory beside the trainer), to resume.
   capture passed 41 turns, while ~90% of R's self-play games now end by the 200-turn
   limit: ~35% of their positions are in the final stall.
 
-**Next step:** as recorded in `## Current status` — run R's segments; after R201, the
-teacher's weight (the user: lower it, so that the network may find ways to break stalls).
+- **2026-10-19, ~12:00-14:40: R201; the limit and the teacher queued as branches.** R's
+  segment 201 (to 14:06): self-play kept dwarfs in 100% of 298 games, the dwarfs' margin
+  −8.9 (191: −12.1), value loss 0.025 → 0.021, batch norms exact. The user: keep WSL's
+  memory; a buffer for cheap resets — answered with snapshots on disk (resets on merged
+  recent ones, not on every game ever played: KataGo's window grows sublinearly) and
+  compact storage for a larger buffer in the same memory (a position takes 9.4 KB, of
+  which 5.4 KB the observation's floats); the no-capture limit 100 in self-play (measured
+  on R's last 496 games: 94% ended at the 200 limit, 37% of positions in the final stall,
+  3.6% of captures after 100+ quiet turns, 307 of those 382 the trolls'); the teacher
+  lowered soon. `~/thud-runs/snapshot_R201_2026-10-19.sh` copied R's state at step 201
+  (14:06, checked with cmp) to `runR_snap201`; `~/thud-runs/limit_teacher_2026-10-19.sh`
+  (detached) stops R after segment 211 and runs RL (the limit 100) and RLT (also the
+  teacher 0.35) from it, then a round robin with R211 at the limit 200, hexparrot, the
+  gates and the indicator for the limit: late captures per battle (tested on real games:
+  our trolls 0.26-0.31 a battle, hexparrot's 0.01). The trainer's smoke test with
+  `thud(max_turns_without_capture=20)` and a teacher of 0.35: half the games ended at the
+  limit, the config recorded both. The observation holds the no-capture count as a
+  fraction of the limit, so a network trained at 100 reads it right at 200.
+
+**Next step:** as recorded in `## Current status` — R211, then RL and RLT (results ~09:00
+2026-10-20).
