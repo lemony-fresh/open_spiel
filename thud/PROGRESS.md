@@ -3602,6 +3602,22 @@ the push's and the rename's tests ran (memory beside the trainer), to resume.
   plasticity 0.455 (fresh 0.223); late captures as trolls 0.05 (R191 0.12, N161 0.25).
   Segment 211 (A) started 15:40; `limit_teacher` touched `r_run.stop`.
 
+- **2026-10-19, ~16:00-16:30: the window's cap; lower precision.** The user: a cap larger
+  than 3x, growing as KataGo's — at our ~1.1 million positions a day KataGo's rule reaches 3x
+  in ~1.5 days, 6x in ~10: decided a cap of 6x (~4.1 GB compact, today's memory) with the
+  rule, `replay_buffer_reuse` 126, tested first offline: `~/thud-runs/forward_window_2026-10-20.sh`
+  (detached, after the arms: R201 trained 640 batches on today's window and on KataGo's —
+  the newest 1,040,000 of the buffers at 161, 181 and 201 — two seeds each, scored on R's
+  positions of steps 202-211). The user also asked about 16-bit or 8-bit arithmetic: game
+  AIs use it on GPUs (Leela Chess Zero and KataGo run their networks in FP16 there; Stockfish's
+  NNUE in int8 and int16 on CPUs); here (one thread, beside the trainer) a 64-channel 3x3
+  convolution on a batch of 32 takes 7.7 ms in float32, 5.6 ms in bfloat16 (1.4x, relative
+  error 3e-3) and 112 ms in float16 (LibTorch has no fast float16 kernel on this CPU, though
+  the CPU has the instructions). So bfloat16 inference would gain at most what the network
+  costs of a self-play step — to measure first (the batching path's profile), then the
+  agreement test the user proposed (bfloat16 against float32 on buffer positions: values,
+  top moves, the search's chosen move) and a match.
+
 **Next step:** as recorded in `## Current status` — R211, then RL and RLT (results ~09:00
-2026-10-20; they run on the compact buffer, merged before their build); then the window's
-arm (3x with KataGo's rule).
+2026-10-20; they run on the compact buffer, merged before their build); the window's forward
+test after them (~11:30); then the window in the main line if it holds.
