@@ -344,7 +344,7 @@ weight 0.7 on the dwarfs' positions, 0.3 on the trolls'; value-loss weight 1). T
 (`num_batches_tracked`): in step 161 of the 64 learning batches the input batch norm ran 7
 in training mode, the deeper ones 11-51 (rising with depth: inference calls under way when
 the learner switches to training finish their deeper layers in training mode); run H's
-step 65 alike. **Next:** the capacity tests (`~/thud-runs/capacity_2026-10-18.sh`, the run paused after step 181), then the user's decision: keep Np181 or reset; then the segments' results (the design's §10), Np201's evaluation, then the teacher's weight revisited (the user, 2026-10-18: after step 201; a taper branched from the same network);
+step 65 alike. **The capacity tests** (2026-10-18, `~/thud-runs/capacity_2026-10-18/`): Np181 hardly fits random targets that fresh networks memorise, and **a fresh network trained ~4 hours on N′'s run's buffer beats Np181 by +13.2 a pair (39 of 40 pairs won, none lost)** and hexparrot:3 by +28.7. **Next:** the control (the reset network's checkpoints in the random-target test), then the user's decision: the reset network as the new main line, continued in self-play with the fixed trainer; then the segments' results (the design's §10), Np201's evaluation, then the teacher's weight revisited (the user, 2026-10-18: after step 201; a taper branched from the same network);
 the upstream PR for the race opened as
 [#1646](https://github.com/google-deepmind/open_spiel/pull/1646) (2026-10-17, after the
 user's review; the CLA check passed; waiting for upstream's CI and review — the
@@ -3461,5 +3461,27 @@ the push's and the rename's tests ran (memory beside the trainer), to resume.
   `~/thud-runs/capacity_2026-10-18.sh` (A, the planes' cost, B beside C, C's matches, the
   control).
 
-**Next step:** as recorded in `## Current status` — the capacity tests' results, then the
-user's decision (keep Np181 or reset).
+- **2026-10-18, ~16:30-22:00: the capacity tests' results** (`~/thud-runs/capacity_2026-10-18/`;
+  the design's §10, *The capacity tests*). A, on N′'s run's buffer (4,096 positions): the
+  trunk's 576 channels none dead or dormant in N161, N′, Np171, Np181, No171; the value
+  head's hidden layer 8 of 64 dead in each (the same since N161); a fresh network none. The
+  planes' cost (L102 against M102, two rounds each): search 1,470/1,690 against
+  1,495/1,535 simulations a second (within the rounds' spread), 0.31 against 0.32 GB; a
+  learning batch 108/115 against 116/119 s per 40 (+5%), 7.40 against 7.52 GB peak — kept
+  (the user: no harm, they may help long hurls and shoves). B (8,192 positions, 1,000
+  batches of 256 at 0.001): fresh 64 fits the random targets to 0.09/0.03 (policy/value),
+  48 to 0.18/0.06, 32 to 0.42/0.08; **Np181 4.05/0.96, N161c 4.07/0.95** — by the rule fixed
+  beforehand a large loss. The user's objection: the test cannot tell lost capacity from
+  features specialised to Thud; the control (the reset network's checkpoints) is running.
+  C, the reset (a fresh 64 x 4 trained on N′'s run's buffer: 3,000 batches at 0.001, then
+  from batch 2,250 500 at 0.0001; ~4 hours): held-out policy 3.811, value 0.022 against
+  Np181's 3.900 and 0.047 on the same positions — which Np181 had trained on — and **it
+  beats Np181 by +13.2 a pair (+11.4 to +15.0; 39 won, 1 drawn, 0 lost)**; against
+  hexparrot:3 +28.7 (Np181 +17.1), its dwarfs +11.7 against Np181's on the same openings
+  (+9.0 to +14.5), its trolls equal (−0.05), blunders 3.5% (Np181 2.2%, N161 5.9%). The
+  citation for B was corrected after a search (Lyle, Rowland and Dabney, ICLR 2022). A
+  lapse of mine: B's result (18:26) waited for the user's question, as nothing woke this
+  session; since then a background waiter does.
+
+**Next step:** as recorded in `## Current status` — the control's result, then the user's
+decision: the reset network as the new main line, continued in self-play.

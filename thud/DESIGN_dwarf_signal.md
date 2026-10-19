@@ -1138,6 +1138,22 @@ value already leads the trunk, so a larger value weight (E1) is not what these r
 ask for. Self-play speed: 10 steps in 4h09m (B, two copies and `explicit_learning`)
 against 4h34m (A).
 
+**The capacity tests** (2026-10-18; the user: if the race cost capacity, restart cheaply;
+`~/thud-runs/capacity_2026-10-18/`). A, dead and dormant channels (Sokar et al., ICML
+2023): the trunk's 576 channels none in any network of the lineage; the value head's hidden
+layer 8 of 64 dead in each, the same since N161. B, random targets (after Lyle, Rowland and
+Dabney, ICLR 2022): fresh networks of widths 64, 48 and 32 fit them to 0.12, 0.24 and 0.51
+(policy + value) in 1,000 batches; Np181 and N161c only to 5.0 — far below even width 32;
+whether that is lost capacity or features specialised to Thud (the user's objection) the
+reset network's checkpoints tell. C, the reset (Nikishin et al., ICML 2022: a fresh network
+on the replay buffer): 3,500 offline batches on N′'s run's buffer, ~4 hours, give held-out
+losses below Np181's on Np181's own data (policy 3.811 against 3.900, value 0.022 against
+0.047), and **the reset network beats Np181 by +13.2 a pair (+11.4 to +15.0; 39 of 40
+pairs won, none lost)** and hexparrot:3 by +28.7 (Np181 +17.1): against hexparrot its
+dwarfs +11.7 better than Np181's on the same openings, its trolls equal. So the lineage
+(runs K, M, N, all with the race) held back what its own data could teach: the network,
+not the data, was the limit.
+
 ## Review log
 
 **Review 1** (an adversarial reviewer agent, 2026-10-12, on draft 2; findings checked at
