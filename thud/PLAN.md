@@ -677,6 +677,7 @@ the search and trainer*, run C'.
 | 2026-10-19 | One change at a time from R201: RL (the limit 100) and RLT (the limit 100, the teacher 0.35 on the dwarfs' positions), 10 steps each, against R's own steps 202-211; a round robin and hexparrot after; R pauses after step 211 until the results | user | status block, `~/thud-runs/limit_teacher_2026-10-19.sh` |
 | 2026-10-19 | The window: a cap of 6x (2,752,512 positions, ~4.1 GB compact — today's buffer's memory) with KataGo's rule (`--replay_buffer_start_size=250000`: ~2.3x now, 3x at 5 million positions generated, ~6x at 14 million, ~10 days at our pace), `replay_buffer_reuse` 126 (a step every 21,845 new positions); tested first offline (`~/thud-runs/forward_window_2026-10-20.sh`: R201 trained on today's window and on KataGo's, scored on the next 10 steps' positions) | user | the buffer |
 | 2026-10-19 | Self-play inference in bfloat16 (R201 against itself in float32: +1.65, −1.29 to +4.59; the search's move the same in 93.5% of positions, near ties where not); **evaluation matches in bfloat16 for both networks from the next evaluation on** (`precision_a=bfloat16 precision_b=bfloat16`), after a short tune of the match settings in bfloat16; the stored float32 reference games (N161 and M102 against hexparrot and alpha-beta) kept as they are, the switch noted with each result (the precision moves a margin by ~1.3 a pair at most, far below the differences compared); tonight's evaluation (`arms3`) stays float32, as queued | user | status block, mixed precision |
+| 2026-10-19 | After tonight's runs: the learner's speed first (its own threads; the learner set the pace in the trainer benchmark), then every setting worth tuning tuned reasonably — self-play in the trainer (by its step time), matches (a match-throughput sweep, then bfloat16), offline training (its threads) | user | the GPU checklist, *Still to build or measure here* |
 | 2026-10-18 | **The reset network is the main line, run R** (R181: the reset at the run's step 181), continued in self-play from N′'s run's state at step 181, run N's recipe unchanged; started after 02:00 once the laptop has been idle 20 minutes; each segment adds the plasticity test, to see whether R keeps learning | user | status block, `~/thud-runs/r_run_2026-10-19.sh` |
 
 **Considered and set aside** (with the reason): the Python AlphaZero (a layout bug, and
@@ -1568,7 +1569,10 @@ first session, with no patch at all.**
   **missing** = not built. *Before renting* = to do here first.
 
   **Still to build or measure here before renting** (updated 2026-10-19, the user: so that
-  no GPU time is spent on what can be done on this machine), in order of need:
+  no GPU time is spent on what can be done on this machine), in order of need — **after
+  tonight's runs (the user, 2026-10-19): the learner's speed first (item 6), then every
+  setting worth tuning tuned reasonably: self-play in the trainer, matches, offline
+  training (items 1, 2, 7)**:
   1. **A trainer benchmark as a tool**: settings compared by the trainer's own step time
      (a run's state copied, 2 steps each, the step after the first timed) — today inside
      `~/thud-runs/arms3_2026-10-19.sh`; as `thud/experiments/bench_trainer.sh` it is the
@@ -1587,7 +1591,15 @@ first session, with no patch at all.**
      renting): small, the same mechanism as bfloat16.
   6. **The learner's threads apart from the inference threads**: one OMP_NUM_THREADS for
      the whole trainer today, so a setting good for inference (2 threads each) slows the
-     learner — on this CPU only; on a GPU both run there.
+     learner — on this CPU only; on a GPU both run there. Found 2026-10-19 (the trainer
+     benchmark, bfloat16, 64 actors, 4 inference threads x 2): a learning step took 12.9
+     minutes against 6.7 at 4 threads, self-play had the next step's positions ready
+     before it ended (28 a second beside it), so the step took ~13 minutes — the learner
+     sets the pace: 1.7x the old 22, not the sweep's 2.9x. Planned: a trainer flag for the
+     learner's threads (its own `at::set_num_threads` in the learner thread: OpenMP's
+     thread count is per thread), then the trainer benchmark again.
+  7. **Offline training's threads** (`az_restructure`, resets, the forward tests:
+     OMP_NUM_THREADS=8 by habit, never measured — the reset took ~4 hours).
   Done today (2026-10-19): the compact buffer (6.8x less memory), bfloat16 inference (2.9x
   self-play with the batching), the batching sweep, the precision probe and its monitored
   row. Measured on the machine itself, not built: the window's cap and rule (tested
