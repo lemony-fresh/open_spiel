@@ -1498,8 +1498,17 @@ first session, with no patch at all.**
      varied): **the inference precision** (since 2026-10-19 — on a GPU's tensor cores
      float16 or bfloat16 run several times faster than float32, and the agreement test,
      `az_precision_probe`, and a match against float32 decide whether the lower
-     precision plays the same; this CPU: bfloat16 ~1.3x at best, float16 has no fast
-     kernel); actors (games searched at once: ~32 here, a GPU wants hundreds to fill its
+     precision plays the same; this CPU: bfloat16 1.56x float32 at each one's best
+     setting (4,384 against 2,815 simulations/s), float16 has no fast kernel); **tuned
+     apart for each use** (the user, 2026-10-19) — self-play inside the trainer (the
+     learner shares the cores, and alpha-beta as opponent and teacher runs on the actors'
+     threads: measured by the trainer's own step time, as `arms3` benchmarks two
+     settings), matches (`az_match`: threads as pairs, batch, OMP_NUM_THREADS, how many
+     matches at once, precision for both networks alike; opponents without a network —
+     hexparrot, alpha-beta, MCTS — change the balance; measured by its simulations/s,
+     `progress=`, or a match's wall time), and the probes and offline tools (`az_restructure`,
+     `az_dwarf_value_probe`, `az_plasticity`: OMP_NUM_THREADS and their batches); actors
+     (games searched at once: ~32 here, a GPU wants hundreds to fill its
      batches), inference threads and the inference batch size together — **keep at least
      batch x inference threads actors waiting**, else the threads take turns (2026-10-19:
      32 actors with batches of 32 and 2 threads ran at 1,512 simulations/s, with batches
