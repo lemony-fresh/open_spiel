@@ -882,6 +882,9 @@ measured in evaluation mode, as those networks learnt):
 | 2026-10-18 | a fresh network (the control's run) | 0 | 0 | 8 | 0.157 | 30.3 | — | — |
 | 2026-10-19 | R191 (run R, segment 1) | 0 | 3 | 18 | 0.459 (fresh 0.188) | 23.1 | 2.54 | +0.19 |
 | 2026-10-19 | R201 (run R, segment 2) | 0 | 3 | 18 | 0.455 (fresh 0.223) | 22.8 | 3.03 | +0.08 |
+| 2026-10-20 | A211 (R201 + 10 steps, run R's recipe, bfloat16 self-play) | 0 | 3 | 18 | 0.803 (fresh 0.211) | 22.6 | 3.87 | +0.04 |
+| 2026-10-20 | RL211 (the same, the no-capture limit 100) | 0 | 2 | 20 | 0.701 (fresh 0.171) | 22.6 | 3.07 | +0.09 |
+| 2026-10-20 | RLT211 (also the teacher 0.35) | 0 | 4 | 18 | 0.524 (fresh 0.196) | 22.6 | 1.94 | +0.07 |
 
 **The precision record** (`az_precision_probe`: the share of positions where the search
 chose float32's move, the near ties among the rest; float32 again with another seed, the
@@ -890,6 +893,9 @@ control; the outputs' value difference, mean and largest):
 | Measured | Network | mixed | bfloat16 | float32 again | Value difference (mixed; bfloat16) | Against float32 (40 pairs) |
 |---|---|---|---|---|---|---|
 | 2026-10-19 | R201 | 94.7% (19 near ties of 32) | 93.5% (22 of 39) | 99.5% | 0.0016, 0.0058; 0.0023, 0.0073 | mixed +2.23 (−0.78 to +5.23), bfloat16 +1.65 (−1.29 to +4.59) |
+| 2026-10-20 | A211 (on its round-robin games) | — | 91.7% (32 of 50) | 99.8% | —; 0.0017, 0.0066 | — |
+| 2026-10-20 | RL211 (the same) | — | 88.0% (45 of 72) | 99.8% | —; 0.0021, 0.0088 | — |
+| 2026-10-20 | RLT211 (the same) | — | 90.3% (47 of 58) | 99.7% | —; 0.0022, 0.0068 | — |
 
 **Mechanism** (explains, does not decide) — each with the tools of §4, on the test run's,
 the control run's and M102's networks:
@@ -1204,6 +1210,31 @@ the reset network itself — as good on the buffer as Np181 or better — fit th
 0.17-0.35 (policy), fresh 64 to 0.12: knowing the game does not stop it; Np181's rigidity
 is its own, the race's or its far longer training's. **Run R** (the user, 2026-10-18): the
 reset network continued in self-play, a plasticity test after each segment of 10 steps.
+
+**Run R and the arms from R201** (2026-10-19/20; `~/thud-runs/arms3_eval/`, one seed each).
+R191 beat Np181 by +14.2 a pair and R201 by +18.7 (40 of 40 pairs), R201 hexparrot:3 by
++36.0. From R201, 10 steps each with self-play in bfloat16 (the precision record, §7): A, run
+R's recipe; RL, the no-capture limit 100 in self-play (evaluation keeps 200); RLT, also the
+teacher's weight 0.35 on the dwarfs' positions (0.3 on the trolls'). **The limit 100 costs
+nothing measurable and shortens the games 40%**: RL211 against A211 +0.88 (−2.07 to +3.82),
+286 plies a game against 480, 557 games in the 10 steps against 318, 96.9% of them ending at
+the limit (A 87.0%), 33.9% of the positions in the final quiet stretch (A 37.3%). **Halving
+the teacher's weight loses**: RLT211 against RL211 −3.98 (−7.06 to −0.89), against A211
+−1.02 (−4.01 to +1.96). Against hexparrot:3 (40 pairs, each 40 of 40): A211 +35.1 (+31.7 to
++38.5), RL211 +37.4 (+35.1 to +39.6), RLT211 +35.5 (+32.6 to +38.4); pair by pair against
+N161 on the same openings, the dwarfs +27.7, +28.5, +27.5 and the trolls +12.0, +13.5, +12.6.
+The regression gates against N161 pass for all three (blunders 3.1%, 4.0%, 2.4% against
+N161's 5.9%). Monitored: late captures as trolls 0.03, 0.07, 0.12 a battle (N161 0.25);
+plasticity rose from R201's 0.455 to 0.803, 0.701, 0.524 (fresh networks 0.17-0.21; the
+capacity record, §7) — far from Np181's 5.0, but to be watched over the next segments.
+**The window's forward test** (`~/thud-runs/forward_window_2026-10-20.sh`): R201 trained 640
+batches (2 seeds) on today's window (its own buffer, 458,752 positions) and on KataGo's (the
+newest 1,040,000 of runs N's, N′'s and R's buffers merged), scored on the positions of
+arm A's 10 steps, which neither saw: KataGo's window scores worse — policy +0.0090 (the
+seeds' spread 0.0019), value +0.0045 (0.0040) — so by the rule fixed beforehand today's
+window stays. The test leans towards today's window (arm A descends from it), and KataGo's
+window drew its extra positions from the runs before the reset: what it shows is that those
+older positions hurt; a larger window of run R's own games stays open.
 
 ## Review log
 

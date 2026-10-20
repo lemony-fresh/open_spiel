@@ -330,21 +330,15 @@ most of it (No171's dwarfs +1.9). Survival in self-play without training: N′ 6
 54%, Np171 61%, No171 34% (arm A's own first steps 34%: the race also spoilt its self-play
 directly). Measurement 4: a far dwarf's worth with the dwarfs to move in the games against
 alpha-beta, Np171 0.0070 against No171 0.0024 (N161 −0.0001), the gap's ratio 0.27
-against 0.10. Self-play speed: B 4h09m, A 4h34m. **Running** (detached,
-`~/thud-runs/np_cont_2026-10-18.sh`): N′'s run continued to step 201 in segments of 10
-(at step 176 at 13:03; self-play kept dwarfs in 77.8% of steps 172-176's games), each
-followed by measurement 4 (the fixed positions, its own games), the trunk's gradients
-and matches against N161 and hexparrot:3 (segment 181's by ~16:15, 191's ~21:15, 201's
-~02:15; `touch ~/thud-runs/np_cont.stop` ends it after a segment); then
-`~/thud-runs/eval_Np_2026-10-18.sh` (waiting): night12's evaluation of the last finished
-segment's network — matches against M102 and alpha-beta 1 and 2, the probes (capture
-targets, long captures, unsafe targets), the regression gates against M102 and against
-N161 — ~2.5 hours, by ~05:00. Run N's recipe stays unchanged through it (the teacher's
+against 0.10. Self-play speed: B 4h09m, A 4h34m. **N′'s run** (`~/thud-runs/np_cont_2026-10-18.sh`) went on in segments of 10 to
+step 181 and was stopped there (`np_cont.stop`) for the reset (run R, below); its
+evaluation (`~/thud-runs/eval_Np_2026-10-18.sh`) was stopped too. Run N's recipe was
+unchanged through it (the teacher's
 weight 0.7 on the dwarfs' positions, 0.3 on the trolls'; value-loss weight 1). The race measured by the batch norms' own counters
 (`num_batches_tracked`): in step 161 of the 64 learning batches the input batch norm ran 7
 in training mode, the deeper ones 11-51 (rising with depth: inference calls under way when
 the learner switches to training finish their deeper layers in training mode); run H's
-step 65 alike. **The capacity tests** (2026-10-18, `~/thud-runs/capacity_2026-10-18/`): Np181 hardly fits random targets that fresh networks memorise, and **a fresh network trained ~4 hours on N′'s run's buffer beats Np181 by +13.2 a pair (39 of 40 pairs won, none lost)** and hexparrot:3 by +28.7. The control: the reset network's checkpoints fit the random targets as fresh networks do — Np181's rigidity is its own. **Decided: the reset network is the main line, run R** (`~/thud-runs/r_run_2026-10-19.sh`, detached, waiting for 02:00 and 20 idle minutes; segments to 221, each with measurement 4, the gradients, matches against Np181 and hexparrot:3, the plasticity test). **Next:** R211 (to ~20:30 2026-10-19), then the branches RL (the no-capture limit 100) and RLT (also the teacher 0.35) from R201 and their round robin (`~/thud-runs/limit_teacher_2026-10-19.sh`, results ~09:00 2026-10-20); compact buffer storage (4-8x the positions in the same memory); the learning-rate sweep (the trainer may underfit: R's offline training gained much); then the segments' results (the design's §10), Np201's evaluation, then the teacher's weight revisited (the user, 2026-10-18: after step 201; a taper branched from the same network);
+step 65 alike. **The capacity tests** (2026-10-18, `~/thud-runs/capacity_2026-10-18/`): Np181 hardly fits random targets that fresh networks memorise, and **a fresh network trained ~4 hours on N′'s run's buffer beats Np181 by +13.2 a pair (39 of 40 pairs won, none lost)** and hexparrot:3 by +28.7. The control: the reset network's checkpoints fit the random targets as fresh networks do — Np181's rigidity is its own. **The main line is run R** (the reset network; `~/thud-runs/r_run_2026-10-19.sh`), stopped at step 203 for the faster inference: R191 beat Np181 by +14.2, R201 by +18.7 (40 of 40 pairs) and hexparrot:3 by +36.0. Since 2026-10-19 **self-play infers in bfloat16** (64 actors, batches of 16, 4 inference threads x OMP 2: a step ~13 minutes on a cool machine, against ~22; R201 against itself in float32 +1.65, −1.29 to +4.59) and **the buffer is compact** (6.8x fewer bytes). **The arms from R201** (2026-10-19/20, 10 steps each, `~/thud-runs/arms3_2026-10-19.sh`, results in `~/thud-runs/arms3_eval/`): A (run R's recipe), RL (the no-capture limit 100 in self-play), RLT (also the teacher 0.35) — RL against A +0.88 (−2.07 to +3.82) with games 40% shorter (286 plies against 480; 557 games against 318), RLT against RL −3.98 (−7.06 to −0.89); against hexparrot:3 A +35.1, RL +37.4, RLT +35.5, each 40 of 40; the gates pass. **The window's forward test** (`~/thud-runs/forward_window/`): KataGo's window (N's and N′'s older positions merged in) predicts the next 10 steps worse than today's — policy +0.0090 (the seeds' spread 0.0019), value +0.0045 (0.0040): today's window kept. **The laptop throttles** under sustained load (`CLAUDE.md`: ~40% for 1.5 hours on 2026-10-19, 75-90% otherwise; `~/thud-runs/cpu_limit_log.sh` logs it). **Built 2026-10-20:** the learner's own thread count (`--learner_threads`) and the trainer benchmark (`thud/experiments/bench_trainer.sh`). **Next:** the user's choice of the main line's recipe (proposed: R continued from RL211 — the limit 100, the teacher 0.7, today's window); the trainer benchmark of the learner's threads; then self-play in the trainer, the matches (a sweep, then bfloat16) and offline training's threads tuned; the plasticity watched (R201 0.455, then A211 0.80, RL211 0.70, RLT211 0.52; fresh networks ~0.2) and bfloat16's agreement (R201 93.5%, the arms 88-92%); the learning-rate sweep (the trainer may underfit: R's offline training gained much);
 the upstream PR for the race opened as
 [#1646](https://github.com/google-deepmind/open_spiel/pull/1646) (2026-10-17, after the
 user's review; the CLA check passed; waiting for upstream's CI and review — the
@@ -3660,5 +3654,40 @@ the push's and the rename's tests ran (memory beside the trainer), to resume.
   then 2 x 4). Not pushed yet: the pre-push hook's full test run would skew the
   benchmark's and the arms' step times.
 
-**Next step:** as recorded in `## Current status` — the trainer benchmark, the arms A, RL
-and RLT from R201 in bfloat16 (~midnight), their evaluation, the window's forward test.
+- **2026-10-19, 19:16-20:12: the trainer benchmark.** Step 203 took 782 s with 4 inference
+  threads x OMP 2 (s0), 952 s with 2 x 4 (s1): s0 chosen. Then the laptop ran on battery
+  from 19:49 to 20:11 (Windows' power events): only s1's last learning phase was on it (497 s
+  against 409 s on mains; the Surface driver lowered its power limit to 55,000 of 100,000),
+  so s1 on mains would have taken ~864 s — the pick held; `arms3` waited for mains before A.
+  The queue showed which side sets the pace: in s0, 66 finished games were waiting when
+  step 203's learning ended and 57 were taken (the learner), in s1 24 and 65 (self-play).
+  The user: optimise the learner too.
+
+- **2026-10-19, ~21:00-23:30: the learner's threads written, and the throttling.** In a
+  worktree (the queue builds from the main checkout): `--learner_threads`, each inference
+  thread setting its own count (LibTorch takes a thread's count lazily from one value shared
+  by all threads — PyTorch v2.10.0, `ParallelOpenMP.cpp` — so the learner's own setting would
+  have leaked into inference threads that had not run yet), `learner.jsonl`'s `threads`,
+  `thread_count_test`, `trainer_test.sh` parts 1-3 and 8, and the trainer benchmark as a
+  tool (`thud/experiments/bench_trainer.sh`). Arm A's learning slowed from 843 s a step to
+  2,145 s (step 208): **Windows held the CPU at 40% of its maximum** (`% Performance
+  Limit`, all 10 cores; energy saver off, the charger "adequate"); with the trainer paused a
+  minute the limit rose to 100% within ~50 s and fell back within ~20 s of resuming — heat
+  or a power cap tied to it. The same code had run at full speed in the benchmark, so the
+  denser load reaches the limit and the heat built over hours sets how low. From ~23:20
+  (the user had looked at the laptop) the learning ran at 95-103% of the benchmark's speed.
+  `bench_trainer.sh` got `BENCH_PROBE` (a command sampled once a minute: the limit), and s0
+  over s1 is less certain than said (the machine's speed swings by more than their 10%).
+
+- **2026-10-20, 00:00-12:44: the arms, their evaluation, the window's forward test** (all
+  results in `## Current status`). The speed by each learning step's time against the
+  benchmark's: RL 80-90%, RLT 80% (steady heat); `~/thud-runs/cpu_limit_log.sh` (started
+  09:51) then logged 92% on average beside the hexparrot matches, 75% (least 59%) during the
+  forward test's training, 100% idle. Monitored rows: plasticity R201 0.455 → A211 0.803,
+  RL211 0.701, RLT211 0.524 (fresh 0.17-0.21; one seed each); bfloat16's agreement 91.7%,
+  88.0%, 90.3% (R201 93.5%), mostly near ties. The learner's threads moved into the main
+  checkout once the queue had ended: the four affected tests and then the hook's 25 quick
+  tests pass (`aa6d213d`); the worktree removed.
+
+**Next step:** as recorded in `## Current status` — the user's choice of the main line's
+recipe, then the trainer benchmark of the learner's threads.
