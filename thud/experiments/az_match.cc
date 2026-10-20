@@ -78,7 +78,10 @@
 //     temperature_b=LIST progress=0 cache=262144 share=0 mcts_memory=1000 \
 //     hexparrot_player=PATH games=PATH capture_floor_a=LIST noise=LIST noise_alpha=0.1 \
 //     noise_epsilon=0.25 sample_plies=0 teacher_mix_a=LIST teacher_depth=2 \
-//     teacher_temperature=0.25 devices=/cpu:0]
+//     teacher_temperature=0.25 devices=/cpu:0 precision_a=float32 precision_b=float32]
+// `precision_a`, `precision_b` (2026-10-19; thud/PLAN.md, mixed precision): each network's
+// inference — float32, mixed (the trunk in bfloat16, the heads in float32) or bfloat16
+// (VPNetModel::SetInferencePrecision); with share=1 network A's for both sides.
 // `devices=LIST` (2026-10-15): where each network runs, comma-separated, one copy of it on
 // each (as the trainer's --devices: cpu, cuda:0, cuda:1, ...; cuda:0,cuda:0 puts two
 // copies on one GPU). Default /cpu:0, as before.
@@ -182,7 +185,8 @@ std::shared_ptr<VPNetEvaluator> LoadEvaluator(const open_spiel::Game& game,
                                               const std::string& spec,
                                               DeviceManager* devices, int batch,
                                               int inference_threads, int cache_size,
-                                              const std::vector<std::string>& device_names) {
+                                              const std::vector<std::string>& device_names,
+                                              const std::string& precision) {
   const size_t colon = spec.rfind(':');
   if (colon == std::string::npos) {
     open_spiel::SpielFatalError(absl::StrCat("Expected DIR:STEP, got ", spec));
@@ -190,6 +194,7 @@ std::shared_ptr<VPNetEvaluator> LoadEvaluator(const open_spiel::Game& game,
   for (const std::string& device : device_names) {
     VPNetModel model(game, spec.substr(0, colon), "vpnet.pb", device);
     model.LoadCheckpoint(std::stoi(spec.substr(colon + 1)));
+    model.SetInferencePrecision(precision);  // 2026-10-19: precision_a, precision_b.
     devices->AddDevice(std::move(model));
   }
   return std::make_shared<VPNetEvaluator>(devices, batch, inference_threads,
@@ -442,6 +447,10 @@ int main(int argc, char** argv) {
   const std::string games_path = args.Get("games", "");
   // Added 2026-10-15 (thud/PLAN.md, the GPU readiness checklist): where the networks run.
   const std::string devices_list = args.Get("devices", "/cpu:0");
+  // 2026-10-19 (thud/PLAN.md, mixed precision): each network's inference precision,
+  // float32, mixed or bfloat16 (VPNetModel::SetInferencePrecision; share=1: A's).
+  const std::string precision_a = args.Get("precision_a", "float32");
+  const std::string precision_b = args.Get("precision_b", "float32");
   const std::vector<std::string> device_names =
       absl::StrSplit(devices_list, ',', absl::SkipEmpty());
   if (device_names.empty()) open_spiel::SpielFatalError("devices= lists no device");
@@ -489,11 +498,12 @@ int main(int argc, char** argv) {
   }
   DeviceManager devices_a, devices_b;
   auto eval_a = LoadEvaluator(*game, spec_a, &devices_a, batch, inference_threads,
-                              cache_size, device_names);
+                              cache_size, device_names, precision_a);
   auto eval_b = share     ? eval_a
                 : outside ? nullptr
                           : LoadEvaluator(*game, spec_b, &devices_b, batch,
-                                          inference_threads, cache_size, device_names);
+                                          inference_threads, cache_size, device_names,
+                                          precision_b);
   // Network A's searches, with the teacher in its prior if `teacher_mix_a` asks for it.
   std::shared_ptr<open_spiel::thud_az::Evaluator> search_eval_a = eval_a;
   if (std::any_of(teacher_mix_a.begin(), teacher_mix_a.end(),
@@ -737,6 +747,10 @@ int main(int argc, char** argv) {
             << (devices_list == "/cpu:0"
                     ? ""
                     : absl::StrFormat(", \"devices\": \"%s\"", devices_list))
+            << (precision_a == "float32" && precision_b == "float32"
+                    ? ""
+                    : absl::StrFormat(", \"precision_a\": \"%s\", \"precision_b\": \"%s\"",
+                                      precision_a, precision_b))
             << (teacher_mix_list.empty()
                     ? ""
                     : absl::StrFormat(", \"teacher_mix_a\": \"%s\", \"teacher_depth\": %d, "

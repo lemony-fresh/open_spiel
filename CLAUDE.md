@@ -118,7 +118,9 @@ options*).
   network, 1,526 with R201), and batches of 16 beat 32: 32 actors, 2 inference threads,
   `OMP_NUM_THREADS=4` — 2,828 simulations/s against 1,512 (64 actors, 4 inference threads,
   `OMP_NUM_THREADS=2`: 3,038); with 32 actors a batch of 32 waits for every actor, so the
-  two inference threads take turns. For matches
+  two inference threads take turns. The full sweep (2026-10-19, with `precision=`): float32
+  at best 2,815, mixed precision 3,604, bfloat16 4,384 (both: 64 actors, batches of 16, 4
+  inference threads, `OMP_NUM_THREADS=2`) — 2.9x the old setting's 1,495. For matches
   (`az_match`, one evaluator per network; games are identical whatever these settings):
   a match of 64+ pairs alone with `threads=64 batch=32` and `OMP_NUM_THREADS=4` (1,923
   simulations/s for 64 x 4); smaller matches up to 3 at once with `OMP_NUM_THREADS=1`
@@ -317,7 +319,10 @@ and the teacher in one network's prior, `teacher_mix_a=`), `az_forgetting`, `az_
 `az_input_plane_trace`, `az_risk_probe`, `az_dwarf_value_probe` (since 2026-10-17 `each=`:
 every position's values, for `thud/experiments/dwarf_value_report.py`'s intervals, which
 resample whole games) and `teacher_mix_test`;
-`az_dormant_probe` and `az_plasticity` (2026-10-18, the capacity tests: dead and dormant
+`az_precision_probe` (2026-10-19: lower-precision inference against float32 — outputs,
+searches, the near ties where the chosen move differs, float32 with another seed as the
+control; the trainer's `--inference_precision=float32|mixed|bfloat16`, `az_match
+precision_a= precision_b=`, `az_search_cost precision=LIST`), `az_dormant_probe` and `az_plasticity` (2026-10-18, the capacity tests: dead and dormant
 channels per rectifier, Sokar et al.; random targets fitted against fresh networks of
 other widths, after Lyle, Rowland and Dabney, ICLR 2022), `az_batch_norm_convert` (2026-10-17, the race's fix: a network's batch norms set to the
 true statistics of what reaches them, its function unchanged), `batch_norm_test` (the

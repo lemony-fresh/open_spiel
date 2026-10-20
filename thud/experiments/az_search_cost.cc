@@ -47,6 +47,8 @@
 //   OMP_NUM_THREADS=4 build-shared/az_search_cost parts=2 net=RUN_DIR:-1 \
 //     batched_threads=32,64,128 batch=16,32,64 inference_threads=1,2,4 devices=cuda:0
 //
+// `precision=LIST` (2026-10-19): float32, mixed, bfloat16 — the network's inference
+// precision (VPNetModel::SetInferencePrecision), another dimension of the grid.
 // `legal_policy=0` computes the priors as upstream does, over every distinct action
 // (VPNetModel::SetLegalPolicy; default 1, ours: the legal moves alone), to measure what
 // the legal policy gains. `game=chess` (any game OpenSpiel's AlphaZero takes) with
@@ -147,6 +149,9 @@ int main(int argc, char** argv) {
   auto part = [&](int p) { return std::find(parts.begin(), parts.end(), p) != parts.end(); };
   const std::string net = get("net", "");
   const bool legal_policy = get("legal_policy", "1") == "1";
+  // 2026-10-19 (thud/PLAN.md, mixed precision): the network's inference precisions to try,
+  // a list of float32, mixed, bfloat16 (VPNetModel::SetInferencePrecision; a real network).
+  const std::vector<std::string> precisions = absl::StrSplit(get("precision", "float32"), ',');
   const std::string nn_model = get("nn_model", "mlp");
   const int nn_width = std::stoi(get("nn_width", "8")), nn_depth = std::stoi(get("nn_depth", "1"));
   const std::vector<std::string> device_names = absl::StrSplit(get("devices", "/cpu:0"), ',');
@@ -216,6 +221,7 @@ int main(int argc, char** argv) {
   const std::string what = net.empty() ? "tiny network, batched" : "network, batched";
   double best = 0;
   std::string best_line;
+  for (const std::string& precision : precisions) {
   for (int threads : batched_threads) {
     for (int batch : batches) {
       for (int inference_threads : inference_threads_list) {
@@ -224,6 +230,7 @@ int main(int argc, char** argv) {
           open_spiel::thud_az::torch_az::VPNetModel model(*game, dir, "vpnet.pb", d);
           if (step != -2) model.LoadCheckpoint(step);
           model.SetLegalPolicy(legal_policy);
+          model.SetInferencePrecision(precision);
           devices.AddDevice(std::move(model));
         }
         auto eval = std::make_shared<open_spiel::thud_az::torch_az::VPNetEvaluator>(
@@ -240,6 +247,7 @@ int main(int argc, char** argv) {
                  : absl::StrFormat(", \"net\": \"%s\", \"devices\": \"%s\"", net,
                                    absl::StrJoin(device_names, ","))) +
                 (legal_policy ? "" : ", \"legal_policy\": false") +
+                (precision == "float32" ? "" : ", \"precision\": \"" + precision + "\"") +
                 (game->GetType().short_name == "thud" && nn_model == "mlp" && nn_width == 8 &&
                          nn_depth == 1
                      ? ""
@@ -254,7 +262,9 @@ int main(int argc, char** argv) {
       }
     }
   }
-  if (batched_threads.size() * batches.size() * inference_threads_list.size() > 1) {
+  }  // The precisions.
+  if (precisions.size() * batched_threads.size() * batches.size() *
+          inference_threads_list.size() > 1) {
     std::cout << "{\"fastest\": " << best_line << "}" << std::endl;
   }
   return 0;

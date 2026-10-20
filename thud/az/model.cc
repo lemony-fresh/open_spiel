@@ -600,19 +600,37 @@ std::vector<torch::Tensor> ModelImpl::losses(torch::Tensor inputs,
           value_loss_each};
 }
 
+void ModelImpl::SetPrecision(torch::Dtype trunk, torch::Dtype head) {
+  if (this->nn_model_ != "resnet" && this->nn_model_ != "resnet_conv_policy") {
+    throw std::runtime_error("SetPrecision: only for nn_model resnet and "
+                             "resnet_conv_policy, not " + this->nn_model_);
+  }
+  for (int i = 0; i <= num_torso_blocks_; i++) layers_[i]->to(trunk);
+  layers_[num_torso_blocks_ + 1]->to(head);
+  trunk_dtype_ = trunk;
+  head_dtype_ = head;
+}
+
 std::vector<torch::Tensor> ModelImpl::ValueAndPolicyAt(torch::Tensor x, torch::Tensor rows,
                                                        torch::Tensor actions) {
   if (this->nn_model_ == "resnet" || this->nn_model_ == "resnet_conv_policy") {
+    if (Cast()) x = x.to(trunk_dtype_);  // Our change (SetPrecision).
     x = layers_[0]->as<ResInputBlock>()->forward(x);
     for (int i = 1; i <= num_torso_blocks_; i++) {
       x = layers_[i]->as<ResTorsoBlock>()->forward(x);
     }
-    return this->nn_model_ == "resnet"
-               ? layers_[num_torso_blocks_ + 1]->as<ResOutputBlock>()->ValueAndPolicyAt(
-                     x, rows, actions)
-               : layers_[num_torso_blocks_ + 1]
-                     ->as<ResConvPolicyOutputBlock>()
-                     ->ValueAndPolicyAt(x, rows, actions);
+    if (Cast()) x = x.to(head_dtype_);
+    std::vector<torch::Tensor> out =
+        this->nn_model_ == "resnet"
+            ? layers_[num_torso_blocks_ + 1]->as<ResOutputBlock>()->ValueAndPolicyAt(
+                  x, rows, actions)
+            : layers_[num_torso_blocks_ + 1]
+                  ->as<ResConvPolicyOutputBlock>()
+                  ->ValueAndPolicyAt(x, rows, actions);
+    if (Cast()) {
+      for (torch::Tensor& t : out) t = t.to(torch::kFloat32);
+    }
+    return out;
   } else if (this->nn_model_ == "mlp") {
     for (int i = 0; i < num_torso_blocks_ + 1; i++) {
       x = layers_[i]->as<MLPBlock>()->forward(x);
@@ -628,16 +646,21 @@ std::vector<torch::Tensor> ModelImpl::forward_(torch::Tensor x,
   std::vector<torch::Tensor> output;
   if (this->nn_model_ == "resnet" ||
       this->nn_model_ == "resnet_conv_policy") {
+    if (Cast()) x = x.to(trunk_dtype_);  // Our change (SetPrecision).
     for (int i = 0; i < num_torso_blocks_ + 2; i++) {
       if (i == 0) {
         x = layers_[i]->as<ResInputBlock>()->forward(x);
       } else if (i >= num_torso_blocks_ + 1) {
+        if (Cast()) x = x.to(head_dtype_);
         output = this->nn_model_ == "resnet"
             ? layers_[i]->as<ResOutputBlock>()->forward(x, mask)
             : layers_[i]->as<ResConvPolicyOutputBlock>()->forward(x, mask);
       } else {
         x = layers_[i]->as<ResTorsoBlock>()->forward(x);
       }
+    }
+    if (Cast()) {
+      for (torch::Tensor& t : output) t = t.to(torch::kFloat32);
     }
   } else if (this->nn_model_ == "mlp") {
     for (int i = 0; i < num_torso_blocks_ + 1; i++) {

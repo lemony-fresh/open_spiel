@@ -128,6 +128,9 @@ ABSL_FLAG(int, playout_cap_fast_simulations, 0,
           "The fast searches' simulations (no root noise), if playout_cap_full_share < 1.");
 ABSL_FLAG(double, value_loss_weight, 1,
           "The value loss's weight in each learning step (1: upstream's).");
+ABSL_FLAG(std::string, inference_precision, "float32",
+          "The networks' inference: float32 (upstream's), mixed (the trunk in bfloat16, "
+          "the heads in float32) or bfloat16; learning stays in float32.");
 ABSL_FLAG(int, replay_buffer_size, 1 << 16,
           "How many states to store in the replay buffer.");
 ABSL_FLAG(double, replay_buffer_reuse, 3,
@@ -254,6 +257,7 @@ int main(int argc, char** argv) {
     config.lr_warmup_start = absl::GetFlag(FLAGS_lr_warmup_start);
     config.lr_schedule = absl::GetFlag(FLAGS_lr_schedule);
     config.value_loss_weight = absl::GetFlag(FLAGS_value_loss_weight);
+    config.inference_precision = absl::GetFlag(FLAGS_inference_precision);
     config.playout_cap_full_share = absl::GetFlag(FLAGS_playout_cap_full_share);
     config.playout_cap_fast_simulations = absl::GetFlag(FLAGS_playout_cap_fast_simulations);
     if (config.playout_cap_full_share < 1) {  // Stops here, not in an actor.

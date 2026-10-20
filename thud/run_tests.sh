@@ -91,6 +91,7 @@ tests=(
   "watchdog_test|full|90|thud/az/watchdog_test.sh $bin"
   "transfer_test|full|24|thud/transfer_test.sh $bin"
   "legal_policy_test|full|44|$bin/legal_policy_test"
+  "precision_test|quick|5|$bin/precision_test"
 )
 
 # Two tests that are commands of their own, run as tests above.

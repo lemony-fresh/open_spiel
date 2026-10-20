@@ -23,7 +23,7 @@
 #      sides), kickstarting per player (0.7, 0.3; depth 1), root noise per player (off
 #      at the dwarfs' roots), simulations and policy temperatures per player, a
 #      learning-rate warm-up and schedule, a value-loss weight of 2, playout caps (half
-#      the moves in full) — runs 2
+#      the moves in full), mixed-precision inference (2026-10-19) — runs 2
 #      steps and exits 0; writes checkpoints 1, 2 and the latest, the buffer, and
 #      learner.jsonl with steps 1 and 2 (losses finite, per side); config.json records
 #      the settings; the actors log them; every batch norm counted each learning batch in
@@ -114,7 +114,7 @@ steps() { python3 -c "import json,sys; print(' '.join(str(json.loads(l)['step'])
   --symmetry_augmentation --policy_target_pruning --alphabeta_share=0.5 \
   --alphabeta_depth=1,1 --kickstart_weight=0.3 --player_kickstart_weight=0.7,0.3 \
   --kickstart_depth=1 --player_policy_epsilon=0,0.25 --untried_move_value=sibling_mean_minus_reduction \
-  --lr_warmup_steps=2 --lr_schedule=3:0.5 --value_loss_weight=2 \
+  --lr_warmup_steps=2 --lr_schedule=3:0.5 --value_loss_weight=2 --inference_precision=mixed \
   --playout_cap_full_share=0.5 --playout_cap_fast_simulations=4 \
   > "$tmp/fresh.log" 2>&1
 status=$?
@@ -159,7 +159,7 @@ want = {"devices": "/cpu:0,/cpu:0", "explicit_learning": True, "learner_batches"
         "player_kickstart_weight": "0.7,0.3", "player_policy_epsilon": "0,0.25",
         "player_simulations": "8,6", "nn_width": 8, "nn_depth": 1, "lr_warmup_steps": 2,
         "lr_schedule": "3:0.5", "value_loss_weight": 2, "playout_cap_full_share": 0.5,
-        "playout_cap_fast_simulations": 4}
+        "playout_cap_fast_simulations": 4, "inference_precision": "mixed"}
 bad = {k: (c.get(k), v) for k, v in want.items() if c.get(k) != v}
 if bad: print(bad)
 sys.exit(1 if bad else 0)

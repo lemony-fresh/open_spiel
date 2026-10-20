@@ -246,6 +246,7 @@ std::vector<std::string> VPNetModel::CopyParametersFrom(
   };
   copy(model_->named_parameters(), other.model_->named_parameters());
   copy(model_->named_buffers(), other.model_->named_buffers());
+  RefreshInferenceLocked();  // Our change (SetInferencePrecision).
   return copied;
 }
 
@@ -271,6 +272,7 @@ void VPNetModel::LoadWeights(const std::string& path) {
   absl::WriterMutexLock lock(lock_.get());  // Our change (the race's fix).
   EvaluationOnExit evaluation(model_);
   torch::load(model_, absl::StrCat(path, ".pt"), torch_device_);
+  RefreshInferenceLocked();  // Our change (SetInferencePrecision).
 }
 
 double VPNetModel::LearningRate() {
@@ -320,6 +322,44 @@ void VPNetModel::LoadCheckpoint(const std::string& path) {
   torch::load(model_, absl::StrCat(path, ".pt"), torch_device_);
   torch::load(model_optimizer_, absl::StrCat(path, "-optimizer.pt"),
               torch_device_);
+  RefreshInferenceLocked();  // Our change (SetInferencePrecision).
+}
+
+void VPNetModel::SetInferencePrecision(const std::string& precision) {
+  if (precision != "float32" && precision != "mixed" && precision != "bfloat16") {
+    SpielFatalError("Inference precision float32, mixed or bfloat16, not " + precision);
+  }
+  absl::WriterMutexLock lock(lock_.get());
+  inference_precision_ = precision;
+  if (precision == "float32") {
+    inference_model_ = Model(nullptr);
+    return;
+  }
+  inference_model_ = Model(model_config_, TorchDeviceName(device_));
+  inference_model_->to(torch_device_);
+  inference_model_->SetPrecision(torch::kBFloat16,
+                                 precision == "mixed" ? torch::kFloat32 : torch::kBFloat16);
+  inference_model_->eval();
+  RefreshInferenceLocked();
+}
+
+void VPNetModel::RefreshInference() {
+  absl::WriterMutexLock lock(lock_.get());
+  RefreshInferenceLocked();
+}
+
+void VPNetModel::RefreshInferenceLocked() {
+  if (inference_model_.is_empty()) return;
+  torch::NoGradGuard no_grad;
+  auto copy = [](const auto& from, auto to) {
+    for (const auto& item : from) {
+      torch::Tensor* target = to.find(item.key());
+      SPIEL_CHECK_TRUE(target != nullptr);
+      target->copy_(item.value());  // Converted to the copy's type.
+    }
+  };
+  copy(model_->named_parameters(), inference_model_->named_parameters());
+  copy(model_->named_buffers(), inference_model_->named_buffers());
 }
 
 std::vector<torch::Tensor> VPNetModel::Activations(
@@ -413,8 +453,9 @@ std::vector<VPNetModel::InferenceOutputs> VPNetModel::Inference(
   absl::ReaderMutexLock lock(lock_.get());
   SPIEL_DCHECK_FALSE(model_->is_training());
   torch::NoGradGuard no_grad;
-  std::vector<torch::Tensor> torch_outputs =
-      model_(torch_inf_inputs, torch_inf_legal_mask);
+  std::vector<torch::Tensor> torch_outputs =  // Our change: SetInferencePrecision's copy.
+      inference_model_.is_empty() ? model_(torch_inf_inputs, torch_inf_legal_mask)
+                                  : inference_model_(torch_inf_inputs, torch_inf_legal_mask);
 
   // Move outputs to CPU in a single transfer, then use accessors for
   // zero-overhead element access. This replaces the previous per-element
@@ -476,7 +517,8 @@ std::vector<VPNetModel::InferenceOutputs> VPNetModel::InferenceAtLegalMoves(
   SPIEL_DCHECK_FALSE(model_->is_training());
   torch::NoGradGuard no_grad;
   std::vector<torch::Tensor> torch_outputs =
-      model_->ValueAndPolicyAt(torch_inputs, index(rows), index(actions));
+      (inference_model_.is_empty() ? model_ : inference_model_)  // SetInferencePrecision.
+          ->ValueAndPolicyAt(torch_inputs, index(rows), index(actions));
   torch::Tensor value_cpu = torch_outputs[0].to(torch::kCPU).contiguous();
   torch::Tensor logits_cpu = torch_outputs[1].to(torch::kCPU).contiguous();
   auto value_acc = value_cpu.accessor<float, 2>();
@@ -639,6 +681,7 @@ std::vector<VPNetModel::BatchNormConversion> VPNetModel::ConvertBatchNorms(
     out.push_back({item.key(), ((mean - old_mean) / old_deviation).abs().max().item<double>(),
                    ratio.min().item<double>(), ratio.max().item<double>()});
   }
+  RefreshInferenceLocked();  // Our change (SetInferencePrecision).
   return out;
 }
 
@@ -804,6 +847,7 @@ VPNetModel::LossInfo VPNetModel::Losses(
   total_loss.backward();
 
   model_optimizer_.step();
+  RefreshInferenceLocked();  // Our change (SetInferencePrecision).
 
   LossInfo info(torch_outputs[0].item<float>(), torch_outputs[1].item<float>(),
                 torch_outputs[2].item<float>());

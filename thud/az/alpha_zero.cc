@@ -1097,6 +1097,7 @@ void learner(const open_spiel::Game& game, const AlphaZeroConfig& config,
         // are unweighted).
         {"learning_rate", step_learning_rate},
         {"value_loss_weight", config.value_loss_weight},
+        {"inference_precision", config.inference_precision},
         // Added (the race's fix): each batch norm's count of training-mode batches this
         // step, against the step's learning batches.
         {"batch_norms", json::Object({{"batches", step_batches},
@@ -1263,8 +1264,9 @@ bool AlphaZero(AlphaZeroConfig config, StopToken* stop, bool resuming) {
 
   DeviceManager device_manager;
   for (const absl::string_view& device : absl::StrSplit(config.devices, ',')) {
-    device_manager.AddDevice(
-        VPNetModel(*game, config.path, config.graph_def, std::string(device)));
+    VPNetModel model(*game, config.path, config.graph_def, std::string(device));
+    model.SetInferencePrecision(config.inference_precision);  // Added: mixed precision.
+    device_manager.AddDevice(std::move(model));
   }
 
   if (device_manager.Count() == 0) {

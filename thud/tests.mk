@@ -53,7 +53,7 @@ COPIES := $(addprefix $(OUT)/obj/az/,mcts.o alpha_zero.o model.o vpnet.o vpevalu
 UPSTREAM := $(addprefix $(OUT)/obj/upstream/,model.o vpnet.o vpevaluator.o)
 
 TORCH_TESTS := alphabeta_training_test augmentation_test conv_policy_test grow_test \
-  learning_settings_test legal_policy_test playout_cap_test \
+  learning_settings_test legal_policy_test playout_cap_test precision_test \
   growing_buffer_test input_planes_test instrumentation_test kickstart_test \
   pruning_test search_settings_test untried_move_test make_test_network
 TORCH_PROGRAMS := az_trainer az_grow az_restructure az_fresh_optimizer az_batch_norm_convert

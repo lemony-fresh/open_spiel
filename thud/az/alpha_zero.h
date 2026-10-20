@@ -95,6 +95,10 @@ struct AlphaZeroConfig {
   // Added (thud/DESIGN_dwarf_signal.md, E1): the value loss's weight in a learning
   // step (VPNetModel::SetValueLossWeight); 1 is upstream's.
   double value_loss_weight = 1;
+  // Added (thud/PLAN.md, mixed precision; 2026-10-19): the networks' inference precision —
+  // "float32" (upstream's), "mixed" (the trunk in bfloat16, the heads in float32) or
+  // "bfloat16" (VPNetModel::SetInferencePrecision); learning stays in float32.
+  std::string inference_precision = "float32";
   // Added (thud/PLAN.md, the GPU readiness checklist: playout cap randomisation; KataGo,
   // arXiv 1902.10565, section 3.1): each of the network's moves in self-play is searched
   // in full (max_simulations or the player's, root noise, recorded for training) with
@@ -188,6 +192,7 @@ struct AlphaZeroConfig {
         {"lr_warmup_start", lr_warmup_start},
         {"lr_schedule", lr_schedule},
         {"value_loss_weight", value_loss_weight},
+        {"inference_precision", inference_precision},
         {"playout_cap_full_share", playout_cap_full_share},
         {"playout_cap_fast_simulations", playout_cap_fast_simulations},
         {"checkpoint_freq", checkpoint_freq},
@@ -261,6 +266,9 @@ struct AlphaZeroConfig {
     value_loss_weight = config_json.count("value_loss_weight")
                             ? config_json.at("value_loss_weight").GetDouble()
                             : 1;
+    inference_precision = config_json.count("inference_precision")
+                              ? config_json.at("inference_precision").GetString()
+                              : "float32";
     playout_cap_full_share = config_json.count("playout_cap_full_share")
                                  ? config_json.at("playout_cap_full_share").GetDouble()
                                  : 1;

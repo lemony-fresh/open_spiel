@@ -281,6 +281,13 @@ class ModelImpl : public torch::nn::Module {
   // "value_linear", "policy_conv" — and last "value", the value forward() returns, so
   // that a caller can check these are the activations that make it.
   std::vector<std::pair<std::string, torch::Tensor>> ReluOutputs(torch::Tensor x);
+  // Our change (bfloat16 inference, 2026-10-19; thud/PLAN.md, mixed precision), for
+  // "resnet" and "resnet_conv_policy": the trunk's (the input block and the torso) and the
+  // output block's floating-point type, their parameters and buffers converted in place —
+  // for an inference copy of a network (VPNetModel::SetInferencePrecision). forward() and
+  // ValueAndPolicyAt() then cast the input to the trunk's type and the trunk's output to
+  // the head's, and return float32. Float32 for both, the default, computes as before.
+  void SetPrecision(torch::Dtype trunk, torch::Dtype head);
   // The policy, value and L2 losses; our change: then each position's policy and
   // value loss, detached (thud/PLAN.md, Instrumentation: statistics per side).
   std::vector<torch::Tensor> losses(torch::Tensor inputs, torch::Tensor masks,
@@ -289,6 +296,12 @@ class ModelImpl : public torch::nn::Module {
 
  private:
   std::vector<torch::Tensor> forward_(torch::Tensor x, torch::Tensor mask);
+  // Our change (SetPrecision): whether forward_ and ValueAndPolicyAt cast between types.
+  bool Cast() const {
+    return trunk_dtype_ != torch::kFloat32 || head_dtype_ != torch::kFloat32;
+  }
+  torch::Dtype trunk_dtype_ = torch::kFloat32;
+  torch::Dtype head_dtype_ = torch::kFloat32;
   torch::nn::ModuleList layers_;
   torch::Device device_;
   int num_torso_blocks_;

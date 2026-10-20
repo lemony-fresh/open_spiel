@@ -170,6 +170,19 @@ class VPNetModel {
   // CPU for these positions — the torso's output, the policy head's planes, the
   // values and the policies — with gradients off, in evaluation mode.
   std::vector<torch::Tensor> Activations(const std::vector<InferenceInputs>& inputs);
+  // Our change (bfloat16 inference, 2026-10-19; thud/PLAN.md, mixed precision): Inference
+  // runs on a copy of the network in "mixed" precision — the trunk (the input block and the
+  // torso, nearly all the compute) in bfloat16, the heads in float32, so that the value and
+  // the logits are not rounded to bfloat16's 7 bits — or in "bfloat16" throughout; the copy
+  // is refreshed whenever the network's weights change through this class (a learning
+  // step, LoadCheckpoint, LoadWeights, CopyParametersFrom, ConvertBatchNorms). "float32",
+  // the default, infers with the network itself, as before. Learning, Loss, Gradients,
+  // Activations, ReluOutputs and checkpoints use the float32 network always. After writing
+  // to it through NamedTensors or Parameter, call RefreshInference.
+  void SetInferencePrecision(const std::string& precision);
+  std::string InferencePrecision() const { return inference_precision_; }
+  void RefreshInference();
+
   // Our change (the dormant-channel probe, 2026-10-18): ModelImpl::ReluOutputs on the
   // CPU for these positions — every rectifier's output by name, and last the values —
   // with gradients off, in evaluation mode.
@@ -352,6 +365,11 @@ class VPNetModel {
   // Our change (the race's fix): shared for reading the network, exclusive for changing
   // it. A pointer, so that the model stays movable.
   std::unique_ptr<absl::Mutex> lock_ = std::make_unique<absl::Mutex>();
+  // Our change (SetInferencePrecision): the inference copy (empty: float32, the network
+  // itself), and its refresh from the network, under the exclusive lock.
+  std::string inference_precision_ = "float32";
+  Model inference_model_{nullptr};
+  void RefreshInferenceLocked();
   // Our change: the network's input and legal-move mask for `inputs`, on the device.
   std::pair<torch::Tensor, torch::Tensor> InputsAndMasks(
       const std::vector<TrainInputs>& inputs);

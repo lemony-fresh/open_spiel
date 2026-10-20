@@ -3618,6 +3618,29 @@ the push's and the rename's tests ran (memory beside the trainer), to resume.
   agreement test the user proposed (bfloat16 against float32 on buffer positions: values,
   top moves, the search's chosen move) and a match.
 
-**Next step:** as recorded in `## Current status` — R211, then RL and RLT (results ~09:00
-2026-10-20; they run on the compact buffer, merged before their build); the window's forward
-test after them (~11:30); then the window in the main line if it holds.
+- **2026-10-19, ~16:30-17:40: the network's share; bfloat16 inference; the sweep.** With R's
+  trainer paused (SIGSTOP, 11 minutes; the user's permission) `az_search_cost`: 15,578
+  simulations/s behind a nearly free network, 1,526 with R201 — the network is ~90% of
+  self-play — and batches of 16 at 2,828 against 1,512 for the trainer's 32 (32 actors: a
+  batch of 32 waits for every actor). The user: stop everything and build the faster
+  inference first. Stopped (16:57, by PID): r_run (R at step 203, its trainer in step 204),
+  limit_teacher and forward_window (both waiting). Built: `--inference_precision`
+  (`VPNetModel::SetInferencePrecision`: an inference copy of the network, mixed — the trunk
+  in bfloat16, the heads in float32 — or bfloat16, refreshed after every weight change;
+  learning stays float32), `az_match precision_a/b`, `az_search_cost precision=`,
+  `az_precision_probe`; `precision_test` (new; a test-side fix on the way: saved files
+  carry their names) and `trainer_test.sh` with mixed inference — all quick tests pass.
+  The sweep: float32 at best 2,815 simulations/s, mixed 3,604, bfloat16 4,384 (64 actors,
+  batches of 16, 4 inference threads x OMP 2) — 2.9x today's 1,495. The agreement on R201
+  (600 positions of its games): the search's chosen move the same in 94.7% (mixed) and
+  93.5% (bfloat16) of positions, 99.5% for float32 with another seed; where it differs a
+  near tie in float32's own search (visit gaps: median 1%, 90th percentile 4%). The user
+  asked whether the mixed network should be tested against float32 in a unit test with
+  realistic weights: no trained weights in the repo — the unit test on built networks
+  (`precision_test`) checks the mechanism, `az_precision_probe` the numbers on real
+  networks. Running (detached, `~/thud-runs/precision_match_2026-10-19.sh`): R201 mixed and
+  bfloat16 against R201 float32, 40 pairs each.
+
+**Next step:** as recorded in `## Current status` — the precision matches; then the arms
+A, RL and RLT from R201 with the chosen precision and batching; the window's forward test
+after them.
