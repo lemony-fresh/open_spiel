@@ -3652,6 +3652,13 @@ the push's and the rename's tests ran (memory beside the trainer), to resume.
   (stopped while waiting, extended, relaunched — `forward_window` with it, so that it did
   not start at once).
 
-**Next step:** as recorded in `## Current status` — the precision matches; then the arms
-A, RL and RLT from R201 with the chosen precision and batching; the window's forward test
-after them.
+- **2026-10-19, 18:21: the precision chosen.** R201 against itself in float32, 40 pairs:
+  mixed +2.23 (−0.78 to +5.23; 20 won, 3 drawn, 17 lost), bfloat16 +1.65 (−1.29 to +4.59;
+  23-2-15) — no loss shown, a loss above ~1.3 a pair ruled out for bfloat16. By the rule
+  fixed before the results (the faster with no loss shown) `arms3` chose **bfloat16** and
+  started the trainer benchmark (64 actors, batches of 16, 4 inference threads x OMP 2,
+  then 2 x 4). Not pushed yet: the pre-push hook's full test run would skew the
+  benchmark's and the arms' step times.
+
+**Next step:** as recorded in `## Current status` — the trainer benchmark, the arms A, RL
+and RLT from R201 in bfloat16 (~midnight), their evaluation, the window's forward test.

@@ -887,9 +887,9 @@ measured in evaluation mode, as those networks learnt):
 chose float32's move, the near ties among the rest; float32 again with another seed, the
 control; the outputs' value difference, mean and largest):
 
-| Measured | Network | mixed | bfloat16 | float32 again | Value difference (mixed; bfloat16) |
-|---|---|---|---|---|---|
-| 2026-10-19 | R201 | 94.7% (19 near ties of 32) | 93.5% (22 of 39) | 99.5% | 0.0016, 0.0058; 0.0023, 0.0073 |
+| Measured | Network | mixed | bfloat16 | float32 again | Value difference (mixed; bfloat16) | Against float32 (40 pairs) |
+|---|---|---|---|---|---|---|
+| 2026-10-19 | R201 | 94.7% (19 near ties of 32) | 93.5% (22 of 39) | 99.5% | 0.0016, 0.0058; 0.0023, 0.0073 | mixed +2.23 (−0.78 to +5.23), bfloat16 +1.65 (−1.29 to +4.59) |
 
 **Mechanism** (explains, does not decide) — each with the tools of §4, on the test run's,
 the control run's and M102's networks:
