@@ -1567,6 +1567,32 @@ first session, with no patch at all.**
   program, or real runs); **built, untested** = built but never run where it matters;
   **missing** = not built. *Before renting* = to do here first.
 
+  **Still to build or measure here before renting** (updated 2026-10-19, the user: so that
+  no GPU time is spent on what can be done on this machine), in order of need:
+  1. **A trainer benchmark as a tool**: settings compared by the trainer's own step time
+     (a run's state copied, 2 steps each, the step after the first timed) — today inside
+     `~/thud-runs/arms3_2026-10-19.sh`; as `thud/experiments/bench_trainer.sh` it is the
+     first thing to run on the GPU (self-play's settings with the learner sharing the
+     machine).
+  2. **A match-throughput sweep**: `az_match` over threads, batch, OMP_NUM_THREADS, matches
+     at once and precision, by its simulations/s (`progress=`) — matches were last tuned
+     2026-09-29, on another network, in float32; then the match settings here in bfloat16
+     (the user: evaluation matches in bfloat16 from the next evaluation on).
+  3. **A faster alpha-beta of our own** (the row below): as opponent and as kickstarting's
+     teacher alpha-beta runs on the CPU, ~21 ms a position at depth 2 here, ~4% of a
+     self-play move now — with the network several times faster on a GPU its share grows
+     several-fold and it may set the pace; or the teacher tapered first (the design).
+  4. **Tapers by results, gated** (the row below): long unattended runs.
+  5. **float16 inference** (the row below; the user, 2026-10-19: not now, but before
+     renting): small, the same mechanism as bfloat16.
+  6. **The learner's threads apart from the inference threads**: one OMP_NUM_THREADS for
+     the whole trainer today, so a setting good for inference (2 threads each) slows the
+     learner — on this CPU only; on a GPU both run there.
+  Done today (2026-10-19): the compact buffer (6.8x less memory), bfloat16 inference (2.9x
+  self-play with the batching), the batching sweep, the precision probe and its monitored
+  row. Measured on the machine itself, not built: the window's cap and rule (tested
+  offline here first, `forward_window`), int8 (only if inference still sets the pace).
+
   | Feature | Why on the GPU | State | To do |
   |---|---|---|---|
   | *Setup* | | | |
@@ -1590,7 +1616,12 @@ first session, with no patch at all.**
   | The alpha-beta share per side; kickstarting's temperature per side | finer scaffolds | **missing** | if needed (small) |
   | A faster alpha-beta of our own (captures first, a table of positions, iterative deepening) | a depth-3 teacher; alpha-beta then sets the pace on the CPU beside the GPU | **missing** | before deeper teachers |
   | The value-target options B1′, C7, E2 (the design) | if D1 leaves the side-to-move gap open | **missing** — designed only | when needed |
-  | Mixed precision | speed on large networks | **missing**; measured 2026-10-19 on this CPU (it has FP16, BF16 and int8 instructions: `fphp asimdhp bf16 i8mm`): LibTorch 2.10 runs a 64-channel 3x3 convolution on a batch of 32 at 7.7 ms in float32, 5.6 ms in bfloat16 (1.4x; relative error 3e-3), 112 ms in float16 (no fast kernel here); a network of our shape (PyTorch, batches of 32, 4 threads): float32 19.5 ms, bfloat16 14.5 ms (1.34x), int8 after static quantization 17.7 ms with qnnpack (1.10x), 115 ms with onednn; **the network is ~90% of a self-play step** (`az_search_cost`: 15,578 simulations/s behind a nearly free network, 1,526 with R201), so bfloat16 inference would make self-play ~1.3x faster here; **built** (2026-10-19: `--inference_precision=float32|mixed|bfloat16`, an inference copy of the network refreshed after every weight change; `precision_test`); the agreement on R201 (`az_precision_probe`, 600 positions of its games, 100-simulation searches without noise): mixed — values within 0.0016 on average (0.0058 at most), the top prior move the same in 98.7%, the searches' chosen move in 94.7% (bfloat16: 0.0023, 0.0073, 97.8%, 93.5%), where it differs a near tie in float32's own search (the visit gap's median 1%, 90th percentile 4%; mixed's value gap 0.006 and 0.027), against 99.5% for float32 searched again with another seed (the control) | **revisit on the GPU** (the user, 2026-10-19: tensor cores give FP16/BF16 their usual large gain there, and int8 via TensorRT); here bfloat16 inference behind a flag, tested by the agreement on buffer positions (values, top moves, the search's chosen move) and a match, after the limit and teacher arms; training stays in float32 |
+  | Mixed precision | speed on large networks | **done here** (2026-10-19; on the GPU: float16 and int8, the rows below, and the retune); measured 2026-10-19 on this CPU (it has FP16, BF16 and int8 instructions: `fphp asimdhp bf16 i8mm`): LibTorch 2.10 runs a 64-channel 3x3 convolution on a batch of 32 at 7.7 ms in float32, 5.6 ms in bfloat16 (1.4x; relative error 3e-3), 112 ms in float16 (no fast kernel here); a network of our shape (PyTorch, batches of 32, 4 threads): float32 19.5 ms, bfloat16 14.5 ms (1.34x), int8 after static quantization 17.7 ms with qnnpack (1.10x), 115 ms with onednn; **the network is ~90% of a self-play step** (`az_search_cost`: 15,578 simulations/s behind a nearly free network, 1,526 with R201), so bfloat16 inference would make self-play ~1.3x faster here; **built** (2026-10-19: `--inference_precision=float32|mixed|bfloat16`, an inference copy of the network refreshed after every weight change; `precision_test`); the agreement on R201 (`az_precision_probe`, 600 positions of its games, 100-simulation searches without noise): mixed — values within 0.0016 on average (0.0058 at most), the top prior move the same in 98.7%, the searches' chosen move in 94.7% (bfloat16: 0.0023, 0.0073, 97.8%, 93.5%), where it differs a near tie in float32's own search (the visit gap's median 1%, 90th percentile 4%; mixed's value gap 0.006 and 0.027), against 99.5% for float32 searched again with another seed (the control) | **revisit on the GPU** (the user, 2026-10-19: tensor cores give FP16/BF16 their usual large gain there, and int8 via TensorRT); here bfloat16 inference behind a flag, tested by the agreement on buffer positions (values, top moves, the search's chosen move) and a match, after the limit and teacher arms; training stays in float32 |
+  | A trainer benchmark (`bench_trainer.sh`, the item above) | self-play's settings on the machine, with the learner | **missing** as a tool (inside `arms3_2026-10-19.sh`: two settings, 2 steps each) | before renting |
+  | A match-throughput sweep (the item above) | evaluations at the machine's speed | **missing** (`az_match progress=` gives simulations/s; no grid) | before renting; then the match settings in bfloat16 here |
+  | The learner's threads apart from inference's (the item above) | the trainer on this CPU | **missing** | if the trainer benchmark shows the learner setting the pace |
+  | The compact replay buffer (`thud/az/position_buffer.h`) | a larger window in the same memory | **done** (2026-10-19: 4.47 GB → 0.66 GB on R201's buffer; training bit for bit the same; `position_buffer_test`) | — |
+  | The window: a cap of 6x with KataGo's rule (`--replay_buffer_size`, `--replay_buffer_start_size=250000`, `--replay_buffer_reuse`) | more data per position learnt, as KataGo | **built** (flags), testing offline (`forward_window_2026-10-20.sh`) | the main line if the forward test holds |
   | float16 inference (the user, 2026-10-19) | GPU speed with more precision than bfloat16 (10 bits against 7; the same tensor-core speed on NVIDIA GPUs; range to 65,504) | **missing**: `SetInferencePrecision` takes float32, mixed, bfloat16 — float16 and a mixed float16 are the same mechanism with `torch::kHalf` | build and test here for correctness (`precision_test`; on this CPU float16 is 15x slower, so not for speed), then on the GPU `az_precision_probe` and a match against float32, beside bfloat16 |
   | int8 inference (the user, 2026-10-19) | GPU speed if inference still sets the pace | **missing**: quantization with calibration on buffer positions; on NVIDIA GPUs through TensorRT (Torch-TensorRT's C++ interface); on this CPU PyTorch's int8 kernels gave 1.10x (qnnpack) and 0.17x (onednn) | only if the GPU's profile shows inference as the bottleneck after bfloat16 or float16; then the agreement probe and a match decide, as for bfloat16 |
   | The batching path's profile | the trainer's speed | **done** (2026-10-19, `az_search_cost` on a quiet machine): the network ~90% of self-play; the sweep (32/64/96 actors x batches of 16/32/64 x inference threads x OMP 2 or 4 x precision): today's setting (float32, 32 actors, batches of 32, 2 threads x 4) 1,495 simulations/s; the best float32 2,815 (32 actors, batches of 16, 2 x 4), mixed 3,604 and bfloat16 4,384 (both 64 actors, batches of 16, 4 inference threads x 2) — 2.9x | the arms with the chosen precision and setting, checked in the trainer's own states/s |
