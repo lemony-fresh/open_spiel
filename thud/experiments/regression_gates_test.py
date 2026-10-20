@@ -44,6 +44,11 @@ az_capture_targets files.
      count by hand counts (our network's captures after more than 2 quiet turns, in the
      random battles); the control: the same battles cut to their first 30 plies give
      fewer, reported, never failed; without hexparrot games the row is skipped.
+  8. The inference precision (2026-10-19), monitored: from az_precision_probe files made
+     here, each precision's share of positions where the search chose float32's move, the
+     near ties, and the control (float32 again), the candidate's and the anchor's; the
+     control: a candidate whose searches mostly differ is reported, never failed; without a
+     file the row is skipped.
 
 (The blunder count also equals az_blunder_probe's on real games — M102, N121, C121 and
 N2121 against hexparrot, checked 2026-10-15 — which needs run folders, so not here.)
@@ -338,6 +343,32 @@ def main():
   results, status = gates(tmp, "--candidate", "C", "--anchor", "A")
   check("skipped" in results["late captures (after 100+ quiet turns, against hexparrot, a battle)"],
         "7. without hexparrot games the row is skipped")
+  # 8. The inference precision.
+  def probe_file(path, bf16_same):
+    write(path, [
+        {"part": "searches", "against": "float32, another seed (the control)", "positions": 600,
+         "same_move": 597, "same_share": 0.995, "different": 3, "near_ties": 0},
+        {"part": "outputs", "precision": "bfloat16", "positions": 600, "top_move_same": 0.98},
+        {"part": "searches", "against": "bfloat16", "positions": 600,
+         "same_move": int(600 * bf16_same), "same_share": bf16_same,
+         "different": 600 - int(600 * bf16_same), "near_ties": 22}])
+  probe_file(f"{tmp}/prec_C.jsonl", 0.935)
+  probe_file(f"{tmp}/prec_A.jsonl", 0.20)
+  results, status = gates(tmp, "--candidate", "C", "--anchor", "A", "--precision",
+                          f"C={tmp}/prec_C.jsonl", "--precision", f"A={tmp}/prec_A.jsonl")
+  row = results["inference precision (the search's move as float32's)"]
+  check(status == 0 and row["monitored"] and not row["fails"] and
+        row["candidate"]["bfloat16"]["same_share"] == 0.935 and
+        row["candidate"]["float32, another seed (the control)"]["same_share"] == 0.995 and
+        row["anchor"]["bfloat16"]["same_share"] == 0.20,
+        f"8. the inference precision, monitored: {row['text']}")
+  results, status = gates(tmp, "--candidate", "A", "--anchor", "C", "--precision",
+                          f"A={tmp}/prec_A.jsonl")
+  check(status == 0 and not results["inference precision (the search's move as float32's)"]["fails"],
+        "8. control: searches that mostly differ are reported, never failed (exit 0)")
+  results, status = gates(tmp, "--candidate", "C", "--anchor", "A")
+  check("skipped" in results["inference precision (the search's move as float32's)"],
+        "8. without a file the row is skipped")
   print("ALL PASSED" if failures == 0 else f"{failures} FAILED")
   return 1 if failures else 0
 

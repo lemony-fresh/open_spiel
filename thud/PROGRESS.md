@@ -3641,6 +3641,17 @@ the push's and the rename's tests ran (memory beside the trainer), to resume.
   networks. Running (detached, `~/thud-runs/precision_match_2026-10-19.sh`): R201 mixed and
   bfloat16 against R201 float32, 40 pairs each.
 
+- **2026-10-19, ~17:45-18:00: the precision probe monitored.** The user asked what
+  `precision_test` and `az_precision_probe` are, and whether a broader sweep could gain much
+  (unlikely: the top settings cluster within ~1-2% and the network is ~90% of the cost; the
+  trainer's own step time, which the restart queue measures first, matters more); and to
+  monitor the precision with every new network: `regression_gates.py --precision NAME=FILE`
+  (a fifth monitored row; `regression_gates_test.py` part 8, the control — searches that
+  mostly differ — reported, never failed), the design's §7 *precision record* (R201), and
+  `arms3_2026-10-19.sh` probes each arm's network on its round-robin games before the gates
+  (stopped while waiting, extended, relaunched — `forward_window` with it, so that it did
+  not start at once).
+
 **Next step:** as recorded in `## Current status` — the precision matches; then the arms
 A, RL and RLT from R201 with the chosen precision and batching; the window's forward test
 after them.

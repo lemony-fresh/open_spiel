@@ -836,6 +836,7 @@ network must pass both. **The anchor is the top anchor, M102.**
 | Dead channels (2026-10-18) | `az_dormant_probe` on 4,096 buffer positions: channels never above 0, in the trunk and in the heads, and dormant ones (τ 0.1), beside the anchor's and a fresh network's | never fails: monitored, recorded below |
 | Plasticity (2026-10-18) | `az_plasticity`: random targets on 8,192 positions, 1,000 batches at 0.001, the policy + value loss at the end, beside a fresh network's of the same width in the same run, and the weights' norm | never fails: monitored, recorded below |
 | Late captures (2026-10-19) | captures our network makes against hexparrot (the limit 200) after more than 100 turns without one, a battle, as trolls and as dwarfs, beside the anchor's — the indicator for self-play's no-capture limit of 100 (R191: trolls 0.12, dwarfs 0.03; N161: 0.25, 0.00) | never fails: monitored |
+| Inference precision (2026-10-19) | `az_precision_probe` on 600 positions of the network's games: how often its 100-simulation search (no noise, the same seed) chooses float32's move in each lower precision, the near ties among the differences (float32's visit gap under 10% and value gap under 0.01), and float32 with another seed — the floor of tie-break changes (R201: mixed 94.7%, bfloat16 93.5%, float32 again 99.5%) | never fails: monitored, recorded below |
 | Trunk gradients (2026-10-19) | `az_restructure`'s report before its first batch, on 1,024 positions of run N's last buffer: the weighted value loss's gradient on the shared layers against the policy loss's (the ratio of their sizes) and the cosine between the two (+1: both losses ask the same change, 0: unrelated, −1: opposed — the multi-task conflict) | never fails: monitored, recorded below |
 
 - **Standard errors analytic or by bootstrap** over battles or positions — not from one
@@ -881,6 +882,14 @@ measured in evaluation mode, as those networks learnt):
 | 2026-10-18 | a fresh network (the control's run) | 0 | 0 | 8 | 0.157 | 30.3 | — | — |
 | 2026-10-19 | R191 (run R, segment 1) | 0 | 3 | 18 | 0.459 (fresh 0.188) | 23.1 | 2.54 | +0.19 |
 | 2026-10-19 | R201 (run R, segment 2) | 0 | 3 | 18 | 0.455 (fresh 0.223) | 22.8 | 3.03 | +0.08 |
+
+**The precision record** (`az_precision_probe`: the share of positions where the search
+chose float32's move, the near ties among the rest; float32 again with another seed, the
+control; the outputs' value difference, mean and largest):
+
+| Measured | Network | mixed | bfloat16 | float32 again | Value difference (mixed; bfloat16) |
+|---|---|---|---|---|---|
+| 2026-10-19 | R201 | 94.7% (19 near ties of 32) | 93.5% (22 of 39) | 99.5% | 0.0016, 0.0058; 0.0023, 0.0073 |
 
 **Mechanism** (explains, does not decide) — each with the tools of §4, on the test run's,
 the control run's and M102's networks:

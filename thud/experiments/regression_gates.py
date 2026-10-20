@@ -56,13 +56,20 @@ standard errors (the blunders at 4 percentage points):
                        no-capture limit of 100 (2026-10-19): does a
                        network trained at it still grind out late
                        captures in games at the limit 200?
+  inference precision  az_precision_probe on the network: how often its   never fails: monitored
+                       search chooses float32's move in each lower
+                       precision, the near ties among the differences,
+                       and float32 with another seed (the control) —
+                       whether bfloat16 inference drifts as networks
+                       train (2026-10-19)
 
 Inputs: az_match games files (games=PATH) of both networks against alpha-beta 1, alpha-beta
 2 and hexparrot on the same openings (the same seed); az_long_capture_probe output holding
 both networks (net = their names); and az_capture_targets output of each on the same logs
 (the same positions in the same order, checked by their legal moves and captures);
 az_dormant_probe and az_plasticity output holding the candidate (and the anchor, if
-measured); az_restructure output per network for the trunk's gradients (NAME=FILE). A gate whose files are not given is skipped,
+measured); az_restructure output per network for the trunk's gradients (NAME=FILE);
+az_precision_probe output per network (NAME=FILE). A gate whose files are not given is skipped,
 and said so. A failed gate means "look into it" (a rerun with more battles first), not an
 automatic verdict: seven measures at 2 standard errors trip ~15% of the time on an
 unchanged network (section 7).
@@ -70,7 +77,8 @@ unchanged network (section 7).
   python3 thud/experiments/regression_gates.py --candidate N121 --anchor M102 \\
     --games N121:ab1=FILE,ab2=FILE,hexparrot=FILE --games M102:ab1=FILE,ab2=FILE,hexparrot=FILE \\
     --probe FILE [--probe FILE ...] --captures N121=FILE --captures M102=FILE \\
-    [--dormant FILE ...] [--plasticity FILE ...] [--gradients NAME=FILE ...] [--json]
+    [--dormant FILE ...] [--plasticity FILE ...] [--gradients NAME=FILE ...] \\
+    [--precision NAME=FILE ...] [--json]
 """
 
 import argparse
@@ -251,6 +259,8 @@ def main():
   parser.add_argument("--gradients", action="append", default=[],
                       help="NAME=FILE: az_restructure output, its report before the first "
                            "batch (monitored)")
+  parser.add_argument("--precision", action="append", default=[],
+                      help="NAME=FILE: az_precision_probe output (monitored)")
   parser.add_argument("--late_after", type=int, default=100,
                       help="late captures: after more than this many turns without one")
   parser.add_argument("--bootstrap", type=int, default=2000)
@@ -411,6 +421,28 @@ def main():
                     "candidate": c, "anchor": a})
   else:
     results.append({"gate": gate, "skipped": f"no hexparrot games of {args.candidate}"})
+
+  gate = "inference precision (the search's move as float32's)"
+  probes = {}
+  for spec in args.precision:
+    name, path = spec.split("=", 1)
+    rows = [json.loads(l) for l in open(path) if l.strip()]
+    probes[name] = {r["against"]: r for r in rows if r.get("part") == "searches"}
+  if args.candidate in probes:
+    def says(name):
+      parts = []
+      for against, r in probes[name].items():
+        label = "float32 again" if against.startswith("float32") else against
+        parts.append(f"{label} {100 * r['same_share']:.1f}% ({r['near_ties']} near ties of "
+                     f"{r['different']})")
+      return ", ".join(parts)
+    text = f"{args.candidate} {says(args.candidate)}"
+    if args.anchor in probes:
+      text += f"; {args.anchor} {says(args.anchor)}"
+    results.append({"gate": gate, "monitored": True, "fails": False, "text": text,
+                    "candidate": probes[args.candidate], "anchor": probes.get(args.anchor)})
+  else:
+    results.append({"gate": gate, "skipped": f"no az_precision_probe file for {args.candidate}"})
 
   failed = [r["gate"] for r in results if r.get("fails")]
   if args.json:
