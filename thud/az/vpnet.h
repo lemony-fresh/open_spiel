@@ -183,6 +183,17 @@ class VPNetModel {
   std::string InferencePrecision() const { return inference_precision_; }
   void RefreshInference();
 
+  // Our change (the learner's speed, 2026-10-19; thud/PLAN.md, the GPU readiness
+  // checklist): the calling thread's LibTorch thread count, OpenMP's, which is per thread.
+  // LibTorch sets a thread's count lazily, at its first parallel operation, from one value
+  // shared by all threads: the last at::set_num_threads anywhere, else OMP_NUM_THREADS
+  // (PyTorch v2.10.0, aten/src/ATen/ParallelOpenMP.cpp: init_num_threads). So
+  // SetThreadCount first initialises this thread, lest that overwrite its count later,
+  // then sets it; it also sets the shared value, which every thread not yet initialised
+  // then takes. A thread that must keep another count sets its own.
+  static int ThreadCount();
+  static void SetThreadCount(int threads);
+
   // Our change (the dormant-channel probe, 2026-10-18): ModelImpl::ReluOutputs on the
   // CPU for these positions — every rectifier's output by name, and last the values —
   // with gradients off, in evaluation mode.

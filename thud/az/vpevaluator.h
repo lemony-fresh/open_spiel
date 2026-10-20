@@ -42,8 +42,13 @@ namespace torch_az {
 
 class VPNetEvaluator : public Evaluator {
  public:
+  // Our change (the learner's speed, 2026-10-19): thread_count > 0 sets each inference
+  // thread's LibTorch thread count at its start (VPNetModel::SetThreadCount), so that a
+  // count set elsewhere, such as the learner's, cannot reach it; 0 leaves it as upstream
+  // does, to LibTorch's shared value (VPNetModel::ThreadCount).
   explicit VPNetEvaluator(DeviceManager* device_manager, int batch_size,
-                          int threads, int cache_size, int cache_shards = 1);
+                          int threads, int cache_size, int cache_shards = 1,
+                          int thread_count = 0);
   ~VPNetEvaluator() override;
 
   // Return a value of this state for each player.
@@ -70,6 +75,10 @@ class VPNetEvaluator : public Evaluator {
   open_spiel::BasicStats BatchSizeStats();
   open_spiel::HistogramNumbered BatchSizeHistogram();
 
+  // Our change: each inference thread's LibTorch thread count, as it reports it after its
+  // first batch, in the order of those first batches (threads yet to infer are missing).
+  std::vector<int> InferenceThreadCounts();
+
  private:
   VPNetModel::InferenceOutputs Inference(const State& state, bool for_prior);
 
@@ -95,6 +104,10 @@ class VPNetEvaluator : public Evaluator {
   absl::Mutex stats_m_;
   open_spiel::BasicStats batch_size_stats_;
   open_spiel::HistogramNumbered batch_size_hist_;
+
+  const int thread_count_;  // Our change: see the constructor.
+  absl::Mutex thread_counts_m_;
+  std::vector<int> thread_counts_;
 };
 
 }  // namespace torch_az

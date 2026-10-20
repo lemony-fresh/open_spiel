@@ -23,22 +23,27 @@
 #      sides), kickstarting per player (0.7, 0.3; depth 1), root noise per player (off
 #      at the dwarfs' roots), simulations and policy temperatures per player, a
 #      learning-rate warm-up and schedule, a value-loss weight of 2, playout caps (half
-#      the moves in full), mixed-precision inference (2026-10-19) — runs 2
+#      the moves in full), mixed-precision inference (2026-10-19), the learner's own
+#      LibTorch thread count (3, against OMP_NUM_THREADS 2; 2026-10-19) — runs 2
 #      steps and exits 0; writes checkpoints 1, 2 and the latest, the buffer, and
 #      learner.jsonl with steps 1 and 2 (losses finite, per side); config.json records
 #      the settings; the actors log them; every batch norm counted each learning batch in
-#      training mode (learner.jsonl's batch_norms; the race's fix, thud/az/vpnet.h).
+#      training mode (learner.jsonl's batch_norms; the race's fix, thud/az/vpnet.h); each
+#      step's thread counts are the learner's 3 and the inference thread's 2.
 #   2. Resuming (the trainer given the run's config.json, max_steps 3): step 3 follows
 #      step 2 (not 1 again), the total games only grow, games against alpha-beta (half of
 #      them) were played and counted, each step's learning rate is the schedule's (the
-#      network's 0.001 x 0.5, 1, 0.5) and its value-loss weight 2, the actors' and the
-#      learner's logs are appended to, not overwritten.
+#      network's 0.001 x 0.5, 1, 0.5) and its value-loss weight 2, the learner's thread
+#      count still 3 (from config.json), the actors' and the learner's logs are appended
+#      to, not overwritten.
 #   3. az_grow (8 x 1 -> 12 x 2, noise 0.01; its own tests of the function, the control
 #      and the reload are fatal) on the latest network, then a run folder from it — the
 #      config's new size, the buffer, learner.jsonl and the grown checkpoint as the
 #      latest — resumed for a step, on one device (the learner sharing the network with
 #      inference: the lock alone keeps them apart): the trainer takes the grown network
-#      and learns on (step 4, losses finite, every batch norm counting both batches).
+#      and learns on (step 4, losses finite, every batch norm counting both batches);
+#      with learner_threads 0 its learner's thread count is OMP_NUM_THREADS's 2 (the
+#      control for part 1's 3).
 #   4. az_restructure as it was built for: a new policy head (the linear one, `resnet`)
 #      on the run's trunk and value head, copied and frozen (freeze=copied), trained 20
 #      batches on the run's buffer: exits 0 (its tests that the copy and the freeze keep
@@ -72,6 +77,14 @@
 #      network fits better is fatal; az_restructure copy=none (a fresh network trained on
 #      the buffer) exits 0 and starts from outputs unlike the source's (the control that
 #      nothing was copied).
+#   8. The trainer benchmark (thud/experiments/bench_trainer.sh, 2026-10-19) on the run (3
+#      steps), two settings — 3 actors, batches of 2, 1 inference thread, OMP_NUM_THREADS 1,
+#      the learner's threads 3, then 0 (the control: OMP_NUM_THREADS's 1): exits 0, a line
+#      per setting with step 5's period, learning, wait, games waiting and taken, the bound,
+#      the thread counts as set (3 and 1; 1 and 1) and the probe's samples (a stand-in
+#      printing 7: their mean 7); the summary names one of them the
+#      fastest; each setting's buffer deleted, its logs kept; run again it reprints the same
+#      results without training (resumed from the results).
 #
 #   thud/az/trainer_test.sh [BIN_DIR]    # default build-tests/bin
 #
@@ -115,7 +128,7 @@ steps() { python3 -c "import json,sys; print(' '.join(str(json.loads(l)['step'])
   --alphabeta_depth=1,1 --kickstart_weight=0.3 --player_kickstart_weight=0.7,0.3 \
   --kickstart_depth=1 --player_policy_epsilon=0,0.25 --untried_move_value=sibling_mean_minus_reduction \
   --lr_warmup_steps=2 --lr_schedule=3:0.5 --value_loss_weight=2 --inference_precision=mixed \
-  --playout_cap_full_share=0.5 --playout_cap_fast_simulations=4 \
+  --playout_cap_full_share=0.5 --playout_cap_fast_simulations=4 --learner_threads=3 \
   > "$tmp/fresh.log" 2>&1
 status=$?
 check "1. a fresh run with every feature on exits 0" [ "$status" -eq 0 ]
@@ -159,11 +172,28 @@ want = {"devices": "/cpu:0,/cpu:0", "explicit_learning": True, "learner_batches"
         "player_kickstart_weight": "0.7,0.3", "player_policy_epsilon": "0,0.25",
         "player_simulations": "8,6", "nn_width": 8, "nn_depth": 1, "lr_warmup_steps": 2,
         "lr_schedule": "3:0.5", "value_loss_weight": 2, "playout_cap_full_share": 0.5,
-        "playout_cap_fast_simulations": 4, "inference_precision": "mixed"}
+        "playout_cap_fast_simulations": 4, "inference_precision": "mixed",
+        "learner_threads": 3}
 bad = {k: (c.get(k), v) for k, v in want.items() if c.get(k) != v}
 if bad: print(bad)
 sys.exit(1 if bad else 0)
 EOF
+# Each step's LibTorch thread counts from step FIRST on (learner.jsonl's threads): the
+# learner's LEARNER and every inference thread's INFERENCE, at least one reporting.
+thread_counts() {
+  python3 - "$1" "$2" "$3" "$4" <<'EOF'
+import json, sys
+d = [json.loads(l) for l in open(sys.argv[1]) if l.strip()]
+first, learner, inference = map(int, sys.argv[2:])
+bad = [(x["step"], x["threads"]) for x in d if x["step"] >= first and not (
+       x["threads"]["learner"] == learner and x["threads"]["inference"] and
+       all(n == inference for n in x["threads"]["inference"]))]
+if bad: print(bad)
+sys.exit(1 if bad else 0)
+EOF
+}
+check "1. the learner's thread count 3, the inference thread's OMP_NUM_THREADS 2" \
+  thread_counts "$run/learner.jsonl" 1 3 2
 check "1. the actors log the kickstarting settings" \
   grep -q "Kickstarting: weight 0.3 (per player 0.7, 0.3), depth 1" "$run/log-actor-0.txt"
 check "1. the actors log the playout caps" \
@@ -211,6 +241,8 @@ appended() {
 check "2. the actors' and the learner's logs are appended to" appended
 check "2. ... and the resumed step's batch norms counted both its batches" \
   exact_counts "$run/learner.jsonl" 3
+check "2. ... and its learner's thread count still 3 (from config.json)" \
+  thread_counts "$run/learner.jsonl" 3 3 2
 
 # 3. Growth, and training on from the grown network.
 grown=$tmp/grown
@@ -225,13 +257,16 @@ if [ -f "$grown/checkpoint-3.pt" ]; then
 import json, sys
 c = json.load(open(sys.argv[1]))
 c.update(path=sys.argv[2], nn_width=12, nn_depth=2, max_steps=4, graph_def="vpnet.pb",
-         devices="/cpu:0", explicit_learning=False)  # One device: the lock alone.
+         devices="/cpu:0", explicit_learning=False,  # One device: the lock alone.
+         learner_threads=0)  # The control for part 1's thread counts.
 json.dump(c, open(sys.argv[2] + "/config.json", "w"), indent=2)
 EOF
   "$bin/az_trainer" "$grown/config.json" > "$tmp/grown.log" 2>&1
   check "3. the trainer resumes from the grown network and exits 0" [ $? -eq 0 ]
   check "3. ... on one device, the learner sharing it: its batch norms counted both batches" \
     exact_counts "$grown/learner.jsonl" 4
+  check "3. ... with learner_threads 0 the learner's thread count is OMP_NUM_THREADS's 2" \
+    thread_counts "$grown/learner.jsonl" 4 2 2
   check "3. ... and learns step 4 with finite losses" python3 - "$grown/learner.jsonl" <<'EOF'
 import json, math, sys
 d = [json.loads(l) for l in open(sys.argv[1]) if l.strip()][-1]
@@ -314,5 +349,33 @@ check "7. az_plasticity exits 0 (the wider fresh network fits better) and report
 check "7. az_restructure copy=none exits 0 from outputs unlike the source's" \
   bash -c "[ $? -eq 0 ] && grep -q 'copy=none: a fresh network' '$tmp/reset.err' && \
     python3 -c \"import re,sys; d=float(re.search(r'values differ from the source.s by (\\S+)', open(sys.argv[1]).read()).group(1)); sys.exit(0 if d > 1e-3 else 1)\" '$tmp/reset.err'"
+
+# 8. The trainer benchmark.
+BIN=$bin BENCH_PROBE='echo 7' "$repo/thud/experiments/bench_trainer.sh" "$run" "$tmp/bench" \
+  3,2,1,1,3 3,2,1,1,0 > "$tmp/bench.jsonl" 2> "$tmp/bench.err"
+check "8. bench_trainer.sh exits 0" [ $? -eq 0 ]
+check "8. ... a line per setting, timed, the thread counts as set; the summary names one" \
+  python3 - "$tmp/bench.jsonl" <<'EOF'
+import json, sys
+lines = [json.loads(l) for l in open(sys.argv[1])]
+ok = len(lines) == 3
+for r, (learner, inference) in zip(lines[:2], ((3, 1), (1, 1))):
+  ok &= (r.get("exit") == 0 and r.get("period", 0) > 0 and r.get("learning", 0) > 0 and
+         r.get("waited", -1) >= 0 and r.get("games_taken", 0) > 0 and
+         r.get("games_waiting", -1) >= 0 and r.get("bound") in ("learner", "self-play") and
+         r["threads"]["learner"] == learner and r["threads"]["inference"] and
+         all(n == inference for n in r["threads"]["inference"]) and
+         abs(r.get("paused_s", 99)) < 5 and r.get("probe", {}).get("mean") == 7)
+ok &= lines[2].get("summary") is True and lines[2].get("timed") == 2 and \
+      lines[2].get("fastest") in ("s0", "s1")
+if not ok: print(lines)
+sys.exit(0 if ok else 1)
+EOF
+check "8. ... each setting's buffer deleted, its logs kept" bash -c \
+  "[ ! -e '$tmp/bench/s0/replay_buffer.data' ] && [ -s '$tmp/bench/s1/log-learner.txt' ]"
+BIN=$bin "$repo/thud/experiments/bench_trainer.sh" "$run" "$tmp/bench" 3,2,1,1,3 3,2,1,1,0 \
+  > "$tmp/bench_again.jsonl" 2>&1
+check "8. ... run again, the same results, nothing trained" bash -c \
+  "cmp -s '$tmp/bench.jsonl' '$tmp/bench_again.jsonl' && [ ! -e '$tmp/bench/s0/replay_buffer.data' ]"
 
 finish

@@ -1098,6 +1098,11 @@ void learner(const open_spiel::Game& game, const AlphaZeroConfig& config,
         {"learning_rate", step_learning_rate},
         {"value_loss_weight", config.value_loss_weight},
         {"inference_precision", config.inference_precision},
+        // Added (learner_threads): the learner's LibTorch thread count and the inference
+        // threads' (VPNetEvaluator::InferenceThreadCounts).
+        {"threads", json::Object({{"learner", VPNetModel::ThreadCount()},
+                                  {"inference", json::CastToArray(
+                                                    eval->InferenceThreadCounts())}})},
         // Added (the race's fix): each batch norm's count of training-mode batches this
         // step, against the step's learning batches.
         {"batch_norms", json::Object({{"batches", step_batches},
@@ -1295,9 +1300,22 @@ bool AlphaZero(AlphaZeroConfig config, StopToken* stop, bool resuming) {
     }
   }
 
+  // Added (learner_threads): the inference threads set this thread's count, OMP_NUM_THREADS's
+  // (it has run the network already, loading it), at their start; then this thread, the
+  // learner's, sets its own. Without inference threads the actors would run the network
+  // in their own threads, whose counts this does not set.
+  if (config.learner_threads > 0 &&
+      (config.inference_batch_size <= 1 || config.inference_threads <= 0)) {
+    std::cerr << "learner_threads needs inference threads (inference_batch_size above 1)."
+              << std::endl;
+    return false;
+  }
+  const int inference_thread_count = VPNetModel::ThreadCount();
   auto eval = std::make_shared<VPNetEvaluator>(
       &device_manager, config.inference_batch_size, config.inference_threads,
-      config.inference_cache, (config.actors + config.evaluators) / 16);
+      config.inference_cache, (config.actors + config.evaluators) / 16,
+      config.learner_threads > 0 ? inference_thread_count : 0);
+  if (config.learner_threads > 0) VPNetModel::SetThreadCount(config.learner_threads);
 
   ThreadedQueue<Trajectory> trajectory_queue(config.replay_buffer_size /
                                              config.replay_buffer_reuse);

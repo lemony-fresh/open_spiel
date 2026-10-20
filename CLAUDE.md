@@ -152,6 +152,19 @@ options*).
   tree per thread at 100,000 simulations (the opening's dwarf move, at its 1,000 MB cap;
   230 MB a few moves in) but only ~12 MB at 10,000 (peak RSS, the opening; measured
   2026-10-07) — deeper searches expand the dwarf nodes, each with ~650 children.
+- **The laptop throttles under sustained full load** (found 2026-10-19/20): Windows held the
+  CPU at 40% of its maximum (`% Performance Limit`, all 10 cores) for ~1.5 hours under the
+  trainer, lifting to 100% within ~50 s of pausing it and falling back within ~20 s of
+  resuming — heat or a power cap tied to it, not energy saver (off) or the charger
+  ("adequate"); at 75-90% most of that night and the next morning, depending on the room and
+  the airflow. Run R's steps varied 21-37 minutes before, plausibly the same. So **record the
+  limit with every speed measurement** (`bench_trainer.sh`'s `BENCH_PROBE`), and compare
+  timings only at equal limits. `~/thud-runs/cpu_limit_log.sh` logs it, the CPU use and the
+  load once a minute (`~/thud-runs/cpu_limit.log`). The counter, from WSL: `powershell.exe
+  -NoProfile -Command "(Get-Counter '\Processor Information(_Total)\% Performance
+  Limit').CounterSamples[0].CookedValue"`. On battery the Surface driver also lowers its
+  power limit, to 55,000 against 100,000 on mains (2026-10-19, the System log's
+  `Microsoft-Surface-SmfCpuClientDriver`; a learning step then took 22% longer).
 - **Sleep freezes WSL**: nothing runs, WSL's clocks stop, and the wall clock jumps on
   resume. The laptop used to sleep after 5 minutes without input even on mains power; on
   2026-09-26 the user set sleep to never while plugged in (on battery it still sleeps
@@ -292,7 +305,10 @@ before; built as `az_trainer_d1`), `--lr_warmup_steps`, `--lr_warmup_start`,
 `--lr_schedule=STEP:FACTOR,...` and `--value_loss_weight` (2026-10-15: a learning-rate
 schedule on the network's own rate, logged per step, and the value loss's weight; off by
 default), `--playout_cap_full_share` and `--playout_cap_fast_simulations` (2026-10-15:
-KataGo's playout cap randomisation; off by default); since 2026-10-15 crash-safe saving (the buffer and the checkpoints written under
+KataGo's playout cap randomisation; off by default), `--learner_threads` (2026-10-20: the
+learner's own LibTorch thread count, the inference threads keeping OMP_NUM_THREADS's — LibTorch
+shares one value between threads not yet started, so each inference thread sets its own;
+`learner.jsonl`'s `threads` records them; 0, the default, as before); since 2026-10-15 crash-safe saving (the buffer and the checkpoints written under
 a temporary name and renamed, a truncated last record skipped on resume, a cut-off buffer
 refused; since 2026-10-19 the buffer compact, `thud/az/position_buffer.h`: ~7x fewer bytes,
 bit for bit the same training, older and smaller buffers' files load, `az_merge_buffers OUT
@@ -308,7 +324,8 @@ extra arguments, as its header says), `untried_move_test`, `conv_policy_test`,
 `augmentation_test`, `instrumentation_test`, `pruning_test`, `growing_buffer_test`,
 `search_settings_test`, `alphabeta_training_test`, `kickstart_test`, `input_planes_test`
 (the 50 input planes inside the network; `features_test` tests the planes themselves),
-`grow_test` (Net2Net, on small networks), `make_test_network` (small untrained networks for the tests), and from
+`grow_test` (Net2Net, on small networks), `thread_count_test` (the thread counts per thread),
+`make_test_network` (small untrained networks for the tests), and from
 `thud/experiments/`
 `az_match` (since 2026-10-07 also against players without a network:
 `b=hexparrot:N`, through `hexparrot_player.py`, `b=alphabeta:N`, `b=mcts:N`; since
@@ -409,7 +426,10 @@ after a failure: done steps are skipped); `thud/transfer_run.sh FROM TO [--state
 moves a run folder (rsync, checksums at both ends, the copy's `config.json` path set to
 its folder); `thud/az/watchdog.sh RUN_DIR -- TRAINER ARGS` keeps a run going through
 crashes and kills. `az_search_cost parts=2 net=RUN:STEP` with lists of
-`batched_threads`, `batch` and `inference_threads` is the throughput sweep, and
+`batched_threads`, `batch` and `inference_threads` is the throughput sweep,
+`thud/experiments/bench_trainer.sh RUN OUT SETTING...` the trainer benchmark (2026-10-20: each
+setting's step time with the learner sharing the machine, which side sets the pace, and an
+optional probe sampled once a minute, such as the CPU's limit), and
 `thud/experiments/regression_gates.py` the regression gates (from a candidate's and the
 anchor's matches and probes).
 

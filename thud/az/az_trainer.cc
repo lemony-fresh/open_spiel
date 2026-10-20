@@ -131,6 +131,9 @@ ABSL_FLAG(double, value_loss_weight, 1,
 ABSL_FLAG(std::string, inference_precision, "float32",
           "The networks' inference: float32 (upstream's), mixed (the trunk in bfloat16, "
           "the heads in float32) or bfloat16; learning stays in float32.");
+ABSL_FLAG(int, learner_threads, 0,
+          "The learner's LibTorch threads; the inference threads keep OMP_NUM_THREADS "
+          "(0: the learner too, as before). Needs inference threads (batches above 1).");
 ABSL_FLAG(int, replay_buffer_size, 1 << 16,
           "How many states to store in the replay buffer.");
 ABSL_FLAG(double, replay_buffer_reuse, 3,
@@ -258,6 +261,7 @@ int main(int argc, char** argv) {
     config.lr_schedule = absl::GetFlag(FLAGS_lr_schedule);
     config.value_loss_weight = absl::GetFlag(FLAGS_value_loss_weight);
     config.inference_precision = absl::GetFlag(FLAGS_inference_precision);
+    config.learner_threads = absl::GetFlag(FLAGS_learner_threads);
     config.playout_cap_full_share = absl::GetFlag(FLAGS_playout_cap_full_share);
     config.playout_cap_fast_simulations = absl::GetFlag(FLAGS_playout_cap_fast_simulations);
     if (config.playout_cap_full_share < 1) {  // Stops here, not in an actor.

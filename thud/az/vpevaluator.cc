@@ -33,11 +33,13 @@ namespace thud_az {
 namespace torch_az {
 
 VPNetEvaluator::VPNetEvaluator(DeviceManager* device_manager, int batch_size,
-                               int threads, int cache_size, int cache_shards)
+                               int threads, int cache_size, int cache_shards,
+                               int thread_count)
     : device_manager_(*device_manager),
       batch_size_(batch_size),
       queue_(batch_size * threads * 4),
-      batch_size_hist_(batch_size + 1) {
+      batch_size_hist_(batch_size + 1),
+      thread_count_(thread_count) {
   cache_shards = std::max(1, cache_shards);
   // A cache_size of 0 turns the cache off (LRUCache keeps at least 4 entries).
   if (cache_size > 0) {
@@ -143,7 +145,16 @@ VPNetModel::InferenceOutputs VPNetEvaluator::Inference(const State& state,
   return outputs;
 }
 
+std::vector<int> VPNetEvaluator::InferenceThreadCounts() {
+  absl::MutexLock lock(thread_counts_m_);
+  return thread_counts_;
+}
+
 void VPNetEvaluator::Runner() {
+  if (thread_count_ > 0) VPNetModel::SetThreadCount(thread_count_);  // Our change.
+  // Our change: the count recorded after the first batch, so that with thread_count_ 0
+  // recording it does not initialise it any earlier than upstream's code would.
+  bool counted = false;
   std::vector<VPNetModel::InferenceInputs> inputs;
   std::vector<std::promise<VPNetModel::InferenceOutputs>*> promises;
   inputs.reserve(batch_size_);
@@ -181,6 +192,11 @@ void VPNetEvaluator::Runner() {
         device_manager_.Get(inputs.size())->Inference(inputs);
     for (int i = 0; i < promises.size(); ++i) {
       promises[i]->set_value(outputs[i]);
+    }
+    if (!counted) {
+      absl::MutexLock lock(thread_counts_m_);
+      thread_counts_.push_back(VPNetModel::ThreadCount());
+      counted = true;
     }
     inputs.clear();
     promises.clear();

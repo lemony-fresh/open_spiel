@@ -92,6 +92,7 @@ tests=(
   "transfer_test|full|24|thud/transfer_test.sh $bin"
   "legal_policy_test|full|44|$bin/legal_policy_test"
   "precision_test|quick|5|$bin/precision_test"
+  "thread_count_test|quick|1|$bin/thread_count_test"
 )
 
 # Two tests that are commands of their own, run as tests above.

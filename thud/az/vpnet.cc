@@ -325,6 +325,16 @@ void VPNetModel::LoadCheckpoint(const std::string& path) {
   RefreshInferenceLocked();  // Our change (SetInferencePrecision).
 }
 
+int VPNetModel::ThreadCount() {
+  return at::get_num_threads();  // Initialises this thread's count if not yet.
+}
+
+void VPNetModel::SetThreadCount(int threads) {
+  SPIEL_CHECK_GT(threads, 0);
+  at::get_num_threads();  // This thread initialised first: see vpnet.h.
+  at::set_num_threads(threads);
+}
+
 void VPNetModel::SetInferencePrecision(const std::string& precision) {
   if (precision != "float32" && precision != "mixed" && precision != "bfloat16") {
     SpielFatalError("Inference precision float32, mixed or bfloat16, not " + precision);
