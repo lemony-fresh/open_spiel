@@ -129,6 +129,34 @@ options*).
   50-plane network (M102) one 40-pair match alone ran ~680 simulations/s, three at once
   ~1,500 together, six at once no more (~1,400-1,700; 2026-10-13); the teacher mixed into
   a prior (`teacher_mix_a`) costs ~1.5x.
+- **The settings by use, tuned 2026-10-20 — use these for every experiment** (the user;
+  each measured with the CPU's limit beside it, 75-100%; `thud/PLAN.md`, the GPU checklist;
+  these supersede the older numbers in the bullet above). **Never more threads than
+  cores**: OpenMP's threads wait busily, so the extra ones take the cores from each other
+  (the learner at 6 threads beside 4 x 2 learnt 2.4x slower).
+  - *The trainer*: `--actors=64 --inference_batch_size=16 --inference_threads=3
+    --inference_precision=bfloat16 --learner_threads=4`, `OMP_NUM_THREADS=2` — exactly the
+    10 cores (`bench_trainer.sh`, from R201's state: 796 s a step; 4 inference threads with
+    the learner sharing OMP 2 856, the learner's 4 beside 4 x 2 951, its 6 1,919, 2 x 4
+    1,038; the old float32 setting, 32 actors, batches of 32, 2 x 4, 1,630).
+  - *Matches between networks* (`az_match`): bfloat16 for both (`precision_a=bfloat16
+    precision_b=bfloat16`), 3 at once, `threads=40` (as pairs) `batch=16
+    inference_threads=2`, `OMP_NUM_THREADS=1`: 3,302 simulations/s in all; with 1
+    inference thread 3,002-3,030 (at the start, the middle and the end: no drift with the
+    heat), batches of 8 alike, 2 at once 3,025-3,131, one alone 2,843-2,893 whatever its
+    threads; float32 2,097 (bfloat16 1.44x).
+  - *Matches against hexparrot* (`b=hexparrot:3`, one network's evaluator): `threads=40
+    inference_threads=4`, `OMP_NUM_THREADS=2`: 1,674 simulations/s on the network's side,
+    2.8x the old `threads=10` with 1 inference thread at 1 (590; 20 and 40 threads with
+    those 648 and 664 — its one inference thread set the pace, the load ~1.2); 2 inference
+    threads at 2 1,554; 8 at 1 1,352. 40 hexparrot processes: ~2.6 GB in all.
+  - *Offline training* (`az_restructure`, batches of 1,024): `OMP_NUM_THREADS=8` (3.67 s a
+    batch; 10 3.61, 6 4.39, 4 5.02); independent trainings (a forward test's seeds) two at
+    once at 5 each give ~10% more in all (6.6 s a batch each).
+  - *The plasticity test* (`az_plasticity`, batches of 256): `OMP_NUM_THREADS=8` (0.67 s a
+    batch; 10 1.27, 6 0.89, 4 1.03; two at once at 5 each 1.69 s each, worse in all).
+  - The other probes (`az_dwarf_value_probe` and `az_dormant_probe` at 8,
+    `az_precision_probe` at 1 with `threads=8`) take minutes: not tuned.
 - **Jobs beside a training run: the idle scheduling class, and mind the memory.**
   `nice -n 19` competes as an equal with our trainers, which run at nice 19 themselves;
   `chrt --idle 0 CMD` (SCHED_IDLE, allowed unprivileged here) weighs 3 against a nice-19

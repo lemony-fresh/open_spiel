@@ -680,6 +680,7 @@ the search and trainer*, run C'.
 | 2026-10-19 | After tonight's runs: the learner's speed first (its own threads; the learner set the pace in the trainer benchmark), then every setting worth tuning tuned reasonably — self-play in the trainer (by its step time), matches (a match-throughput sweep, then bfloat16), offline training (its threads) | user | the GPU checklist, *Still to build or measure here* |
 | 2026-10-20 | **Run R continues from RL211**: the no-capture limit 100 in self-play (evaluation keeps 200), the teacher's weight 0.7 on the dwarfs' positions (0.3 on the trolls'), today's buffer (458,752 positions) — once the tuning is done (the trainer benchmark of the learner's threads, offline training, the plasticity test, the matches), with the best settings it finds; those settings then for every later experiment | user | status block; `DESIGN_dwarf_signal.md` §10, *Run R and the arms* |
 | 2026-10-20 | The bigger buffer retried once run R's own games can fill ~1 million positions (KataGo's rule at our total; ~20 steps after RL211): the forward test again, with R's own positions only (the first test's extra positions came from the runs before the reset) | user | the GPU checklist, the window's row |
+| 2026-10-20 | The settings by use, tuned here, for every later experiment (`CLAUDE.md`, *The settings by use*): the trainer 64 actors, batches of 16, 3 inference threads x OMP 2, the learner's own 4, bfloat16; matches between networks 3 at once, 40 threads, batches of 16, 2 inference threads each, OMP 1, bfloat16; against hexparrot 40 threads, 4 inference threads, OMP 2; offline training and the plasticity test at OMP 8; never more threads than cores | user | the GPU checklist, items 2, 6, 7 |
 | 2026-10-18 | **The reset network is the main line, run R** (R181: the reset at the run's step 181), continued in self-play from N′'s run's state at step 181, run N's recipe unchanged; started after 02:00 once the laptop has been idle 20 minutes; each segment adds the plasticity test, to see whether R keeps learning | user | status block, `~/thud-runs/r_run_2026-10-19.sh` |
 
 **Considered and set aside** (with the reason): the Python AlphaZero (a layout bug, and
@@ -1574,7 +1575,8 @@ first session, with no patch at all.**
   no GPU time is spent on what can be done on this machine), in order of need — **after
   tonight's runs (the user, 2026-10-19): the learner's speed first (item 6), then every
   setting worth tuning tuned reasonably: self-play in the trainer, matches, offline
-  training (items 1, 2, 7)**:
+  training (items 1, 2, 7)** — done 2026-10-20 (the settings: `CLAUDE.md`, *The settings by
+  use*):
   1. **A trainer benchmark as a tool** — **built 2026-10-20**: `thud/experiments/bench_trainer.sh
      RUN OUT SETTING...` (a run's state copied, 2 steps each, the second timed; per setting
      the period, the learner's own time, its wait for positions, games waiting against
@@ -1589,7 +1591,12 @@ first session, with no patch at all.**
   2. **A match-throughput sweep**: `az_match` over threads, batch, OMP_NUM_THREADS, matches
      at once and precision, by its simulations/s (`progress=`) — matches were last tuned
      2026-09-29, on another network, in float32; then the match settings here in bfloat16
-     (the user: evaluation matches in bfloat16 from the next evaluation on).
+     (the user: evaluation matches in bfloat16 from the next evaluation on). **Done here
+     2026-10-20** (`~/thud-runs/tune_2026-10-20.sh`, `tune_hexparrot*_2026-10-20.sh`; the
+     settings in `CLAUDE.md`, *The settings by use*): between networks 3 at once with 2
+     inference threads each at OMP 1, 3,302 simulations/s (float32 2,097); against hexparrot
+     40 threads, 4 inference threads at OMP 2, 1,674 (the old setting 590: its one inference
+     thread had set the pace). On the GPU: the sweep again (its scripts as the template).
   3. **A faster alpha-beta of our own** (the row below): as opponent and as kickstarting's
      teacher alpha-beta runs on the CPU, ~21 ms a position at depth 2 here, ~4% of a
      self-play move now — with the network several times faster on a GPU its share grows
@@ -1612,11 +1619,15 @@ first session, with no patch at all.**
      `ParallelOpenMP.cpp`), so the learner's own `at::set_num_threads` would leak into
      inference threads that had not run yet: each inference thread sets its own
      (`VPNetEvaluator`'s `thread_count`), and `learner.jsonl` records every step's counts
-     (`threads`); `thread_count_test`, `trainer_test.sh` 1-3. Next: the trainer benchmark
-     with the learner at 2, 4 and 6 threads, 3 inference threads x 2 with 4, and 2 x 4
-     again (the battery hit its earlier timing, the heat may have).
+     (`threads`); `thread_count_test`, `trainer_test.sh` 1-3. **Measured 2026-10-20** (the CPU's
+     limit 77-81% throughout): 3 inference threads x 2 with the learner's own 4 — 796 s a
+     step, the fastest; the learner sharing 4 x 2 856, its own 4 beside 4 x 2 951, its 6
+     1,919 (14 threads on 10 cores), 2 x 4 1,038; the old float32 setting 1,630 (2.05x).
   7. **Offline training's threads** (`az_restructure`, resets, the forward tests:
-     OMP_NUM_THREADS=8 by habit, never measured — the reset took ~4 hours).
+     OMP_NUM_THREADS=8 by habit, never measured — the reset took ~4 hours). **Measured
+     2026-10-20**: 8 is right (3.67 s a batch of 1,024; 10 3.61, 6 4.39, 4 5.02); two
+     independent trainings at once at 5 each give ~10% more in all. The plasticity test
+     likewise at 8 (10 is twice as slow).
   Done today (2026-10-19): the compact buffer (6.8x less memory), bfloat16 inference (2.9x
   self-play with the batching), the batching sweep, the precision probe and its monitored
   row. Measured on the machine itself, not built: the window's cap and rule (tested
@@ -1647,7 +1658,7 @@ first session, with no patch at all.**
   | The value-target options B1′, C7, E2 (the design) | if D1 leaves the side-to-move gap open | **missing** — designed only | when needed |
   | Mixed precision | speed on large networks | **done here** (2026-10-19; on the GPU: float16 and int8, the rows below, and the retune); measured 2026-10-19 on this CPU (it has FP16, BF16 and int8 instructions: `fphp asimdhp bf16 i8mm`): LibTorch 2.10 runs a 64-channel 3x3 convolution on a batch of 32 at 7.7 ms in float32, 5.6 ms in bfloat16 (1.4x; relative error 3e-3), 112 ms in float16 (no fast kernel here); a network of our shape (PyTorch, batches of 32, 4 threads): float32 19.5 ms, bfloat16 14.5 ms (1.34x), int8 after static quantization 17.7 ms with qnnpack (1.10x), 115 ms with onednn; **the network is ~90% of a self-play step** (`az_search_cost`: 15,578 simulations/s behind a nearly free network, 1,526 with R201), so bfloat16 inference would make self-play ~1.3x faster here; **built** (2026-10-19: `--inference_precision=float32|mixed|bfloat16`, an inference copy of the network refreshed after every weight change; `precision_test`); the agreement on R201 (`az_precision_probe`, 600 positions of its games, 100-simulation searches without noise): mixed — values within 0.0016 on average (0.0058 at most), the top prior move the same in 98.7%, the searches' chosen move in 94.7% (bfloat16: 0.0023, 0.0073, 97.8%, 93.5%), where it differs a near tie in float32's own search (the visit gap's median 1%, 90th percentile 4%; mixed's value gap 0.006 and 0.027), against 99.5% for float32 searched again with another seed (the control) | **revisit on the GPU** (the user, 2026-10-19: tensor cores give FP16/BF16 their usual large gain there, and int8 via TensorRT); here bfloat16 inference behind a flag, tested by the agreement on buffer positions (values, top moves, the search's chosen move) and a match, after the limit and teacher arms; training stays in float32 |
   | A trainer benchmark (`bench_trainer.sh`, the item above) | self-play's settings on the machine, with the learner | **done** (2026-10-20; `trainer_test.sh` 8) | run there first |
-  | A match-throughput sweep (the item above) | evaluations at the machine's speed | **missing** (`az_match progress=` gives simulations/s; no grid) | before renting; then the match settings in bfloat16 here |
+  | A match-throughput sweep (the item above) | evaluations at the machine's speed | **done here** (2026-10-20; the item above) — was **missing** (`az_match progress=` gives simulations/s; no grid) | before renting; then the match settings in bfloat16 here |
   | The learner's threads apart from inference's (the item above) | the trainer on this CPU | **done** (2026-10-20): `--learner_threads`; `thread_count_test`, `trainer_test.sh` 1-3 | the setting by the trainer benchmark, here |
   | The compact replay buffer (`thud/az/position_buffer.h`) | a larger window in the same memory | **done** (2026-10-19: 4.47 GB → 0.66 GB on R201's buffer; training bit for bit the same; `position_buffer_test`) | — |
   | The window: a cap of 6x with KataGo's rule (`--replay_buffer_size`, `--replay_buffer_start_size=250000`, `--replay_buffer_reuse`) | more data per position learnt, as KataGo | **built** (flags); **tested offline 2026-10-20, not adopted**: R201 trained on KataGo's window at our 3.3 million positions (run N's and N′'s older positions merged in) predicts the next 10 steps worse than on today's — policy +0.0090 (the seeds' spread 0.0019), value +0.0045 (0.0040); `DESIGN_dwarf_signal.md` §10 | again once run R's own games fill ~1 million positions (the user, 2026-10-20: ~20 steps after RL211; R's own positions only) |
