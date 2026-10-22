@@ -112,6 +112,13 @@ double Quantile(std::vector<double> v, double q) {
   return v[std::min<size_t>(v.size() - 1, q * v.size())];
 }
 
+// A quantile as JSON: null for an empty set (NaN, which "%f" prints as nan, is not JSON —
+// found 2026-10-21, when float32 with another seed chose the same move everywhere).
+std::string JsonQuantile(const std::vector<double>& v, double q, int digits) {
+  const double x = Quantile(v, q);
+  return std::isnan(x) ? "null" : absl::StrFormat("%.*f", digits, x);
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -223,11 +230,12 @@ int main(int argc, char** argv) {
     std::cout << absl::StrFormat(
                      "{\"part\": \"searches\", \"against\": \"%s\", \"positions\": %d, "
                      "\"same_move\": %d, \"same_share\": %.4f, \"different\": %d, "
-                     "\"near_ties\": %d, \"visit_gap_median\": %.4f, \"visit_gap_p90\": %.4f, "
-                     "\"value_gap_median\": %.4f, \"value_gap_p90\": %.4f}",
+                     "\"near_ties\": %d, \"visit_gap_median\": %s, \"visit_gap_p90\": %s, "
+                     "\"value_gap_median\": %s, \"value_gap_p90\": %s}",
                      name, positions.size(), same, static_cast<double>(same) / positions.size(),
-                     differ, near, Quantile(visit_gaps, 0.5), Quantile(visit_gaps, 0.9),
-                     Quantile(value_gaps, 0.5), Quantile(value_gaps, 0.9))
+                     differ, near, JsonQuantile(visit_gaps, 0.5, 4),
+                     JsonQuantile(visit_gaps, 0.9, 4), JsonQuantile(value_gaps, 0.5, 4),
+                     JsonQuantile(value_gaps, 0.9, 4))
               << std::endl;
   };
   report_search("float32, another seed (the control)", again);
@@ -267,11 +275,11 @@ int main(int argc, char** argv) {
                      "{\"part\": \"outputs\", \"precision\": \"%s\", \"positions\": %d, "
                      "\"value_diff_mean\": %.5f, \"value_diff_max\": %.5f, "
                      "\"prior_tv_mean\": %.5f, \"prior_tv_max\": %.5f, \"top_move_same\": %.4f, "
-                     "\"prior_gap_where_different_median\": %.5f, "
-                     "\"prior_gap_where_different_max\": %.5f}",
+                     "\"prior_gap_where_different_median\": %s, "
+                     "\"prior_gap_where_different_max\": %s}",
                      precision, n, value_sum / n, value_max, tv_sum / n, tv_max,
-                     static_cast<double>(top_same) / n, Quantile(prior_gaps, 0.5),
-                     Quantile(prior_gaps, 1.0))
+                     static_cast<double>(top_same) / n, JsonQuantile(prior_gaps, 0.5, 5),
+                     JsonQuantile(prior_gaps, 1.0, 5))
               << std::endl;
 
     // 2. The searches, the same seeds as float32's.

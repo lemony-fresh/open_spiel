@@ -1754,7 +1754,10 @@ first session, with no patch at all.**
   - *The probes and analysis programs* (`az_blunder_probe`, `az_dwarf_value_probe`,
     `az_risk_probe`, `az_long_capture_probe`, `az_feature_probe`, `az_input_plane_trace`,
     `az_capture_targets`, `az_teacher_stats`, `az_search_cost`, `az_target_quality`,
-    `az_head_probe`, `az_noise_probe`, `az_forgetting`, `az_merge_buffers`): measurements
+    `az_head_probe`, `az_noise_probe`, `az_forgetting`, `az_merge_buffers`,
+    `az_precision_probe` — whose empty sets' quantiles printed as `nan`, not JSON, until
+    2026-10-21, found when its control agreed in all 600 positions and the gates could not
+    read R231's file; now `null`): measurements
     with their own placebos or controls where they have one, but no unit test of their
     helpers (e.g. the blunder probe's safe-move rule) — the value probe's position edits
     are tested (`position_edits_test`), since the taper's condition (d) acts on that probe.
