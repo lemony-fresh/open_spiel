@@ -885,6 +885,8 @@ measured in evaluation mode, as those networks learnt):
 | 2026-10-20 | A211 (R201 + 10 steps, run R's recipe, bfloat16 self-play) | 0 | 3 | 18 | 0.803 (fresh 0.211) | 22.6 | 3.87 | +0.04 |
 | 2026-10-20 | RL211 (the same, the no-capture limit 100) | 0 | 2 | 20 | 0.701 (fresh 0.171) | 22.6 | 3.07 | +0.09 |
 | 2026-10-20 | RLT211 (also the teacher 0.35) | 0 | 4 | 18 | 0.524 (fresh 0.196) | 22.6 | 1.94 | +0.07 |
+| 2026-10-21 | R221 (run R continued from RL211, segment 1) | 0 | 3 | 18 | 0.732 (fresh 0.197) | 22.4 | 1.18 | +0.20 |
+| 2026-10-21 | R231 (segment 2) | 0 | 3 | 19 | 0.918 (fresh 0.198) | 22.2 | 1.49 | +0.09 |
 
 **The precision record** (`az_precision_probe`: the share of positions where the search
 chose float32's move, the near ties among the rest; float32 again with another seed, the
@@ -896,6 +898,8 @@ control; the outputs' value difference, mean and largest):
 | 2026-10-20 | A211 (on its round-robin games) | — | 91.7% (32 of 50) | 99.8% | —; 0.0017, 0.0066 | — |
 | 2026-10-20 | RL211 (the same) | — | 88.0% (45 of 72) | 99.8% | —; 0.0021, 0.0088 | — |
 | 2026-10-20 | RLT211 (the same) | — | 90.3% (47 of 58) | 99.7% | —; 0.0022, 0.0068 | — |
+| 2026-10-21 | R221 (on its games against R201) | — | 85.5% (53 of 87) | 99.7% | —; 0.0029, 0.0117 | — |
+| 2026-10-21 | R231 (the same) | — | 89.7% (44 of 62) | 100.0% | —; 0.0016, 0.0056 | bfloat16 −0.97 (−3.72 to +1.77): no loss shown, bfloat16 kept |
 
 **Mechanism** (explains, does not decide) — each with the tools of §4, on the test run's,
 the control run's and M102's networks:
