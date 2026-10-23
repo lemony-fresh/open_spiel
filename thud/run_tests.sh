@@ -93,6 +93,7 @@ tests=(
   "legal_policy_test|full|44|$bin/legal_policy_test"
   "precision_test|quick|5|$bin/precision_test"
   "thread_count_test|quick|1|$bin/thread_count_test"
+  "teacher_identity_test|quick|15|$bin/teacher_identity_test"
 )
 
 # Two tests that are commands of their own, run as tests above.
@@ -131,7 +132,8 @@ EOF
     # The tests without LibTorch under AddressSanitizer and UBSan; the control: the
     # binaries are instrumented (a sanitizer that is not there reports nothing).
     status=0
-    for b in replay_buffer_test position_buffer_test features_test az_buffer_truncate; do
+    for b in replay_buffer_test position_buffer_test features_test az_buffer_truncate \
+             teacher_identity_test; do
       # grep -c reads all of nm's output (grep -q would stop early: nm's SIGPIPE fails
       # the pipe under pipefail).
       nm "$bin/sanitized/$b" | grep -c __asan_report_load > /dev/null ||
@@ -140,7 +142,8 @@ EOF
     mkdir -p "$logs/sanitized_scratch"
     "$bin/sanitized/replay_buffer_test" "$logs/sanitized_scratch" &&
       "$bin/sanitized/position_buffer_test" "$logs/sanitized_scratch" &&
-      "$bin/sanitized/features_test" && "$bin/sanitized/az_buffer_truncate" self_test || status=1
+      "$bin/sanitized/features_test" && "$bin/sanitized/az_buffer_truncate" self_test &&
+      "$bin/sanitized/teacher_identity_test" > /dev/null || status=1
     exit $status ;;
 esac
 if [ "$list" -eq 1 ]; then

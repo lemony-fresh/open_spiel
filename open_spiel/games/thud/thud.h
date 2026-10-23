@@ -261,6 +261,10 @@ class ThudState : public State {
   // Turns played so far, and consecutive turns since the last capture.
   int TurnsPlayed() const { return turns_played_; }
   int TurnsWithoutCapture() const { return turns_without_capture_; }
+  // The pieces on the board, kept up to date as moves are made: material without a
+  // scan of the board.
+  int NumDwarfs() const { return num_dwarfs_; }
+  int NumTrolls() const { return num_trolls_; }
 
  protected:
   void DoApplyAction(Action action) override;

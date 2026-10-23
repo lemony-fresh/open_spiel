@@ -35,7 +35,11 @@ namespace thud_az {
 // played, so that among equal scores it neither always plays the first legal action
 // nor changes its mind within a search. Random leaf values also favour moves that keep
 // more options open (Beal and Smith, "Random evaluations in chess", ICCA Journal 17(1),
-// 1994). Thud's state has no undo, so the search copies it at each node.
+// 1994). Thud's state has no undo, so the search copies it at each node. Material is
+// read from the state's piece counts and the tie-break's hash carries on from the
+// root's (2026-10-23: scanning the board took ~73% of the teacher's time, and hashing a
+// leaf's whole history ran over every move of the game; the same values either way —
+// teacher_identity_test).
 //
 // The opponent of az_match's b=alphabeta:DEPTH and, in training, of the games against
 // alpha-beta (thud/PLAN.md, How we evaluate networks: training against alpha-beta).
@@ -48,8 +52,10 @@ class AlphaBetaPlayer {
 
   Action Choose(const State& state) const {
     const Player me = state.CurrentPlayer();
-    auto value = [this, me](const State& leaf) {
-      return Material(leaf, me) + TieBreak(leaf);
+    const uint64_t root_hash = HistoryHash(mix(seed_), state, 0);
+    const size_t root_length = state.FullHistory().size();
+    auto value = [this, me, root_hash, root_length](const State& leaf) {
+      return Material(leaf, me) + TieBreak(HistoryHash(root_hash, leaf, root_length));
     };
     return algorithms::AlphaBetaSearch(game_, &state, value, depth_, me,
                                        /*use_undo=*/false)
@@ -86,30 +92,32 @@ class AlphaBetaPlayer {
  private:
   static double Material(const State& state, Player me) {
     const auto& thud_state = down_cast<const thud::ThudState&>(state);
-    int margin = 0;  // The dwarfs'.
-    for (int row = 0; row < thud::kBoardSize; ++row) {
-      for (int col = 0; col < thud::kBoardSize; ++col) {
-        if (!thud::IsOnBoard(row, col)) continue;
-        const thud::Cell cell = thud_state.CellAt(row, col);
-        if (cell == thud::Cell::kDwarf) margin += thud::kDwarfValue;
-        if (cell == thud::Cell::kTroll) margin -= thud::kTrollValue;
-      }
-    }
+    const int margin = thud_state.NumDwarfs() * thud::kDwarfValue -
+                       thud_state.NumTrolls() * thud::kTrollValue;  // The dwarfs'.
     return static_cast<double>(me == thud::kDwarfPlayer ? margin : -margin) /
            thud::kMaxMargin;
   }
 
-  double TieBreak(const State& leaf) const {
-    // SplitMix64's finaliser over the seed and the moves.
-    auto mix = [](uint64_t x) {
-      x += 0x9e3779b97f4a7c15ULL;
-      x = (x ^ (x >> 30)) * 0xbf58476d1ce4e5b9ULL;
-      x = (x ^ (x >> 27)) * 0x94d049bb133111ebULL;
-      return x ^ (x >> 31);
-    };
-    uint64_t h = mix(seed_);
-    for (Action action : leaf.History()) h = mix(h ^ static_cast<uint64_t>(action));
-    const double uniform = (h >> 11) * 0x1.0p-53;  // [0, 1)
+  // SplitMix64's finaliser.
+  static uint64_t mix(uint64_t x) {
+    x += 0x9e3779b97f4a7c15ULL;
+    x = (x ^ (x >> 30)) * 0xbf58476d1ce4e5b9ULL;
+    x = (x ^ (x >> 27)) * 0x94d049bb133111ebULL;
+    return x ^ (x >> 31);
+  }
+
+  // The tie-break's hash, mix(seed) then each move mixed in, carried on from `hash` (the
+  // hash of the first `from` moves) over the moves after them.
+  static uint64_t HistoryHash(uint64_t hash, const State& state, size_t from) {
+    const std::vector<State::PlayerAction>& history = state.FullHistory();
+    for (size_t i = from; i < history.size(); ++i) {
+      hash = mix(hash ^ static_cast<uint64_t>(history[i].action));
+    }
+    return hash;
+  }
+
+  static double TieBreak(uint64_t hash) {
+    const double uniform = (hash >> 11) * 0x1.0p-53;  // [0, 1)
     return (uniform - 0.5) * 0.5 / thud::kMaxMargin;  // [-1/4, 1/4) of a point
   }
 
