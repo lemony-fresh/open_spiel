@@ -353,6 +353,7 @@ extra arguments, as its header says), `untried_move_test`, `conv_policy_test`,
 `search_settings_test`, `alphabeta_training_test`, `kickstart_test`, `input_planes_test`
 (the 50 input planes inside the network; `features_test` tests the planes themselves),
 `grow_test` (Net2Net, on small networks), `thread_count_test` (the thread counts per thread),
+`teacher_identity_test` (2026-10-23: the faster teacher computes exactly what it did; `ThudState::UndoAction` is tested in `thud_test`),
 `make_test_network` (small untrained networks for the tests), and from
 `thud/experiments/`
 `az_match` (since 2026-10-07 also against players without a network:

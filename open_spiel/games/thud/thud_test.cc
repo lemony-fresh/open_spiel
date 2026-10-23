@@ -37,10 +37,14 @@
 #include <memory>
 #include <random>
 #include <string>
+#include <tuple>
+#include <utility>
 #include <vector>
 
 #include "open_spiel/abseil-cpp/absl/strings/ascii.h"
+#include "open_spiel/abseil-cpp/absl/strings/match.h"
 #include "open_spiel/abseil-cpp/absl/strings/str_cat.h"
+#include "open_spiel/abseil-cpp/absl/strings/str_format.h"
 #include "open_spiel/abseil-cpp/absl/strings/str_join.h"
 #include "open_spiel/abseil-cpp/absl/strings/str_split.h"
 #include "open_spiel/abseil-cpp/absl/strings/string_view.h"
@@ -2687,6 +2691,245 @@ void TestRandomPlay() {
 // no chance outcomes, and random games that check the whole State API in
 // every position (legal action masks, observations, clones, serialization).
 
+// ---------------------------------------------------------------------------
+// Undoing moves (UndoAction; 2026-10-23: a fast alpha-beta search makes and undoes
+// moves in place instead of copying the state at every node).
+
+// Everything a state shows, field by field: its text (the board, the side to move,
+// the counters), its saved form, the side to move, whether it is over and its returns,
+// its history and move number, the counters and piece counts, its legal actions, and
+// both players' observations (string and tensor) and information states.
+std::vector<std::pair<std::string, std::string>> Describe(const ThudState& state) {
+  auto floats = [](const std::vector<float>& v) {  // Their bytes: exact, and fast.
+    return std::string(reinterpret_cast<const char*>(v.data()), v.size() * sizeof(float));
+  };
+  std::vector<std::pair<std::string, std::string>> fields = {
+      {"text", state.ToString()},
+      {"serialized", state.Serialize()},
+      {"player", absl::StrCat(state.CurrentPlayer())},
+      {"terminal", absl::StrCat(state.IsTerminal())},
+      {"returns", absl::StrJoin(state.Returns(), ",")},
+      {"history", state.HistoryString()},
+      {"move number", absl::StrCat(state.MoveNumber())},
+      {"turns", absl::StrCat(state.TurnsPlayed())},
+      {"turns without capture", absl::StrCat(state.TurnsWithoutCapture())},
+      {"dwarfs", absl::StrCat(state.NumDwarfs())},
+      {"trolls", absl::StrCat(state.NumTrolls())},
+      {"legal actions", absl::StrJoin(state.LegalActions(), ",")},
+  };
+  for (Player p : {0, 1}) {
+    fields.push_back({absl::StrCat("observation string ", p), state.ObservationString(p)});
+    fields.push_back({absl::StrCat("observation tensor ", p),
+                      floats(static_cast<const State&>(state).ObservationTensor(p))});
+    fields.push_back({absl::StrCat("information state ", p),
+                      state.InformationStateString(p)});
+  }
+  return fields;
+}
+
+// Fails, naming the first field that differs, unless `actual` shows what `expected` did.
+void CheckSame(const std::vector<std::pair<std::string, std::string>>& expected,
+               const ThudState& actual, const std::string& what) {
+  const auto now = Describe(actual);
+  for (size_t i = 0; i < expected.size(); ++i) {
+    if (now[i].second != expected[i].second) {
+      SpielFatalError(absl::StrCat(what, ": ", expected[i].first, " differs: expected\n",
+                                   expected[i].second.substr(0, 400), "\ngot\n",
+                                   now[i].second.substr(0, 400)));
+    }
+  }
+}
+
+// What one undo test covered.
+struct UndoTally {
+  int moves = 0, dwarf_moves = 0, hurls = 0, troll_steps = 0, capture_steps = 0,
+      shoves = 0, endings = 0, most_dwarfs_taken = 0;
+};
+
+// Applying `action` to a copy of `state` and undoing it restores everything; applying
+// it again then gives what applying it once did.
+void CheckUndo(const ThudState& state, Action action, UndoTally* tally) {
+  const Move move = Classify(state, action);
+  const std::string what = absl::StrCat("Undoing ", Notation(move), " in\n", state.ToString());
+  const auto before = Describe(state);
+  std::unique_ptr<State> reference = state.Child(action);
+  const auto after = Describe(down_cast<const ThudState&>(*reference));
+  std::unique_ptr<State> copy = state.Clone();
+  auto& s = down_cast<ThudState&>(*copy);
+  const Player player = s.CurrentPlayer();
+  s.ApplyAction(action);
+  CheckSame(after, s, absl::StrCat(what, "\n(applied)"));
+  s.UndoAction(player, action);
+  CheckSame(before, s, what);
+  s.ApplyAction(action);
+  CheckSame(after, s, absl::StrCat(what, "\n(applied again after the undo)"));
+  ++tally->moves;
+  switch (move.kind) {
+    case Kind::kDwarfMove: ++tally->dwarf_moves; break;
+    case Kind::kHurl: ++tally->hurls; break;
+    case Kind::kTrollStep: ++tally->troll_steps; break;
+    case Kind::kCaptureStep: ++tally->capture_steps; break;
+    case Kind::kShove: ++tally->shoves; break;
+  }
+  tally->endings += reference->IsTerminal();
+  const auto& child = down_cast<const ThudState&>(*reference);
+  tally->most_dwarfs_taken =
+      std::max(tally->most_dwarfs_taken, state.NumDwarfs() - child.NumDwarfs());
+}
+
+// CheckUndo for every legal action of `state`.
+void CheckUndoAll(const ThudState& state, UndoTally* tally) {
+  for (Action action : state.LegalActions()) CheckUndo(state, action, tally);
+}
+
+// An empty board with `pieces` put on it: {row, col, 'd' or 'T'}.
+std::string Board(std::initializer_list<std::tuple<int, int, char>> pieces) {
+  std::vector<std::string> rows(15, std::string(15, '-'));
+  for (int r = 0; r < 15; ++r) {
+    for (int c = 0; c < 15; ++c) {
+      if (OnBoard(r, c)) rows[r][c] = (r == 7 && c == 7) ? 'O' : '.';
+    }
+  }
+  for (const auto& [r, c, piece] : pieces) {
+    SPIEL_CHECK_EQ(rows[r][c], '.');
+    rows[r][c] = piece;
+  }
+  return absl::StrJoin(rows, "\n");
+}
+
+void TestUndoEveryMoveKind() {
+  // Every legal move of the hand-built positions above, with counters that are not 0 so
+  // that restoring them is tested too.
+  UndoTally tally;
+  const std::vector<std::pair<const char*, const char*>> positions = {
+      {kInitial, "to_move=dwarfs"},
+      {kInitial, "to_move=trolls turns=57 turns_without_capture=13"},
+      {kHurlLine, "to_move=dwarfs turns=3 turns_without_capture=3"},
+      {kMoveBlocked, "to_move=dwarfs turns=11 turns_without_capture=2"},
+      {kShoveLine, "to_move=trolls turns=20 turns_without_capture=9"},
+      {kShoveLine, "to_move=dwarfs turns=21 turns_without_capture=10"},
+      {kLongestShove, "to_move=trolls turns=8 turns_without_capture=5"},
+      {kShoveBorders, "to_move=trolls turns=30 turns_without_capture=4"},
+      {kStepOpen, "to_move=trolls turns=12 turns_without_capture=7"},
+      {kStepEdges, "to_move=trolls turns=44 turns_without_capture=31"},
+      {kTangled, "to_move=trolls turns=40 turns_without_capture=12"},
+      {kTangled, "to_move=dwarfs turns=41 turns_without_capture=13"},
+      {kMidgame, "to_move=dwarfs turns=90 turns_without_capture=17"},
+      {kMidgame, "to_move=trolls turns=91 turns_without_capture=18"},
+      {kLastTroll, "to_move=dwarfs turns=150 turns_without_capture=66"},
+      {kLastDwarfs, "to_move=trolls turns=160 turns_without_capture=70"},
+      {kBoxedTroll, "to_move=dwarfs turns=99 turns_without_capture=98"},
+  };
+  for (const auto& [diagram, status] : positions) {
+    CheckUndoAll(*FromDiagram(diagram, status), &tally);
+  }
+  // The largest captures: a troll's capture step and a shove each landing on (4,4) with a
+  // dwarf on every other neighbour (7 taken), once with a dwarf left elsewhere and once
+  // taking the last ones (the battle then over), and a dwarf hurled three squares.
+  const std::vector<std::tuple<int, int, char>> seven = {
+      {3, 3, 'd'}, {3, 4, 'd'}, {3, 5, 'd'}, {4, 3, 'd'}, {4, 5, 'd'}, {5, 3, 'd'}, {5, 5, 'd'}};
+  for (bool last : {false, true}) {
+    auto with = [&](std::initializer_list<std::tuple<int, int, char>> more) {
+      std::vector<std::tuple<int, int, char>> all = seven;
+      all.insert(all.end(), more.begin(), more.end());
+      if (!last) all.push_back({10, 10, 'd'});
+      std::string board = Board({});  // Rows of 15 and a newline each.
+      for (const auto& [r, c, piece] : all) board[r * 16 + c] = piece;
+      return board;
+    };
+    // The capture step: a troll on (5,4) steps to (4,4); another troll stays far away.
+    std::unique_ptr<ThudState> step =
+        FromDiagram(with({{5, 4, 'T'}, {12, 6, 'T'}}), "to_move=trolls turns=70 turns_without_capture=21");
+    CheckUndo(*step, Parse(*step, "(5,4)-(4,4)x"), &tally);
+    CheckUndo(*step, Parse(*step, "(5,4)-(4,4)"), &tally);  // Declining the capture.
+    // The shove: the line (6,4), (7,4) shoves two squares to (4,4).
+    std::unique_ptr<ThudState> shove =
+        FromDiagram(with({{6, 4, 'T'}, {7, 4, 'T'}}), "to_move=trolls turns=71 turns_without_capture=22");
+    CheckUndo(*shove, Parse(*shove, "(6,4)-(4,4)x"), &tally);
+  }
+  // A hurl of three squares: the line (9,3)-(9,5) hurls its west end onto the troll on
+  // (9,0), the only troll (so it ends the battle).
+  std::unique_ptr<ThudState> hurl =
+      FromDiagram(Board({{9, 3, 'd'}, {9, 4, 'd'}, {9, 5, 'd'}, {9, 0, 'T'}}),
+                  "to_move=dwarfs turns=33 turns_without_capture=8");
+  CheckUndo(*hurl, Parse(*hurl, "(9,3)-(9,0)x"), &tally);
+  // Coverage: every kind of move, endings, and the largest capture.
+  if (tally.dwarf_moves == 0 || tally.hurls < 3 || tally.troll_steps == 0 ||
+      tally.capture_steps < 3 || tally.shoves < 3 || tally.endings < 3 ||
+      tally.most_dwarfs_taken != 7) {
+    SpielFatalError(absl::StrCat(
+        "Undo coverage: ", tally.moves, " moves, ", tally.dwarf_moves, " dwarf moves, ",
+        tally.hurls, " hurls, ", tally.troll_steps, " troll steps, ", tally.capture_steps,
+        " capture steps, ", tally.shoves, " shoves, ", tally.endings,
+        " ending the battle, at most ", tally.most_dwarfs_taken, " dwarfs taken (7 required)"));
+  }
+}
+
+void TestUndoLimits() {
+  // The moves that reach the no-capture limit and the turn limit end the battle; undoing
+  // them reopens it. Played by QuietCycle under small limits, every move checked.
+  UndoTally tally;
+  for (const char* game_string : {"thud(max_turns_without_capture=4)",
+                                  "thud(max_turns=6,max_turns_without_capture=100)"}) {
+    std::shared_ptr<const Game> game = LoadGame(game_string);
+    std::unique_ptr<State> state = game->NewInitialState();
+    for (int turn = 0; !state->IsTerminal(); ++turn) {
+      const Action action = Parse(QuietCycle()[turn % 4]);
+      CheckUndo(down_cast<const ThudState&>(*state), action, &tally);
+      state->ApplyAction(action);
+    }
+  }
+  SPIEL_CHECK_EQ(tally.endings, 2);
+}
+
+void TestUndoRandomGames() {
+  // Random games, uniform and capture-greedy: every legal move of every 25th position
+  // undone, and each whole game undone move by move back to its start, every position on
+  // the way as it was. Also from a position read from text, which keeps it as its start.
+  std::mt19937 rng(23);
+  UndoTally tally;
+  std::shared_ptr<const Game> game = Thud();
+  for (int g = 0; g < 16; ++g) {
+    const bool greedy = g % 2 == 1;
+    std::unique_ptr<State> state;
+    if (g < 14) {
+      state = game->NewInitialState();
+    } else {
+      state = FromDiagram(game, kTangled, "to_move=trolls turns=40 turns_without_capture=12");
+    }
+    std::vector<std::vector<std::pair<std::string, std::string>>> seen;
+    std::vector<std::pair<Player, Action>> played;
+    for (int ply = 0; !state->IsTerminal() && ply < 800; ++ply) {
+      const auto& s = down_cast<const ThudState&>(*state);
+      if (ply % 25 == 0) CheckUndoAll(s, &tally);
+      std::vector<Action> legal = s.LegalActions(), captures;
+      if (greedy) {
+        for (Action a : legal) {
+          if (absl::StrContains(s.ActionToString(s.CurrentPlayer(), a), "x")) captures.push_back(a);
+        }
+      }
+      const std::vector<Action>& pool = captures.empty() ? legal : captures;
+      const Action action = pool[rng() % pool.size()];
+      seen.push_back(Describe(s));
+      played.push_back({s.CurrentPlayer(), action});
+      state->ApplyAction(action);
+    }
+    for (int i = static_cast<int>(played.size()) - 1; i >= 0; --i) {
+      state->UndoAction(played[i].first, played[i].second);
+      CheckSame(seen[i], down_cast<const ThudState&>(*state),
+                absl::StrCat("Game ", g, " undone back to ply ", i));
+    }
+  }
+  if (tally.hurls == 0 || tally.capture_steps == 0 || tally.shoves == 0 ||
+      tally.most_dwarfs_taken < 2) {
+    SpielFatalError(absl::StrCat("Random games' undo coverage: ", tally.hurls, " hurls, ",
+                                 tally.capture_steps, " capture steps, ", tally.shoves,
+                                 " shoves, at most ", tally.most_dwarfs_taken, " dwarfs taken"));
+  }
+  // OpenSpiel's own check of UndoAction.
+  testing::RandomSimTestWithUndo(*game, 10);
+}
+
 void TestOpenSpielGenericTests() {
   testing::LoadGameTest("thud");
   testing::NoChanceOutcomesTest(*Thud());
@@ -2754,5 +2997,8 @@ int main(int argc, char** argv) {
   thud::TestPolicyPlaneIndex();
   thud::TestSymmetryHelpers();
   thud::TestRandomPlay();
+  thud::TestUndoEveryMoveKind();
+  thud::TestUndoLimits();
+  thud::TestUndoRandomGames();
   thud::TestOpenSpielGenericTests();
 }

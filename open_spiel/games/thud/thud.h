@@ -253,6 +253,9 @@ class ThudState : public State {
                          absl::Span<float> values) const override;
   std::unique_ptr<State> Clone() const override;
   std::vector<Action> LegalActions() const override;
+  // Takes back the last move, which must be `action` by `player`, restoring everything
+  // it changed (for searches that make and unmake moves in place).
+  void UndoAction(Player player, Action action) override;
   // See "Saved games" at the top of this file.
   std::string Serialize() const override;
 
@@ -305,6 +308,15 @@ class ThudState : public State {
   int num_dwarfs_ = 0;
   int num_trolls_ = 0;
   bool terminal_ = false;  // BattleOver(), updated whenever the board changes.
+  // What each move in the history took off the board and what it changed that cannot be
+  // worked out again, for UndoAction: one record a move.
+  struct Undo {
+    uint8_t dwarfs_taken;       // A bit per kGridStep direction, around the landing cell.
+    bool troll_taken;           // By a hurl, on the landing cell.
+    bool terminal;              // terminal_ before the move.
+    int turns_without_capture;  // Before the move.
+  };
+  std::vector<Undo> undo_;
   int max_turns_without_capture_;
   int max_turns_;
   // Where the game started, if not from the opening; Serialize() saves it.

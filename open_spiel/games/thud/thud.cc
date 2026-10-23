@@ -557,27 +557,59 @@ void ThudState::DoApplyAction(Action action) {
   const Cell mover = grid_[from];
   SPIEL_CHECK_TRUE(mover ==
                    (to_move_ == kDwarfPlayer ? Cell::kDwarf : Cell::kTroll));
+  Undo undo{0, false, terminal_, turns_without_capture_};
   bool captured = false;
   if (mover == Cell::kDwarf && grid_[to] == Cell::kTroll) {
     --num_trolls_;  // A hurl captures the troll it lands on.
     captured = true;
+    undo.troll_taken = true;
   }
   grid_[to] = mover;
   grid_[from] = Cell::kEmpty;
   if (mover == Cell::kTroll && (move.capture_step || move.distance >= 2)) {
     // A capturing step or a shove captures every dwarf next to the troll.
-    for (int step : kGridStep) {
-      if (grid_[to + step] == Cell::kDwarf) {
-        grid_[to + step] = Cell::kEmpty;
+    for (int d = 0; d < kNumDirections; ++d) {
+      const int cell = to + kGridStep[d];
+      if (grid_[cell] == Cell::kDwarf) {
+        grid_[cell] = Cell::kEmpty;
         --num_dwarfs_;
         captured = true;
+        undo.dwarfs_taken |= 1 << d;
       }
     }
   }
+  undo_.push_back(undo);
   ++turns_played_;
   turns_without_capture_ = captured ? 0 : turns_without_capture_ + 1;
   to_move_ = 1 - to_move_;
   terminal_ = BattleOver();
+}
+
+void ThudState::UndoAction(Player player, Action action) {
+  SPIEL_CHECK_FALSE(history_.empty());
+  SPIEL_CHECK_EQ(history_.back().player, player);
+  SPIEL_CHECK_EQ(history_.back().action, action);
+  SPIEL_CHECK_EQ(undo_.size(), history_.size());  // A record for every move made.
+  const Undo undo = undo_.back();
+  const DecodedAction move = DecodeAction(action);
+  const int from = Geo().cell[move.square];
+  const int to = from + move.distance * kGridStep[move.direction];
+  grid_[from] = grid_[to];
+  grid_[to] = undo.troll_taken ? Cell::kTroll : Cell::kEmpty;
+  num_trolls_ += undo.troll_taken;
+  for (int d = 0; d < kNumDirections; ++d) {
+    if (undo.dwarfs_taken & (1 << d)) {
+      grid_[to + kGridStep[d]] = Cell::kDwarf;
+      ++num_dwarfs_;
+    }
+  }
+  --turns_played_;
+  turns_without_capture_ = undo.turns_without_capture;
+  to_move_ = player;
+  terminal_ = undo.terminal;
+  undo_.pop_back();
+  history_.pop_back();
+  --move_number_;
 }
 
 std::string ThudState::ActionToString(Player player, Action action_id) const {

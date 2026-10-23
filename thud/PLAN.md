@@ -681,6 +681,7 @@ the search and trainer*, run C'.
 | 2026-10-20 | **Run R continues from RL211**: the no-capture limit 100 in self-play (evaluation keeps 200), the teacher's weight 0.7 on the dwarfs' positions (0.3 on the trolls'), today's buffer (458,752 positions) — once the tuning is done (the trainer benchmark of the learner's threads, offline training, the plasticity test, the matches), with the best settings it finds; those settings then for every later experiment | user | status block; `DESIGN_dwarf_signal.md` §10, *Run R and the arms* |
 | 2026-10-20 | The bigger buffer retried once run R's own games can fill ~1 million positions (KataGo's rule at our total; ~20 steps after RL211): the forward test again, with R's own positions only (the first test's extra positions came from the runs before the reset) | user | the GPU checklist, the window's row |
 | 2026-10-20 | The settings by use, tuned here, for every later experiment (`CLAUDE.md`, *The settings by use*): the trainer 64 actors, batches of 16, 3 inference threads x OMP 2, the learner's own 4, bfloat16; matches between networks 3 at once, 40 threads, batches of 16, 2 inference threads each, OMP 1, bfloat16; against hexparrot 40 threads, 4 inference threads, OMP 2; offline training and the plasticity test at OMP 8; never more threads than cores | user | the GPU checklist, items 2, 6, 7 |
+| 2026-10-23 | A faster teacher by **undo in the game** (`ThudState::UndoAction`), not a second board of its own: the profile put the cost in copying states and counting material, not in the rules; one implementation of the rules is safer (the user: tests first, above all for hurls, shoves and every capture; the choice left to Claude) | user, Claude | the GPU checklist, item 3 |
 | 2026-10-18 | **The reset network is the main line, run R** (R181: the reset at the run's step 181), continued in self-play from N′'s run's state at step 181, run N's recipe unchanged; started after 02:00 once the laptop has been idle 20 minutes; each segment adds the plasticity test, to see whether R keeps learning | user | status block, `~/thud-runs/r_run_2026-10-19.sh` |
 
 **Considered and set aside** (with the reason): the Python AlphaZero (a layout bug, and
@@ -1599,8 +1600,23 @@ first session, with no patch at all.**
      thread had set the pace). On the GPU: the sweep again (its scripts as the template).
   3. **A faster alpha-beta of our own** (the row below): as opponent and as kickstarting's
      teacher alpha-beta runs on the CPU, ~21 ms a position at depth 2 here, ~4% of a
-     self-play move now — with the network several times faster on a GPU its share grows
-     several-fold and it may set the pace; or the teacher tapered first (the design).
+     self-play move until 2026-10-23 — with the network several times faster on a GPU its
+     share grows several-fold and it may set the pace; or the teacher tapered first (the
+     design). **First part done 2026-10-23** (the user: a deeper teacher for stronger
+     samples; the design choice left to Claude): profiled first — ~73% of the teacher's time
+     went to counting material by scanning the board at every leaf, and after that fix
+     ~45-50% to copying states (`Clone`, the heap), ~9% to the move check after each move,
+     ~5% to move generation — so **undo in the game itself** (`ThudState::UndoAction`, the
+     rules kept in one place; a lean board of its own stays possible if a later profile asks)
+     rather than a second implementation of the rules; its bookkeeping costs nothing
+     measurable (random playouts 576,000 against 573,000 moves a second, within ±10% noise).
+     Material from the state's piece counts, the tie-break's hash carried on from the root,
+     OpenSpiel's alpha-beta with `use_undo=true`: depth 2 **1.3 ms a position, 21x**, the
+     same scores and moves exactly (`teacher_identity_test`); **depth 3 179 ms a dwarf
+     position, 33 ms a troll's** (3.8 s and 0.5 s before; measured beside a trainer) — next to
+     a self-play move's ~2.5 s per actor, a depth-3 teacher now costs ~4-7% of a step, so it
+     can be tested as an arm before any move ordering. Still to do: captures first, a table
+     of positions, iterative deepening.
   4. **Tapers by results, gated** (the row below): long unattended runs.
   5. **float16 inference** (the row below; the user, 2026-10-19: not now, but before
      renting): small, the same mechanism as bfloat16.
@@ -1654,7 +1670,7 @@ first session, with no patch at all.**
   | Playout cap randomisation (3b) | recommended for the GPU | **done** (2026-10-15): `--playout_cap_full_share` (each of the network's moves searched in full and recorded with that probability) and `--playout_cap_fast_simulations` (the rest: no root noise, no forced playouts, not recorded; KataGo, arXiv 1902.10565, 3.1); `playout_cap_test` (off: the old games exactly; on at a quarter: 25.4% of 6,150 moves recorded, every one a full search; the fast bots without noise) and `trainer_test.sh` (half in full) | the setting to use: by test runs on the GPU (stage 3b) |
   | Tapers by results (kickstarting per side, the alpha-beta share), gated | long unattended runs | **missing** — by hand, run to run. Its parts (the design's §5, conditions a-d): (a) the noise-free matches and (b) the regression gates are built; (c) measured by `az_unsafe_targets` (built 2026-10-15, `unsafe_targets_test`; N131: R = 0.70, upper end 0.85; a stricter rule decided 2026-10-15: the loop's gain after the step at most 0.8), and (d) is decided (the user, 2026-10-15: closed when a far dwarf with the dwarfs to move is worth at least 80% of its worth with the trolls to move, twice in a row; measurement 4 runs every 10 steps in the longer run) | after (c)'s probe: a supervisor between segments, as `night11` does for measurement 4 (moderate) |
   | The alpha-beta share per side; kickstarting's temperature per side | finer scaffolds | **missing** | if needed (small) |
-  | A faster alpha-beta of our own (captures first, a table of positions, iterative deepening) | a depth-3 teacher; alpha-beta then sets the pace on the CPU beside the GPU | **missing** | before deeper teachers |
+  | A faster alpha-beta of our own (captures first, a table of positions, iterative deepening) | a depth-3 teacher; alpha-beta then sets the pace on the CPU beside the GPU | **partly done** (2026-10-23, the item above): undo, material from counts, searches by undo — depth 2 21x faster, the same results; move ordering, a table of positions and iterative deepening **missing** | depth 3 as an arm |
   | The value-target options B1′, C7, E2 (the design) | if D1 leaves the side-to-move gap open | **missing** — designed only | when needed |
   | Mixed precision | speed on large networks | **done here** (2026-10-19; on the GPU: float16 and int8, the rows below, and the retune); measured 2026-10-19 on this CPU (it has FP16, BF16 and int8 instructions: `fphp asimdhp bf16 i8mm`): LibTorch 2.10 runs a 64-channel 3x3 convolution on a batch of 32 at 7.7 ms in float32, 5.6 ms in bfloat16 (1.4x; relative error 3e-3), 112 ms in float16 (no fast kernel here); a network of our shape (PyTorch, batches of 32, 4 threads): float32 19.5 ms, bfloat16 14.5 ms (1.34x), int8 after static quantization 17.7 ms with qnnpack (1.10x), 115 ms with onednn; **the network is ~90% of a self-play step** (`az_search_cost`: 15,578 simulations/s behind a nearly free network, 1,526 with R201), so bfloat16 inference would make self-play ~1.3x faster here; **built** (2026-10-19: `--inference_precision=float32|mixed|bfloat16`, an inference copy of the network refreshed after every weight change; `precision_test`); the agreement on R201 (`az_precision_probe`, 600 positions of its games, 100-simulation searches without noise): mixed — values within 0.0016 on average (0.0058 at most), the top prior move the same in 98.7%, the searches' chosen move in 94.7% (bfloat16: 0.0023, 0.0073, 97.8%, 93.5%), where it differs a near tie in float32's own search (the visit gap's median 1%, 90th percentile 4%; mixed's value gap 0.006 and 0.027), against 99.5% for float32 searched again with another seed (the control) | **revisit on the GPU** (the user, 2026-10-19: tensor cores give FP16/BF16 their usual large gain there, and int8 via TensorRT); here bfloat16 inference behind a flag, tested by the agreement on buffer positions (values, top moves, the search's chosen move) and a match, after the limit and teacher arms; training stays in float32 |
   | A trainer benchmark (`bench_trainer.sh`, the item above) | self-play's settings on the machine, with the learner | **done** (2026-10-20; `trainer_test.sh` 8) | run there first |
@@ -1705,7 +1721,8 @@ first session, with no patch at all.**
 
   | Test | Set, time | What it covers | Its control |
   |---|---|---|---|
-  | `thud_test` (`open_spiel/games/thud/thud_test.cc`) | quick, 2 s | the rules: every move kind, captures, endings, the encoding, text formats, symmetries; OpenSpiel's generic tests | hand-worked expectations |
+  | `thud_test` (`open_spiel/games/thud/thud_test.cc`) | quick, 7 s | the rules: every move kind, captures, endings, the encoding, text formats, symmetries; OpenSpiel's generic tests; since 2026-10-23 `UndoAction` — every legal move of 17 hand-built positions undone and applied again (each kind of move; a capture step and a shove taking 7 dwarfs, the most a troll can, with dwarfs left and taking the last ones; a hurl of three squares taking the last troll; captures after quiet turns; the no-capture and turn limits reached), every field the state shows compared (its text, saved form, history, counters, legal moves, both observations); random games, uniform and capture-greedy, undone move by move to their start (from the opening and from a diagram); OpenSpiel's `RandomSimTestWithUndo` | hand-worked expectations; for the undo, three deliberately broken undos each fail it (the captured dwarfs, the hurled troll, the no-capture counter not restored) |
+  | `teacher_identity_test` (new, 2026-10-23; also run sanitized) | quick, 8 s | `AlphaBetaPlayer` (the teacher and the alpha-beta opponent) against its code before the speed-up, kept in the test: on 141 positions of random and capture-greedy games, `Scores` at depths 1 and 2 (23,195 moves) and `Choose` at depths 1 and 2 for two seeds exactly equal; the timings reported; `profile` runs the new code alone, for perf | a troll worth 3 must change the scores; the two seeds must choose differently (they do in 82 positions) |
   | `crosscheck_tests.py` | quick, 0.2 s | `thud_test`'s expectations recomputed by hexparrot's engine (needs hexparrot set up) | 2 known differences listed apart |
   | `playthrough` (in `run_tests.sh`) | full, 3.5 s | the baseline's recorded moves replayed, every line compared (as upstream's `playthrough_test.py`) | a copy with one board line changed must not replay equal |
   | `features_test` | quick, 3 s | the 50 input planes: hand-built positions, the planes against the move generator | — (exact expectations) |
@@ -2659,7 +2676,8 @@ keep for the rest of the project):
   exactly the old targets, weight 0.3 plays the same moves and records exactly the
   mix (control: they differ); the settings round-trip. **The teacher's cost:** depth 2
   ~21 ms a position for either side (~4% of a self-play move); **depth 3 3.8 s for a
-  dwarf position, 0.5 s for a troll's** — with OpenSpiel's unordered alpha-beta not
+  dwarf position, 0.5 s for a troll's** (until 2026-10-23: since then 21x faster at depth 2,
+  the GPU checklist's item 3) — with OpenSpiel's unordered alpha-beta not
   affordable for both sides (the user asked), for the trolls alone at ~20-35% of the
   trainer's throughput (below); an alpha-beta of our own with captures searched first
   and a table of positions would make it so, the same search the equal-time matches

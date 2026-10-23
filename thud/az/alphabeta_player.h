@@ -35,11 +35,11 @@ namespace thud_az {
 // played, so that among equal scores it neither always plays the first legal action
 // nor changes its mind within a search. Random leaf values also favour moves that keep
 // more options open (Beal and Smith, "Random evaluations in chess", ICCA Journal 17(1),
-// 1994). Thud's state has no undo, so the search copies it at each node. Material is
-// read from the state's piece counts and the tie-break's hash carries on from the
-// root's (2026-10-23: scanning the board took ~73% of the teacher's time, and hashing a
-// leaf's whole history ran over every move of the game; the same values either way —
-// teacher_identity_test).
+// 1994). The search makes and undoes its moves in place (ThudState::UndoAction), material
+// is read from the state's piece counts, and the tie-break's hash carries on from the
+// root's (2026-10-23: the search had copied the state at every node, scanning the board
+// took ~73% of the teacher's time, and hashing a leaf's whole history ran over every move
+// of the game; the same values either way — teacher_identity_test).
 //
 // The opponent of az_match's b=alphabeta:DEPTH and, in training, of the games against
 // alpha-beta (thud/PLAN.md, How we evaluate networks: training against alpha-beta).
@@ -58,7 +58,7 @@ class AlphaBetaPlayer {
       return Material(leaf, me) + TieBreak(HistoryHash(root_hash, leaf, root_length));
     };
     return algorithms::AlphaBetaSearch(game_, &state, value, depth_, me,
-                                       /*use_undo=*/false)
+                                       /*use_undo=*/true)
         .second;
   }
 
@@ -81,7 +81,7 @@ class AlphaBetaPlayer {
         const Player opponent = child->CurrentPlayer();
         auto material = [opponent](const State& leaf) { return Material(leaf, opponent); };
         value = -algorithms::AlphaBetaSearch(game_, child.get(), material, depth_ - 1,
-                                              opponent, /*use_undo=*/false)
+                                              opponent, /*use_undo=*/true)
                      .first;
       }
       scores.push_back(value * thud::kMaxMargin);

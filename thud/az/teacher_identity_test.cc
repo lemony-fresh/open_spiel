@@ -29,9 +29,11 @@
 //   4. reported, not tested: the time of each, old against new.
 //
 // Prints PASS or FAIL per part, then ALL PASSED or the count of failures; exits non-zero on
-// a failure. `teacher_identity_test profile` instead runs only the new Scores at depth 2 on
-// the positions, five times over, for a profiler (perf record).
+// a failure. `teacher_identity_test profile [DEPTH] [ROUNDS]` instead runs only the new
+// Scores at DEPTH (default 2) on the positions, ROUNDS times over (default 5), for a
+// profiler (perf record) or a timing, per side to move.
 
+#include <algorithm>
 #include <chrono>  // NOLINT
 #include <cstdint>
 #include <iostream>
@@ -159,15 +161,24 @@ int main(int argc, char** argv) {
   }
 
   if (profile) {
-    const AlphaBetaPlayer teacher(*game, 2);
-    const auto t0 = std::chrono::steady_clock::now();
-    size_t moves = 0;
-    for (int round = 0; round < 5; ++round) {
-      for (const auto& s : positions) moves += teacher.Scores(*s).size();
+    const int depth = argc > 2 ? std::stoi(argv[2]) : 2;
+    const int rounds = argc > 3 ? std::stoi(argv[3]) : 5;
+    const AlphaBetaPlayer teacher(*game, depth);
+    double seconds[2] = {0, 0};
+    int count[2] = {0, 0};
+    for (int round = 0; round < rounds; ++round) {
+      for (const auto& s : positions) {
+        if (s->IsTerminal()) continue;
+        const auto t0 = std::chrono::steady_clock::now();
+        teacher.Scores(*s);
+        seconds[s->CurrentPlayer()] += Seconds(t0);
+        ++count[s->CurrentPlayer()];
+      }
     }
-    std::cout << absl::StrFormat("profile: %d positions x 5, %d moves scored, %.2f ms a position",
-                                 positions.size(), moves,
-                                 1000 * Seconds(t0) / (5 * positions.size()))
+    std::cout << absl::StrFormat("profile: depth %d, %d rounds: dwarfs %.2f ms a position (%d), "
+                                 "trolls %.2f ms (%d)",
+                                 depth, rounds, 1000 * seconds[0] / std::max(count[0], 1),
+                                 count[0], 1000 * seconds[1] / std::max(count[1], 1), count[1])
               << std::endl;
     return 0;
   }
