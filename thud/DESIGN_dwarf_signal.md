@@ -1273,8 +1273,16 @@ the KL alike): pruning acts on the visits only, 30% of the dwarfs' targets, and 
 playouts it adds cost more than the clean-up gains. **The teacher's ties at depth 3**
 (`az_teacher_stats`, the same 60 positions of run R a side): the dwarfs' moves tied for its
 best score 39.3% of 241 (95) at depth 2, 33.7% (81) at depth 3; the trolls' 85.6% of 46 (39)
-against 55.9% (26) — depth 3 sharpens the trolls' teacher much more than the dwarfs'. Arm D3
-(the teacher at depth 3) runs; arm T (the ties shared by the search) follows.
+against 55.9% (26) — depth 3 sharpens the trolls' teacher much more than the dwarfs'.
+**D3 (the teacher at depth 3, the opponent at depth 2): not shown in 10 steps** — D3_261
+against R261 +1.70 (−1.47 to +4.87; 23 won, 3 drawn, 14 lost), hexparrot:3 +41.9 (R261
++42.9), the gates pass (blunders 6.0%). Its cost hardly shows (1,115 s a step, P's 1,094).
+Its targets are sharper — the dwarfs' entropy 4.249 against R's 4.330, the trolls' 3.013
+against 3.160 — and hold more to learn: D3_261's KL above them 0.42 (dwarfs) and 0.37
+(trolls), against R261's 0.08 and 0.27 above its own; R261 on D3's positions 0.62 and 0.41.
+So depth 3 gives the network information it has not absorbed in 10 steps — what the fit
+test found missing — and the payoff may need more steps than an arm's. Arm T (the ties
+shared by the search) follows; the user: then perhaps both into the main line from R261.
 
 ## Review log
 
