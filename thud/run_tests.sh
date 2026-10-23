@@ -93,7 +93,8 @@ tests=(
   "legal_policy_test|full|44|$bin/legal_policy_test"
   "precision_test|quick|5|$bin/precision_test"
   "thread_count_test|quick|1|$bin/thread_count_test"
-  "teacher_identity_test|quick|15|$bin/teacher_identity_test"
+  "teacher_identity_test|quick|13|$bin/teacher_identity_test"
+  "teacher_identity_deep|full|120|$bin/teacher_identity_test deep"
 )
 
 # Two tests that are commands of their own, run as tests above.

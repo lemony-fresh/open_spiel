@@ -268,6 +268,13 @@ class ThudState : public State {
   // scan of the board.
   int NumDwarfs() const { return num_dwarfs_; }
   int NumTrolls() const { return num_trolls_; }
+  // How many pieces the legal `action` would capture, without applying it: the troll a
+  // hurl lands on (1), or the dwarfs next to a troll's landing square after a capture
+  // step or a shove; 0 for every other move.
+  int Captures(Action action) const;
+  // The most pieces one move can capture for the side to move — the largest Captures()
+  // over LegalActions() — found without generating the moves; 0 in a battle that is over.
+  int BestCapture() const;
 
  protected:
   void DoApplyAction(Action action) override;

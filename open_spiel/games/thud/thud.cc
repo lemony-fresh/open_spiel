@@ -585,6 +585,53 @@ void ThudState::DoApplyAction(Action action) {
   terminal_ = BattleOver();
 }
 
+int ThudState::Captures(Action action) const {
+  const DecodedAction move = DecodeAction(action);
+  const int from = Geo().cell[move.square];
+  const int to = from + move.distance * kGridStep[move.direction];
+  if (grid_[from] == Cell::kDwarf) return grid_[to] == Cell::kTroll ? 1 : 0;
+  if (!move.capture_step && move.distance < 2) return 0;
+  // As DoApplyAction counts them after the move: `from`, next to `to` for a capture step,
+  // holds the troll itself, never a dwarf.
+  int dwarfs = 0;
+  for (int step : kGridStep) dwarfs += grid_[to + step] == Cell::kDwarf;
+  return dwarfs;
+}
+
+int ThudState::BestCapture() const {
+  if (terminal_) return 0;
+  const Cell own = to_move_ == kDwarfPlayer ? Cell::kDwarf : Cell::kTroll;
+  int best = 0;
+  for (int square = 0; square < kNumSquares; ++square) {
+    const int cell = Geo().cell[square];
+    if (grid_[cell] != own) continue;
+    for (int d = 0; d < kNumDirections; ++d) {
+      const int step = kGridStep[d];
+      int target = cell + step;
+      if (own == Cell::kDwarf) {
+        // As AddDwarfMoves: a hurl onto the troll that ends the empty path, if the line
+        // behind reaches it. It takes one troll, the most a move can.
+        int distance = 1;
+        for (; grid_[target] == Cell::kEmpty; ++distance) target += step;
+        if (grid_[target] == Cell::kTroll && distance <= LineLength(cell, -step)) return 1;
+      } else {
+        // As AddTrollMoves: the capture step, and the shoves up to the line's length. At most
+        // 7 dwarfs: of the landing square's 8 neighbours one is on the troll's path.
+        if (grid_[target] != Cell::kEmpty) continue;
+        best = std::max(best, DwarfsNextTo(target));
+        const int line = LineLength(cell, -step);
+        for (int distance = 2; distance <= line; ++distance) {
+          target += step;
+          if (grid_[target] != Cell::kEmpty) break;
+          best = std::max(best, DwarfsNextTo(target));
+        }
+        if (best == 7) return best;
+      }
+    }
+  }
+  return best;
+}
+
 void ThudState::UndoAction(Player player, Action action) {
   SPIEL_CHECK_FALSE(history_.empty());
   SPIEL_CHECK_EQ(history_.back().player, player);

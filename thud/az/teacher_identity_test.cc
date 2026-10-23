@@ -26,12 +26,18 @@
 //   3. Choose at depths 1 and 2, for two seeds, picks the old move exactly; the control:
 //      the two seeds pick differently somewhere (the tie-break decides moves, so the
 //      comparison could fail);
-//   4. reported, not tested: the time of each, old against new.
+//   4. reported, not tested: the time of each, old against new;
+//   5. (2026-10-23) Scores by MaterialSearch: at depth 3 on the first 30 positions equal to
+//      OpenSpiel's alpha-beta's exactly (on the piece counts, by undo: ReferenceScores), and every combination of its move ordering (captures first,
+//      killer moves, both, neither) giving the same scores on them — the order changes only
+//      what is pruned; with `deep`, also depth 4 on the first 8 positions (slow: the old
+//      code takes seconds a position there).
 //
 // Prints PASS or FAIL per part, then ALL PASSED or the count of failures; exits non-zero on
 // a failure. `teacher_identity_test profile [DEPTH] [ROUNDS]` instead runs only the new
 // Scores at DEPTH (default 2) on the positions, ROUNDS times over (default 5), for a
-// profiler (perf record) or a timing, per side to move.
+// profiler (perf record) or a timing, per side to move, and then each of MaterialSearch's
+// orderings once: its time and nodes a position.
 
 #include <algorithm>
 #include <chrono>  // NOLINT
@@ -48,6 +54,7 @@
 #include "open_spiel/games/thud/thud.h"
 #include "open_spiel/spiel.h"
 #include "thud/az/alphabeta_player.h"
+#include "thud/az/material_search.h"
 
 namespace {
 
@@ -127,6 +134,34 @@ std::vector<double> OldScores(const Game& game, const State& state, int depth,
   return scores;
 }
 
+// The reference for depths 3 and 4: OpenSpiel's alpha-beta as the teacher used it before
+// MaterialSearch — the material from the piece counts, the search by undo (both shown equal
+// to the code before at depths 1 and 2, part 2), the moves in the game's order.
+std::vector<double> ReferenceScores(const Game& game, const State& state, int depth) {
+  const Player me = state.CurrentPlayer();
+  auto material = [](const State& s, Player p) {
+    const auto& t = open_spiel::down_cast<const thud::ThudState&>(s);
+    const int margin = t.NumDwarfs() * thud::kDwarfValue - t.NumTrolls() * thud::kTrollValue;
+    return static_cast<double>(p == thud::kDwarfPlayer ? margin : -margin) / thud::kMaxMargin;
+  };
+  std::vector<double> scores;
+  for (Action action : state.LegalActions()) {
+    std::unique_ptr<State> child = state.Child(action);
+    double value;
+    if (child->IsTerminal() || depth <= 1) {
+      value = child->IsTerminal() ? child->PlayerReturn(me) : material(*child, me);
+    } else {
+      const Player opponent = child->CurrentPlayer();
+      auto leaf = [opponent, &material](const State& s) { return material(s, opponent); };
+      value = -open_spiel::algorithms::AlphaBetaSearch(game, child.get(), leaf, depth - 1,
+                                                       opponent, /*use_undo=*/true)
+                   .first;
+    }
+    scores.push_back(value * thud::kMaxMargin);
+  }
+  return scores;
+}
+
 double Seconds(std::chrono::steady_clock::time_point since) {
   return std::chrono::duration<double>(std::chrono::steady_clock::now() - since).count();
 }
@@ -136,6 +171,7 @@ double Seconds(std::chrono::steady_clock::time_point since) {
 int main(int argc, char** argv) {
   std::shared_ptr<const Game> game = open_spiel::LoadGame("thud");
   const bool profile = argc > 1 && std::string(argv[1]) == "profile";
+  const bool deep = argc > 1 && std::string(argv[1]) == "deep";
 
   // Positions: every 7th ply of random games, half of them capture-greedy (a capture,
   // written with an "x", whenever there is one).
@@ -180,6 +216,31 @@ int main(int argc, char** argv) {
                                  depth, rounds, 1000 * seconds[0] / std::max(count[0], 1),
                                  count[0], 1000 * seconds[1] / std::max(count[1], 1), count[1])
               << std::endl;
+    for (const auto& [captures, killers] :
+         std::vector<std::pair<bool, bool>>{{false, false}, {true, false}, {false, true},
+                                            {true, true}}) {
+      open_spiel::thud_az::MaterialSearch search(open_spiel::thud_az::Evaluation::kMaterial,
+                                                 captures, killers);
+      double t[2] = {0, 0};
+      int64_t nodes[2] = {0, 0};
+      int n[2] = {0, 0};
+      for (const auto& s : positions) {
+        if (s->IsTerminal()) continue;
+        const Player p = s->CurrentPlayer();
+        search.ResetNodes();
+        const auto t0 = std::chrono::steady_clock::now();
+        search.Scores(*s, depth);
+        t[p] += Seconds(t0);
+        nodes[p] += search.nodes();
+        ++n[p];
+      }
+      std::cout << absl::StrFormat("  ordering: captures first %d, killers %d: dwarfs %.2f ms, "
+                                   "%d nodes a position; trolls %.2f ms, %d nodes",
+                                   captures, killers, 1000 * t[0] / std::max(n[0], 1),
+                                   nodes[0] / std::max(n[0], 1), 1000 * t[1] / std::max(n[1], 1),
+                                   nodes[1] / std::max(n[1], 1))
+                << std::endl;
+    }
     return 0;
   }
 
@@ -273,6 +334,35 @@ int main(int argc, char** argv) {
                                1000 * new_choose / (2 * positions.size()),
                                old_choose / new_choose)
             << std::endl;
+
+  // 5. MaterialSearch at depth 3 (and 4 with `deep`), and its orderings.
+  for (int depth : deep ? std::vector<int>{3, 4} : std::vector<int>{3}) {
+    const size_t n = std::min<size_t>(positions.size(), depth == 3 ? 30 : 8);
+    int moves = 0, differ = 0, ordering_differ = 0;
+    for (size_t i = 0; i < n; ++i) {
+      const std::vector<double> old_scores = ReferenceScores(*game, *positions[i], depth);
+      const std::vector<double> new_scores = AlphaBetaPlayer(*game, depth).Scores(*positions[i]);
+      if (old_scores.size() != new_scores.size()) {
+        ++differ;
+        continue;
+      }
+      for (size_t j = 0; j < new_scores.size(); ++j) differ += new_scores[j] != old_scores[j];
+      moves += new_scores.size();
+      for (const auto& [captures, killers] :
+           std::vector<std::pair<bool, bool>>{{false, false}, {true, false}, {false, true}}) {
+        const std::vector<double> other =
+            open_spiel::thud_az::MaterialSearch(open_spiel::thud_az::Evaluation::kMaterial,
+                                                captures, killers)
+                .Scores(*positions[i], depth);
+        ordering_differ += other != new_scores;
+      }
+    }
+    Check(differ == 0 && ordering_differ == 0 && moves > 0,
+          absl::StrFormat("5. MaterialSearch at depth %d on %d positions: %d of %d moves' scores "
+                          "differ from OpenSpiel's alpha-beta's (0 required); %d orderings' scores "
+                          "differ from the default's (0 required)",
+                          depth, n, differ, moves, ordering_differ));
+  }
 
   if (failures == 0) {
     std::cout << "ALL PASSED" << std::endl;

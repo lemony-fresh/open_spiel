@@ -1622,8 +1622,21 @@ first session, with no patch at all.**
      same scores and moves exactly (`teacher_identity_test`); **depth 3 179 ms a dwarf
      position, 33 ms a troll's** (3.8 s and 0.5 s before; measured beside a trainer) — next to
      a self-play move's ~2.5 s per actor, a depth-3 teacher now costs ~4-7% of a step, so it
-     can be tested as an arm before any move ordering. Still to do: captures first, a table
-     of positions, iterative deepening.
+     can be tested as an arm before any move ordering. **Then our own search**
+     (`thud/az/material_search.h`, 2026-10-23; the user: move ordering, captures first, not
+     ordering the deepest plies): a profile put ~80% of depth 3 in the frontier — every move
+     generated to find the captures — so one ply above the leaves the search counts only
+     the best capture (`ThudState::BestCapture`, without generating moves; and a cut-off on
+     the material alone, which is a lower bound there). That rule is exact only while the
+     evaluation is material alone, so it is tied to it in the code (`Evaluation::kMaterial`;
+     any other evaluation runs without it — the user: assert it rather than hide it behind
+     a switch). Above it, captures first (the biggest first) and killer moves. The same
+     values exactly (OpenSpiel's alpha-beta at depths 3 and 4); on run R's self-play
+     positions depth 3 ~9 ms a position, **depth 4 ~165 ms** (unordered 4.7 s) — a depth-4
+     teacher ~+30-40% a step. At depth 3 the ordering gains little (the teacher scores every
+     root move with a full window, so only the frontier's cut-off profits): captures first
+     2.3 against 4.1 ms a troll position, killers none. Still to do: a table of positions,
+     iterative deepening, the threat and line moves first — measured at depth 4.
   4. **Tapers by results, gated** (the row below): long unattended runs.
   5. **float16 inference** (the row below; the user, 2026-10-19: not now, but before
      renting): small, the same mechanism as bfloat16.
@@ -1728,8 +1741,8 @@ first session, with no patch at all.**
 
   | Test | Set, time | What it covers | Its control |
   |---|---|---|---|
-  | `thud_test` (`open_spiel/games/thud/thud_test.cc`) | quick, 7 s | the rules: every move kind, captures, endings, the encoding, text formats, symmetries; OpenSpiel's generic tests; since 2026-10-23 `UndoAction` — every legal move of 17 hand-built positions undone and applied again (each kind of move; a capture step and a shove taking 7 dwarfs, the most a troll can, with dwarfs left and taking the last ones; a hurl of three squares taking the last troll; captures after quiet turns; the no-capture and turn limits reached), every field the state shows compared (its text, saved form, history, counters, legal moves, both observations); random games, uniform and capture-greedy, undone move by move to their start (from the opening and from a diagram); OpenSpiel's `RandomSimTestWithUndo` | hand-worked expectations; for the undo, three deliberately broken undos each fail it (the captured dwarfs, the hurled troll, the no-capture counter not restored) |
-  | `teacher_identity_test` (new, 2026-10-23; also run sanitized) | quick, 8 s | `AlphaBetaPlayer` (the teacher and the alpha-beta opponent) against its code before the speed-up, kept in the test: on 141 positions of random and capture-greedy games, `Scores` at depths 1 and 2 (23,195 moves) and `Choose` at depths 1 and 2 for two seeds exactly equal; the timings reported; `profile` runs the new code alone, for perf | a troll worth 3 must change the scores; the two seeds must choose differently (they do in 82 positions) |
+  | `thud_test` (`open_spiel/games/thud/thud_test.cc`) | quick, 8 s | the rules: every move kind, captures, endings, the encoding, text formats, symmetries; OpenSpiel's generic tests; since 2026-10-23 `UndoAction` — every legal move of 17 hand-built positions undone and applied again (each kind of move; a capture step and a shove taking 7 dwarfs, the most a troll can, with dwarfs left and taking the last ones; a hurl of three squares taking the last troll; captures after quiet turns; the no-capture and turn limits reached), every field the state shows compared (its text, saved form, history, counters, legal moves, both observations); random games, uniform and capture-greedy, undone move by move to their start (from the opening and from a diagram); OpenSpiel's `RandomSimTestWithUndo`; `Captures` and `BestCapture` (2026-10-23) against applying every legal move, on the hand-built positions and random games | hand-worked expectations; for the undo, three deliberately broken undos each fail it (the captured dwarfs, the hurled troll, the no-capture counter not restored); `Captures` forgetting shoves, and `BestCapture` forgetting shoves or hurls, each fail it |
+  | `teacher_identity_test` (new, 2026-10-23; also run sanitized; `deep` in the full set as `teacher_identity_deep`, 2 min) | quick, 13 s | `AlphaBetaPlayer` (the teacher and the alpha-beta opponent) against its code before the speed-up, kept in the test: on 141 positions of random and capture-greedy games, `Scores` at depths 1 and 2 (23,195 moves) and `Choose` at depths 1 and 2 for two seeds exactly equal; the timings reported; `profile` runs the new code alone, for perf; since 2026-10-23 part 5: `MaterialSearch` (the teacher's search since then) at depth 3 on 30 positions equal to OpenSpiel's unordered alpha-beta exactly (6,223 moves), every ordering setting giving the same scores, and with `deep` depth 4 on 8 positions (2,218 moves) | a troll worth 3 must change the scores; the two seeds must choose differently (they do in 82 positions) |
   | `crosscheck_tests.py` | quick, 0.2 s | `thud_test`'s expectations recomputed by hexparrot's engine (needs hexparrot set up) | 2 known differences listed apart |
   | `playthrough` (in `run_tests.sh`) | full, 3.5 s | the baseline's recorded moves replayed, every line compared (as upstream's `playthrough_test.py`) | a copy with one board line changed must not replay equal |
   | `features_test` | quick, 3 s | the 50 input planes: hand-built positions, the planes against the move generator | — (exact expectations) |

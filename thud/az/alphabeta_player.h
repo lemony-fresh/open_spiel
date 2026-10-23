@@ -20,6 +20,7 @@
 #include <vector>
 
 #include "open_spiel/algorithms/minimax.h"
+#include "thud/az/material_search.h"
 #include "open_spiel/games/thud/thud.h"
 #include "open_spiel/spiel.h"
 #include "open_spiel/spiel_utils.h"
@@ -70,23 +71,9 @@ class AlphaBetaPlayer {
   // material right after the move; depth 2: after the opponent's best reply). No
   // tie-break: a teacher's scores are the same every time. In LegalActions() order.
   std::vector<double> Scores(const State& state) const {
-    const Player me = state.CurrentPlayer();
-    std::vector<double> scores;
-    for (Action action : state.LegalActions()) {
-      std::unique_ptr<State> child = state.Child(action);
-      double value;  // In returns, for `me`.
-      if (child->IsTerminal() || depth_ <= 1) {
-        value = child->IsTerminal() ? child->PlayerReturn(me) : Material(*child, me);
-      } else {
-        const Player opponent = child->CurrentPlayer();
-        auto material = [opponent](const State& leaf) { return Material(leaf, opponent); };
-        value = -algorithms::AlphaBetaSearch(game_, child.get(), material, depth_ - 1,
-                                              opponent, /*use_undo=*/true)
-                     .first;
-      }
-      scores.push_back(value * thud::kMaxMargin);
-    }
-    return scores;
+    // Since 2026-10-23 MaterialSearch (material_search.h: the same values, its moves
+    // ordered and its frontier counted without applying moves).
+    return MaterialSearch().Scores(state, depth_);
   }
 
  private:

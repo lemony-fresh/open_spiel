@@ -2930,6 +2930,75 @@ void TestUndoRandomGames() {
   testing::RandomSimTestWithUndo(*game, 10);
 }
 
+// Captures(action) (2026-10-23, for the teacher's search: a move's captures without
+// applying it) equals the pieces applying the move takes off the board, for every legal
+// move of the hand-built positions and of random games, uniform and capture-greedy; and
+// BestCapture() the largest of them (0 where the battle is over).
+void TestCaptures() {
+  int moves = 0, capturing = 0, most = 0, positions_with_capture = 0;
+  auto check_all = [&](const ThudState& state) {
+    int best = 0;
+    for (Action action : state.LegalActions()) best = std::max(best, state.Captures(action));
+    if (state.BestCapture() != best) {
+      SpielFatalError(absl::StrCat("BestCapture() is ", state.BestCapture(), ", the best move takes ",
+                                   best, " in\n", state.ToString()));
+    }
+    positions_with_capture += best > 0;
+    for (Action action : state.LegalActions()) {
+      std::unique_ptr<State> child = state.Child(action);
+      const auto& c = down_cast<const ThudState&>(*child);
+      const int taken = state.NumDwarfs() - c.NumDwarfs() + state.NumTrolls() - c.NumTrolls();
+      if (state.Captures(action) != taken) {
+        SpielFatalError(absl::StrCat("Captures(", Notation(Classify(state, action)), ") is ",
+                                     state.Captures(action), ", the move takes ", taken, " in\n",
+                                     state.ToString()));
+      }
+      ++moves;
+      capturing += taken > 0;
+      most = std::max(most, taken);
+    }
+  };
+  for (const auto& [diagram, status] : std::vector<std::pair<const char*, const char*>>{
+           {kInitial, "to_move=dwarfs"}, {kHurlLine, "to_move=dwarfs"},
+           {kShoveLine, "to_move=trolls"}, {kLongestShove, "to_move=trolls"},
+           {kShoveBorders, "to_move=trolls"}, {kStepOpen, "to_move=trolls"},
+           {kStepEdges, "to_move=trolls"}, {kTangled, "to_move=trolls"},
+           {kTangled, "to_move=dwarfs"}, {kLastTroll, "to_move=dwarfs"},
+           {kLastDwarfs, "to_move=trolls"}}) {
+    check_all(*FromDiagram(diagram, status));
+  }
+  // The largest: a capture step taking 7 dwarfs.
+  std::unique_ptr<ThudState> seven = FromDiagram(
+      Board({{3, 3, 'd'}, {3, 4, 'd'}, {3, 5, 'd'}, {4, 3, 'd'}, {4, 5, 'd'}, {5, 3, 'd'},
+             {5, 5, 'd'}, {5, 4, 'T'}, {10, 10, 'd'}}),
+      "to_move=trolls");
+  check_all(*seven);
+  std::mt19937 rng(41);
+  std::shared_ptr<const Game> game = Thud();
+  for (int g = 0; g < 12; ++g) {
+    std::unique_ptr<State> state = game->NewInitialState();
+    for (int ply = 0; !state->IsTerminal() && ply < 600; ++ply) {
+      const auto& s = down_cast<const ThudState&>(*state);
+      if (ply % 10 == 0) check_all(s);
+      std::vector<Action> legal = s.LegalActions(), captures;
+      for (Action a : legal) {
+        if (g % 2 == 1 && s.Captures(a) > 0) captures.push_back(a);
+      }
+      const std::vector<Action>& pool = captures.empty() ? legal : captures;
+      state->ApplyAction(pool[rng() % pool.size()]);
+    }
+  }
+  // A battle that is over: no capture.
+  std::unique_ptr<ThudState> over = FromDiagram(kNoTrolls, "to_move=trolls");
+  SPIEL_CHECK_TRUE(over->IsTerminal());
+  SPIEL_CHECK_EQ(over->BestCapture(), 0);
+  if (capturing < 100 || most != 7 || positions_with_capture < 20) {
+    SpielFatalError(absl::StrCat("Captures coverage: ", moves, " moves, ", capturing,
+                                 " capturing, at most ", most, " taken (7 required), ",
+                                 positions_with_capture, " positions with a capture"));
+  }
+}
+
 void TestOpenSpielGenericTests() {
   testing::LoadGameTest("thud");
   testing::NoChanceOutcomesTest(*Thud());
@@ -3000,5 +3069,6 @@ int main(int argc, char** argv) {
   thud::TestUndoEveryMoveKind();
   thud::TestUndoLimits();
   thud::TestUndoRandomGames();
+  thud::TestCaptures();
   thud::TestOpenSpielGenericTests();
 }
