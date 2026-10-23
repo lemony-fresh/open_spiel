@@ -1263,6 +1263,19 @@ counts and, on the dwarfs' positions, 70% the teacher's softmax over depth-2 sco
 tie across many moves. (The unseen positions' higher loss than the training data's, 4.068
 against 3.953, is their side mix: 62% dwarf positions against 50%.)
 
+**Arms for sharper targets** (2026-10-23; each from R251's buffer snapshot, 10 steps, against
+the main line's R261 at equal steps; 40 pairs, the reading fixed beforehand: a win needs
+the 95% interval above 0). R261 itself broke the main line's plateau: against R201 +16.98
+(+15.15 to +18.80, after +11.32, +11.18, +11.93), hexparrot:3 +42.9. **P (policy target
+pruning): no** — P261 against R261 −4.08 (−6.31 to −1.84; 9 won, 30 lost), and its targets
+no sharper (the dwarfs' entropy 4.345 against R's 4.330, the trolls' 3.158 against 3.160;
+the KL alike): pruning acts on the visits only, 30% of the dwarfs' targets, and the forced
+playouts it adds cost more than the clean-up gains. **The teacher's ties at depth 3**
+(`az_teacher_stats`, the same 60 positions of run R a side): the dwarfs' moves tied for its
+best score 39.3% of 241 (95) at depth 2, 33.7% (81) at depth 3; the trolls' 85.6% of 46 (39)
+against 55.9% (26) — depth 3 sharpens the trolls' teacher much more than the dwarfs'. Arm D3
+(the teacher at depth 3) runs; arm T (the ties shared by the search) follows.
+
 ## Review log
 
 **Review 1** (an adversarial reviewer agent, 2026-10-12, on draft 2; findings checked at
