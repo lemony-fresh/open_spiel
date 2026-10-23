@@ -1240,6 +1240,29 @@ window stays. The test leans towards today's window (arm A descends from it), an
 window drew its extra positions from the runs before the reset: what it shows is that those
 older positions hurt; a larger window of run R's own games stays open.
 
+**The fit test** (2026-10-21/22, `~/thud-runs/fit_test_2026-10-21.sh`; the user: why does run
+R stop fitting its own positions? From step 182 to 241 the trainer's policy loss on
+positions already trained on rose from 3.85 to 3.98 and fell to no lower than on new ones).
+From R241's buffer, 640 batches each (10 trainer steps' worth), scored on 44,090 positions of
+R241's own self-play that no arm trained on (R241 itself: policy 4.068, value 0.0271):
+going on as the trainer would (A) changes the policy loss by ±0.000 and the value by
+−0.0005; a fresh optimizer (A_f) alike; rates of 0.0003 and 0.001 make both worse (+0.009 and
++0.189 in policy), even on the training data; R241 grown to 96 x 4 (Net2Net) fits as A_f
+(+0.001 policy, +0.002 value at 0.0001); a fresh 64 x 4 after 3,000 batches ends worse
+(+0.037). By the reading fixed beforehand: capacity does not bind, the learning is not too
+gentle, lost plasticity costs no fit — R241 has learnt about what this data teaches at this
+size (640 batches is short for a grown network's new channels, so a large capacity gap is
+ruled out, a later benefit not). **Where the loss is:** the targets' own entropy
+(`az_forgetting`'s `target_entropy`, 2026-10-22) is 4.39 nats on the dwarfs' unseen
+positions — as spread as ~80 equally likely moves — and R241's loss 4.49: its KL divergence
+from the targets is 0.098, 2% of the loss; on the trolls' 3.13 (~23 moves) against 3.39, KL
+0.25, 8%; on the training data alike (0.094 and 0.281), so it generalises fully. The KL is an
+upper bound on what is left to learn (a search's visit counts vary from search to search).
+The policy targets, not the network, limit what the policy learns: 100 simulations' visit
+counts and, on the dwarfs' positions, 70% the teacher's softmax over depth-2 scores, which
+tie across many moves. (The unseen positions' higher loss than the training data's, 4.068
+against 3.953, is their side mix: 62% dwarf positions against 50%.)
+
 ## Review log
 
 **Review 1** (an adversarial reviewer agent, 2026-10-12, on draft 2; findings checked at

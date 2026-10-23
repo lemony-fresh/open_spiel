@@ -30,7 +30,12 @@
 // archive_dir takes the archives from another run, e.g. to compare a branch's networks
 // on the positions of the run it branched from.
 //
-// Prints one JSON line per archive, network and side.
+// Prints one JSON line per archive, network and side. Since 2026-10-22 each line also has
+// the targets' own entropy (`target_entropy`, the same for every network): the least
+// cross-entropy any network could reach on those targets, so policy_loss minus it — the
+// network's KL divergence from the targets — is at most what is left to learn (more, if
+// the targets are noisy: a search's visit counts vary from search to search, and no
+// network predicts the noise; thud/PLAN.md, the fit test of 2026-10-21).
 
 #include <algorithm>
 #include <cmath>
@@ -87,13 +92,28 @@ std::vector<VPNetModel::TrainInputs> Sample(const std::string& path, int sample,
 }
 
 struct Totals {
-  double value_error = 0, policy_loss = 0;
+  double value_error = 0, policy_loss = 0, target_entropy = 0;
   int top_agree = 0, count = 0;
 };
+
+// The entropy of a target distribution, in nats (0 log 0 = 0).
+double Entropy(const open_spiel::ActionsAndProbs& policy) {
+  double h = 0;
+  for (const auto& [action, p] : policy) {
+    if (p > 0) h -= p * std::log(p);
+  }
+  return h;
+}
 
 }  // namespace
 
 int main(int argc, char** argv) {
+  // Entropy's test, fatal: a certain move 0, four equal moves log 4, and a target that
+  // differs must differ (the control that the test can fail).
+  SPIEL_CHECK_LT(std::abs(Entropy({{7, 1.0}})), 1e-12);
+  SPIEL_CHECK_LT(std::abs(Entropy({{1, 0.25}, {2, 0.25}, {3, 0.25}, {4, 0.25}}) - std::log(4.0)),
+                 1e-12);
+  SPIEL_CHECK_GT(std::abs(Entropy({{1, 0.5}, {2, 0.5}}) - std::log(4.0)), 0.1);
   if (argc < 4) {
     std::cerr << "Usage: " << argv[0]
               << " RUN_DIR steps=S1,S2,... archives=A1,A2,... [sample=4096 seed=1]"
@@ -154,6 +174,7 @@ int main(int argc, char** argv) {
             loss -= target * std::log(std::max(predicted, 1e-12));
           }
           t.policy_loss += loss;
+          t.target_entropy += Entropy(p.policy);
           auto most = [](const open_spiel::ActionsAndProbs& v) {
             return std::max_element(v.begin(), v.end(), [](const auto& x, const auto& y) {
                      return x.second < y.second;
@@ -169,10 +190,10 @@ int main(int argc, char** argv) {
         std::cout << absl::StrFormat(
                          "{\"archive\": %d, \"network\": %d, \"side\": \"%s\", "
                          "\"positions\": %d, \"value_error\": %.4f, \"policy_loss\": %.4f, "
-                         "\"top_move_agrees\": %.3f}",
+                         "\"target_entropy\": %.4f, \"top_move_agrees\": %.3f}",
                          archives[a], step, s == 0 ? "dwarfs" : "trolls", t.count,
                          t.value_error / t.count, t.policy_loss / t.count,
-                         static_cast<double>(t.top_agree) / t.count)
+                         t.target_entropy / t.count, static_cast<double>(t.top_agree) / t.count)
                   << std::endl;
       }
     }
