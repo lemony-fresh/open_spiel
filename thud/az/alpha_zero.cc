@@ -30,6 +30,7 @@
 #include <fstream>
 #include <iostream>
 #include <limits>
+#include <map>
 #include <memory>
 #include <random>
 #include <string>
@@ -184,7 +185,7 @@ Trajectory PlayGame(Logger* logger, int game_num, const open_spiel::Game& game,
                     double teacher_temperature,
                     const std::vector<double>& teacher_weights,
                     std::vector<std::unique_ptr<MCTSBot>>* fast_bots,
-                    double full_share) {
+                    double full_share, bool teacher_ties_by_search) {
   std::unique_ptr<open_spiel::State> state = game.NewInitialState();
   std::vector<std::string> history;
   Trajectory trajectory;
@@ -256,9 +257,12 @@ Trajectory PlayGame(Logger* logger, int game_num, const open_spiel::Game& game,
                                   : teacher_weight;
         if (teacher != nullptr && weight > 0) {
           std::unordered_map<open_spiel::Action, double> taught;
-          for (const auto& [a, p] : TeacherPolicy(*state, *teacher, teacher_temperature)) {
-            taught[a] = p;
+          open_spiel::ActionsAndProbs teacher_policy =
+              TeacherPolicy(*state, *teacher, teacher_temperature);
+          if (teacher_ties_by_search) {  // Our change: kickstart_ties=search.
+            teacher_policy = TeacherTiesBySearch(teacher_policy, target);
           }
+          for (const auto& [a, p] : teacher_policy) taught[a] = p;
           for (auto& [a, p] : target) {
             p = (1 - weight) * p + weight * taught[a];
           }
@@ -339,6 +343,28 @@ std::vector<double> PerPlayerValues(const std::string& list) {
     values.push_back(value);
   }
   return values;
+}
+
+open_spiel::ActionsAndProbs TeacherTiesBySearch(const open_spiel::ActionsAndProbs& teacher,
+                                                const open_spiel::ActionsAndProbs& visits) {
+  std::unordered_map<open_spiel::Action, double> visited;
+  for (const auto& [a, v] : visits) visited[a] = v;
+  // Per group (keyed by the teacher's probability): its total and its visits.
+  std::map<double, std::pair<double, double>> groups;
+  std::map<double, int> sizes;
+  for (const auto& [a, p] : teacher) {
+    groups[p].first += p;
+    groups[p].second += visited[a];
+    ++sizes[p];
+  }
+  open_spiel::ActionsAndProbs shared;
+  shared.reserve(teacher.size());
+  for (const auto& [a, p] : teacher) {
+    const auto& [total, group_visits] = groups[p];
+    shared.emplace_back(a, group_visits > 0 ? total * visited[a] / group_visits
+                                            : total / sizes[p]);
+  }
+  return shared;
 }
 
 open_spiel::ActionsAndProbs TeacherPolicy(const open_spiel::State& state,
@@ -508,9 +534,11 @@ void actor(const open_spiel::Game& game, const AlphaZeroConfig& config, int num,
   const std::vector<double> kickstart_weights = KickstartWeights(config);
   if (kickstart_weights[0] > 0 || kickstart_weights[1] > 0) {
     teacher = std::make_unique<AlphaBetaPlayer>(game, config.kickstart_depth);
-    logger->Print("Kickstarting: weight %g (per player %g, %g), depth %d, temperature %g",
+    logger->Print("Kickstarting: weight %g (per player %g, %g), depth %d, temperature %g, "
+                  "ties %s",
                   config.kickstart_weight, kickstart_weights[0], kickstart_weights[1],
-                  config.kickstart_depth, config.kickstart_temperature);
+                  config.kickstart_depth, config.kickstart_temperature,
+                  config.kickstart_ties.c_str());
   }
   for (int game_num = 1; !stop->StopRequested(); ++game_num) {
     double cutoff =
@@ -531,7 +559,7 @@ void actor(const open_spiel::Game& game, const AlphaZeroConfig& config, int num,
                                                         : alphabeta[opponent].get(),
                  opponent, teacher.get(), config.kickstart_weight,
                  config.kickstart_temperature, kickstart_weights, &fast_bots,
-                 config.playout_cap_full_share);
+                 config.playout_cap_full_share, config.kickstart_ties == "search");
     positions += trajectory.states.size();
     if (opponent != open_spiel::kInvalidPlayer) {
       alphabeta_positions += trajectory.states.size();

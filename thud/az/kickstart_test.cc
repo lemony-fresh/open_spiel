@@ -37,6 +37,13 @@
 //      from the single weight.
 //   5. Cost, with `cost=1` only (a measurement, not a test, and the slowest part):
 //      Scores at depths 2 and 3 on self-play-like positions, printed.
+//   6. The teacher's ties shared by the search (kickstart_ties=search, 2026-10-23):
+//      TeacherTiesBySearch by hand — a tied group's total shared by the visits within
+//      it, evenly where none, single moves and the groups' totals unchanged, the result
+//      summing to 1 (the control: it differs from the teacher's) — and in PlayGame: the
+//      same moves played, every target (1 - w) x the visits + w x TeacherTiesBySearch of
+//      TeacherPolicy and the visits, exactly (the control: some target differs from the
+//      even ties'); the setting round-trips, an older config.json loads "even" (part 4).
 //
 //   thud/run_tests.sh kickstart_test   # builds and runs it
 //   build-tests/bin/kickstart_test
@@ -87,7 +94,7 @@ class StandIn : public open_spiel::thud_az::Evaluator {
 };
 
 Trajectory Play(const open_spiel::Game& game, const AlphaBetaPlayer* teacher, double weight,
-                const std::vector<double>& weights = {}) {
+                const std::vector<double>& weights = {}, bool ties_by_search = false) {
   auto evaluator = std::make_shared<StandIn>();
   std::vector<std::unique_ptr<MCTSBot>> bots;
   for (int p = 0; p < 2; ++p) {
@@ -100,7 +107,7 @@ Trajectory Play(const open_spiel::Game& game, const AlphaBetaPlayer* teacher, do
   return PlayGame(&logger, 1, game, &bots, &rng, /*temperature=*/1, /*temperature_drop=*/10,
                   /*cutoff_value=*/2, false, nullptr, 0, 2, nullptr,
                   open_spiel::kInvalidPlayer, teacher, weight, /*teacher_temperature=*/1,
-                  weights);
+                  weights, /*fast_bots=*/nullptr, /*full_share=*/1, ties_by_search);
 }
 
 const char* kRows =
@@ -257,6 +264,65 @@ int main(int argc, char** argv) {
     Check(trolls_as_single, "3. every troll position's target is the single weight's");
   }
 
+  // 6. The teacher's ties shared by the search.
+  {
+    using open_spiel::ActionsAndProbs;
+    using open_spiel::thud_az::torch_az::TeacherTiesBySearch;
+    auto near = [](const ActionsAndProbs& got, const ActionsAndProbs& want) {
+      bool ok = got.size() == want.size();
+      double sum = 0;
+      for (size_t i = 0; ok && i < got.size(); ++i) {
+        ok = got[i].first == want[i].first && std::abs(got[i].second - want[i].second) < 1e-12;
+        sum += got[i].second;
+      }
+      return ok && std::abs(sum - 1) < 1e-12;
+    };
+    // A group of three (0.3 each) and a single move: the group's 0.9 by its visits 0.5,
+    // 0, 0.25; the single move keeps 0.1.
+    const ActionsAndProbs teacher1 = {{1, 0.3}, {2, 0.3}, {3, 0.3}, {4, 0.1}};
+    const ActionsAndProbs visits1 = {{1, 0.5}, {2, 0}, {3, 0.25}, {4, 0.25}};
+    const ActionsAndProbs shared1 = TeacherTiesBySearch(teacher1, visits1);
+    // A group the search left unvisited stays even; another is shared by its visits.
+    const ActionsAndProbs teacher2 = {{1, 0.2}, {2, 0.2}, {3, 0.3}, {4, 0.3}};
+    const ActionsAndProbs visits2 = {{1, 0}, {2, 0}, {3, 0.9}, {4, 0.1}};
+    const ActionsAndProbs shared2 = TeacherTiesBySearch(teacher2, visits2);
+    Check(near(shared1, {{1, 0.6}, {2, 0}, {3, 0.3}, {4, 0.1}}) &&
+              near(shared2, {{1, 0.2}, {2, 0.2}, {3, 0.54}, {4, 0.06}}) &&
+              !near(shared1, teacher1),
+          "6. TeacherTiesBySearch: a group's total shared by its visits, evenly where none, "
+          "single moves kept, summing to 1 (control: it differs from the teacher)");
+    // In PlayGame.
+    const double w = 0.3;
+    const Trajectory none = Play(*game, nullptr, 0);
+    const Trajectory even = Play(*game, &depth2, w);
+    const Trajectory searched = Play(*game, &depth2, w, {}, /*ties_by_search=*/true);
+    bool same_moves = none.states.size() == searched.states.size();
+    for (int i = 0; same_moves && i < none.states.size(); ++i) {
+      same_moves = none.states[i].action == searched.states[i].action;
+    }
+    bool exact = same_moves, differ = false;
+    std::unique_ptr<State> state = game->NewInitialState();
+    for (int i = 0; exact && i < none.states.size(); ++i) {
+      std::map<Action, double> taught;
+      for (const auto& [a, p] :
+           TeacherTiesBySearch(TeacherPolicy(*state, depth2, 1), none.states[i].policy)) {
+        taught[a] = p;
+      }
+      for (int j = 0; j < none.states[i].policy.size(); ++j) {
+        const auto& [a, v] = none.states[i].policy[j];
+        const double got = searched.states[i].policy[j].second;
+        exact = exact && searched.states[i].policy[j].first == a &&
+                std::abs(got - ((1 - w) * v + w * taught[a])) < 1e-12;
+        differ = differ || std::abs(got - even.states[i].policy[j].second) > 1e-9;
+      }
+      state->ApplyAction(none.states[i].action);
+    }
+    Check(same_moves, "6. with the ties shared by the search the same moves are played");
+    Check(exact && differ,
+          "6. every target is 0.7 x the visits + 0.3 x TeacherTiesBySearch(TeacherPolicy, "
+          "the visits) (control: some differ from the even ties')");
+  }
+
   // 4. The configuration.
   {
     AlphaZeroConfig c;
@@ -274,17 +340,20 @@ int main(int argc, char** argv) {
         {"actors", 1}, {"evaluators", 1}, {"eval_levels", 1}, {"max_steps", 0}};
     c.FromJson(j);
     const bool old_ok = c.kickstart_weight == 0 && c.kickstart_depth == 2 &&
-                        c.kickstart_temperature == 1 && c.player_kickstart_weight.empty();
+                        c.kickstart_temperature == 1 && c.player_kickstart_weight.empty() &&
+                        c.kickstart_ties == "even";
     c.kickstart_weight = 0.3;
     c.kickstart_depth = 3;
     c.kickstart_temperature = 0.5;
     c.player_kickstart_weight = "0.7";
+    c.kickstart_ties = "search";
     AlphaZeroConfig back;
     back.FromJson(c.ToJson());
     Check(old_ok && back.kickstart_weight == 0.3 && back.kickstart_depth == 3 &&
-              back.kickstart_temperature == 0.5 && back.player_kickstart_weight == "0.7",
+              back.kickstart_temperature == 0.5 && back.player_kickstart_weight == "0.7" &&
+              back.kickstart_ties == "search",
           "4. the settings round-trip; an older config.json loads with weight 0, depth 2, "
-          "temperature 1, no weights per player");
+          "temperature 1, no weights per player, even ties");
     const std::vector<double> filled = open_spiel::thud_az::torch_az::KickstartWeights(back);
     back.player_kickstart_weight = "";
     const std::vector<double> single = open_spiel::thud_az::torch_az::KickstartWeights(back);

@@ -154,6 +154,11 @@ struct AlphaZeroConfig {
   double kickstart_weight;
   int kickstart_depth;
   double kickstart_temperature;
+  // Added (2026-10-23; thud/DESIGN_dwarf_signal.md §10, the fit test: the dwarfs' targets
+  // spread over ~80 moves, mostly the teacher's ties): how the teacher shares a group of
+  // moves with the same score — "even" (the softmax's, as before) or "search" (the group's
+  // total shared by the search's visits within it; TeacherTiesBySearch).
+  std::string kickstart_ties = "even";
   // Added (thud/DESIGN_dwarf_signal.md, approach D1; 2026-10-13): kickstart weights per
   // player, comma-separated values indexed by the player to move (PerPlayerValues;
   // "0.7,0.3": the dwarfs' positions 0.7, the trolls' 0.3); empty or a missing second
@@ -218,6 +223,7 @@ struct AlphaZeroConfig {
         {"player_kickstart_weight", player_kickstart_weight},
         {"kickstart_depth", kickstart_depth},
         {"kickstart_temperature", kickstart_temperature},
+        {"kickstart_ties", kickstart_ties},
         {"temperature", temperature},
         {"temperature_drop", temperature_drop},
         {"cutoff_probability", cutoff_probability},
@@ -337,6 +343,9 @@ struct AlphaZeroConfig {
     kickstart_temperature = config_json.count("kickstart_temperature")
                                 ? config_json.at("kickstart_temperature").GetDouble()
                                 : 1;
+    kickstart_ties = config_json.count("kickstart_ties")
+                         ? config_json.at("kickstart_ties").GetString()
+                         : "even";
     temperature = config_json.at("temperature").GetDouble();
     temperature_drop = config_json.at("temperature_drop").GetDouble();
     cutoff_probability = config_json.at("cutoff_probability").GetDouble();
@@ -412,7 +421,7 @@ Trajectory PlayGame(open_spiel::Logger* logger, int game_num, const open_spiel::
                     double teacher_temperature = 1,
                     const std::vector<double>& teacher_weights = {},
                     std::vector<std::unique_ptr<MCTSBot>>* fast_bots = nullptr,
-                    double full_share = 1);
+                    double full_share = 1, bool teacher_ties_by_search = false);
 
 // Added (playout cap randomisation): the fast searches' bots, one per player — the
 // trainer's search with playout_cap_fast_simulations, no root noise and no forced
@@ -426,6 +435,15 @@ std::vector<std::unique_ptr<MCTSBot>> FastBots(const AlphaZeroConfig& config,
 open_spiel::ActionsAndProbs TeacherPolicy(const open_spiel::State& state,
                                           const AlphaBetaPlayer& teacher,
                                           double temperature);
+
+// Added (kickstart_ties=search, 2026-10-23): `teacher` with its ties shared by the search —
+// each group of moves the teacher gives exactly the same probability (the same score:
+// the softmax of equal numbers) keeps the group's total, shared in proportion to
+// `visits` (the search's target, over the same moves) within it, or evenly, as before,
+// where the search visited none of them. The groups' totals, so the teacher's verdict
+// between scores, are unchanged.
+open_spiel::ActionsAndProbs TeacherTiesBySearch(const open_spiel::ActionsAndProbs& teacher,
+                                                const open_spiel::ActionsAndProbs& visits);
 
 // Added: the search the trainer uses — for self-play when player >= 0 (that
 // player's simulations and the policy temperatures), for evaluation games when

@@ -20,7 +20,8 @@
 #   1. A fresh run with every feature of ours on at once — two copies of the network
 #      (--devices=/cpu:0,/cpu:0) with upstream's --explicit_learning, batched inference, symmetry augmentation, policy target
 #      pruning, two learner batches a step, games against alpha-beta (depth 1 for both
-#      sides), kickstarting per player (0.7, 0.3; depth 1), root noise per player (off
+#      sides), kickstarting per player (0.7, 0.3; depth 1; the teacher's ties shared by
+#      the search, 2026-10-23), root noise per player (off
 #      at the dwarfs' roots), simulations and policy temperatures per player, a
 #      learning-rate warm-up and schedule, a value-loss weight of 2, playout caps (half
 #      the moves in full), mixed-precision inference (2026-10-19), the learner's own
@@ -126,7 +127,7 @@ steps() { python3 -c "import json,sys; print(' '.join(str(json.loads(l)['step'])
   --train_batch_size=64 --learner_batches=2 --checkpoint_freq=1 --max_steps=2 \
   --symmetry_augmentation --policy_target_pruning --alphabeta_share=0.5 \
   --alphabeta_depth=1,1 --kickstart_weight=0.3 --player_kickstart_weight=0.7,0.3 \
-  --kickstart_depth=1 --player_policy_epsilon=0,0.25 --untried_move_value=sibling_mean_minus_reduction \
+  --kickstart_depth=1 --kickstart_ties=search --player_policy_epsilon=0,0.25 --untried_move_value=sibling_mean_minus_reduction \
   --lr_warmup_steps=2 --lr_schedule=3:0.5 --value_loss_weight=2 --inference_precision=mixed \
   --playout_cap_full_share=0.5 --playout_cap_fast_simulations=4 --learner_threads=3 \
   > "$tmp/fresh.log" 2>&1
@@ -173,7 +174,7 @@ want = {"devices": "/cpu:0,/cpu:0", "explicit_learning": True, "learner_batches"
         "player_simulations": "8,6", "nn_width": 8, "nn_depth": 1, "lr_warmup_steps": 2,
         "lr_schedule": "3:0.5", "value_loss_weight": 2, "playout_cap_full_share": 0.5,
         "playout_cap_fast_simulations": 4, "inference_precision": "mixed",
-        "learner_threads": 3}
+        "learner_threads": 3, "kickstart_ties": "search"}
 bad = {k: (c.get(k), v) for k, v in want.items() if c.get(k) != v}
 if bad: print(bad)
 sys.exit(1 if bad else 0)
@@ -195,7 +196,7 @@ EOF
 check "1. the learner's thread count 3, the inference thread's OMP_NUM_THREADS 2" \
   thread_counts "$run/learner.jsonl" 1 3 2
 check "1. the actors log the kickstarting settings" \
-  grep -q "Kickstarting: weight 0.3 (per player 0.7, 0.3), depth 1" "$run/log-actor-0.txt"
+  grep -q "Kickstarting: weight 0.3 (per player 0.7, 0.3), depth 1, temperature 1, ties search" "$run/log-actor-0.txt"
 check "1. the actors log the playout caps" \
   grep -q "Playout caps: a full search on 0.5 of the moves, else 4 simulations" "$run/log-actor-0.txt"
 

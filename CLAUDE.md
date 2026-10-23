@@ -327,6 +327,9 @@ and `--replay_buffer_start_size` (2026-10-04), `--player_policy_temperature` and
 as `vs_alphabeta`), `--kickstart_weight`, `--kickstart_depth` and
 `--kickstart_temperature` (2026-10-08: each recorded position's policy target mixed with
 a softmax of alpha-beta's move scores, a teacher; actors log the settings),
+`--kickstart_ties=even|search` (2026-10-23: `search` shares each group of moves the teacher
+scores alike by the search's visits within it, the groups' totals unchanged; `even`, the
+default, as before),
 `--player_kickstart_weight` and `--player_policy_alpha` / `--player_policy_epsilon`
 (2026-10-13: the teacher's weight and the root noise per player to move; empty: as
 before; built as `az_trainer_d1`), `--lr_warmup_steps`, `--lr_warmup_start`,
