@@ -72,8 +72,11 @@ class AlphaBetaPlayer {
   // tie-break: a teacher's scores are the same every time. In LegalActions() order.
   std::vector<double> Scores(const State& state) const {
     // Since 2026-10-23 MaterialSearch (material_search.h: the same values, its moves
-    // ordered and its frontier counted without applying moves).
-    return MaterialSearch().Scores(state, depth_);
+    // ordered and its frontier counted without applying moves), with its transposition
+    // table: one a thread, kept from call to call.
+    thread_local MaterialSearch search(Evaluation::kMaterial, /*captures_first=*/true,
+                                       /*killers=*/true, MaterialSearch::kTeacherTableBits);
+    return search.Scores(state, depth_);
   }
 
  private:

@@ -19,6 +19,7 @@
 #include <array>
 #include <cmath>
 #include <cstdint>
+#include <cstdlib>
 #include <memory>
 #include <utility>
 #include <vector>
@@ -58,12 +59,36 @@ enum class Evaluation { kMaterial };
 //
 // Above the frontier, moves are tried captures first (the largest gain first) if
 // `captures_first`, then the killer moves of that depth (the last two quiet moves that cut
-// off there) if `killers`, then in the game's order.
+// off there) if `killers`, then in the game's order — after the transposition table's move.
+//
+// The transposition table (2026-10-23; the user: depth 5 needs it), if `table_bits` > 0:
+// 2^table_bits entries of 16 bytes, one a slot, the newest kept, for the nodes above the
+// frontier, kept from one Scores() to the next (a game's next position shares much of the
+// last one's tree). A node's entry holds its value — exact, or the bound a cut-off gave —
+// the depth it was searched to, and its best move. The value cuts the search off only when
+// the entry was searched to exactly the node's depth: the scores stay exactly those of a
+// search to `depth` (a deeper entry would make them deeper ones). Its move goes first at
+// any depth. The key is the board's hash (ThudState::BoardHash) and, only where a battle
+// limit can be reached inside the node's search — its turn counter plus the depth left at
+// the turn limit, or its no-capture counter plus that at the no-capture limit — the two
+// counters and the two limits too: elsewhere the counters cannot change the value (the user:
+// quantise them to "far" and "near"), so positions that differ only there share an entry.
+// A false match needs two positions with one 64-bit hash: ~2^-46 a probe at 2^18 entries.
 class MaterialSearch {
  public:
+  // The teacher's table (AlphaBetaPlayer::Scores, one a thread): 4 MB.
+  static constexpr int kTeacherTableBits = 18;
+
   explicit MaterialSearch(Evaluation evaluation = Evaluation::kMaterial,
-                          bool captures_first = true, bool killers = true)
-      : evaluation_(evaluation), captures_first_(captures_first), killers_on_(killers) {}
+                          bool captures_first = true, bool killers = true, int table_bits = 0)
+      : evaluation_(evaluation), captures_first_(captures_first), killers_on_(killers) {
+    SPIEL_CHECK_GE(table_bits, 0);
+    SPIEL_CHECK_LE(table_bits, 28);
+    if (table_bits > 0) {
+      table_.resize(size_t{1} << table_bits);
+      table_mask_ = table_.size() - 1;
+    }
+  }
 
   // Every legal action's value, in points for the side to move at `state`, searched
   // `depth` plies (the move itself the first): the material after the move at depth 1, after
@@ -74,6 +99,9 @@ class MaterialSearch {
     std::unique_ptr<State> copy = state.Clone();
     auto& s = down_cast<thud::ThudState&>(*copy);
     const Player me = s.CurrentPlayer();
+    const auto& game = down_cast<const thud::ThudGame&>(*s.GetGame());
+    max_turns_ = game.max_turns();
+    max_turns_without_capture_ = game.max_turns_without_capture();
     for (auto& k : killer_moves_) k = {kInvalidAction, kInvalidAction};
     std::vector<double> scores;
     for (Action action : s.LegalActions()) {
@@ -87,13 +115,65 @@ class MaterialSearch {
     return scores;
   }
 
-  // Nodes visited since the last ResetNodes(), for measurements.
+  // The value of `state` for the side to move, searched `depth` plies (>= 1) with the window
+  // (alpha, beta), fail-soft: a value at most alpha says the true one is at most it, one at
+  // least beta that it is at least it, one in between is exact. For tests of the table's
+  // bounds (teacher_identity_test, 6e).
+  int Value(const State& state, int depth, int alpha, int beta) {
+    SPIEL_CHECK_GE(depth, 1);
+    SPIEL_CHECK_LT(depth, kMaxDepth);
+    SPIEL_CHECK_LT(alpha, beta);
+    std::unique_ptr<State> copy = state.Clone();
+    auto& s = down_cast<thud::ThudState&>(*copy);
+    const auto& game = down_cast<const thud::ThudGame&>(*s.GetGame());
+    max_turns_ = game.max_turns();
+    max_turns_without_capture_ = game.max_turns_without_capture();
+    for (auto& k : killer_moves_) k = {kInvalidAction, kInvalidAction};
+    return Search(&s, depth, alpha, beta, s.CurrentPlayer());
+  }
+
+  // Nodes visited, and nodes the table's value ended, since the last ResetNodes(), for
+  // measurements and tests.
   int64_t nodes() const { return nodes_; }
-  void ResetNodes() { nodes_ = 0; }
+  int64_t table_cutoffs() const { return table_cutoffs_; }
+  void ResetNodes() { nodes_ = table_cutoffs_ = 0; }
 
  private:
   static constexpr int kInfinity = 1 << 20;
   static constexpr int kMaxDepth = 16;
+
+  // A table entry. `depth` 0: empty. Values are points (|value| <= 32 + 4 x 8), actions below
+  // 19,800: 16 bits each.
+  enum Bound : uint8_t { kExact, kLower, kUpper };
+  struct Entry {
+    uint64_t key = 0;
+    int16_t value = 0;
+    int16_t move = -1;
+    int8_t depth = 0;
+    Bound bound = kExact;
+  };
+  static_assert(sizeof(Entry) == 16, "an entry is 16 bytes");
+
+  // The node's key: the board's hash, and near a battle limit the counters and the limits.
+  uint64_t Key(const thud::ThudState& s, int depth) const {
+    const uint64_t hash = s.BoardHash();
+    if (s.TurnsPlayed() + depth < max_turns_ &&
+        s.TurnsWithoutCapture() + depth < max_turns_without_capture_) {
+      return hash;
+    }
+    uint64_t near = Mix(s.TurnsPlayed());
+    near = Mix(near ^ s.TurnsWithoutCapture());
+    near = Mix(near ^ max_turns_);
+    near = Mix(near ^ max_turns_without_capture_);
+    return hash ^ near;
+  }
+  // splitmix64's finaliser: every bit of `x` moves about half the bits of the result.
+  static uint64_t Mix(uint64_t x) {
+    x += 0x9e3779b97f4a7c15ULL;
+    x = (x ^ (x >> 30)) * 0xbf58476d1ce4e5b9ULL;
+    x = (x ^ (x >> 27)) * 0x94d049bb133111ebULL;
+    return x ^ (x >> 31);
+  }
 
   // The leaves' score in points from `me`'s view: the only place an evaluation is chosen.
   int Evaluate(const thud::ThudState& s, Player me) const {
@@ -127,15 +207,36 @@ class MaterialSearch {
 #endif
       return value;
     }
+    Entry* entry = nullptr;
+    uint64_t key = 0;
+    Action table_move = kInvalidAction;
+    if (!table_.empty()) {
+      key = Key(*s, depth);
+      entry = &table_[key & table_mask_];
+      if (entry->depth > 0 && entry->key == key) {
+        table_move = entry->move;
+        if (entry->depth == depth &&
+            (entry->bound == kExact || (entry->bound == kLower && entry->value >= beta) ||
+             (entry->bound == kUpper && entry->value <= alpha))) {
+          ++table_cutoffs_;
+          return entry->value;
+        }
+      }
+    }
+    const int alpha_before = alpha;
     std::vector<Action> moves = s->LegalActions();
     SPIEL_DCHECK_FALSE(moves.empty());  // A battle not over always has a move.
-    Order(*s, depth, me, &moves);
+    Order(*s, depth, me, table_move, &moves);
     int best = -kInfinity;
+    Action best_move = kInvalidAction;
     for (Action action : moves) {
       s->ApplyAction(action);
       const int value = -Search(s, depth - 1, -beta, -alpha, 1 - me);
       s->UndoAction(me, action);
-      if (value > best) best = value;
+      if (value > best) {
+        best = value;
+        best_move = action;
+      }
       if (best > alpha) alpha = best;
       if (alpha >= beta) {
         if (killers_on_ && s->Captures(action) == 0) {
@@ -144,6 +245,13 @@ class MaterialSearch {
         }
         break;
       }
+    }
+    if (entry != nullptr) {  // Fail-soft: below the window an upper bound, above it a lower.
+      SPIEL_DCHECK_LT(best_move, 1 << 15);
+      SPIEL_DCHECK_LE(std::abs(best), 1 << 14);
+      *entry = {key, static_cast<int16_t>(best), static_cast<int16_t>(best_move),
+                static_cast<int8_t>(depth),
+                best <= alpha_before ? kUpper : best >= beta ? kLower : kExact};
     }
     return best;
   }
@@ -167,28 +275,52 @@ class MaterialSearch {
   int64_t frontier_checks_ = 0;
 #endif
 
-  // Captures first, the largest gain first; then the killers; then the rest, as listed.
-  void Order(const thud::ThudState& s, int depth, Player me, std::vector<Action>* moves) {
-    if (!captures_first_ && !killers_on_) return;
+  // The table's move first (`first`, if it is among the moves); then captures, the
+  // largest gain first; then the killers; then the rest, as listed — the order a stable sort
+  // of all the moves by priority gives, but only the few moves above priority 0 are sorted
+  // (a profile at depth 5, 2026-10-23: the full sort was a quarter of the time).
+  void Order(const thud::ThudState& s, int depth, Player me, Action first,
+             std::vector<Action>* moves) {
+    if (!captures_first_ && !killers_on_ && first == kInvalidAction) return;
     const int worth = me == thud::kDwarfPlayer ? thud::kTrollValue : thud::kDwarfValue;
-    std::vector<std::pair<int, Action>> keyed;  // (priority, action), larger first.
-    keyed.reserve(moves->size());
+    ranked_.clear();  // (priority, index) of the moves above priority 0.
     const auto& k = killer_moves_[depth];
-    for (Action action : *moves) {
+    for (size_t i = 0; i < moves->size(); ++i) {
+      const Action action = (*moves)[i];
       int priority = 0;
-      if (captures_first_) priority = 1000 * s.Captures(action) * worth;
-      if (priority == 0 && killers_on_) priority = action == k[0] ? 2 : action == k[1] ? 1 : 0;
-      keyed.push_back({priority, action});
+      if (action == first) {
+        priority = 1 << 24;  // Above any capture's 1000 x 7 x 4.
+      } else {
+        if (captures_first_) priority = 1000 * s.Captures(action) * worth;
+        if (priority == 0 && killers_on_) {
+          priority = action == k[0] ? 2 : action == k[1] ? 1 : 0;
+        }
+      }
+      if (priority > 0) ranked_.push_back({priority, static_cast<int>(i)});
     }
-    std::stable_sort(keyed.begin(), keyed.end(),
+    if (ranked_.empty()) return;
+    std::stable_sort(ranked_.begin(), ranked_.end(),
                      [](const auto& a, const auto& b) { return a.first > b.first; });
-    for (size_t i = 0; i < moves->size(); ++i) (*moves)[i] = keyed[i].second;
+    unordered_.assign(moves->begin(), moves->end());
+    size_t out = 0;
+    for (const auto& [priority, i] : ranked_) {
+      (*moves)[out++] = unordered_[i];
+      unordered_[i] = kInvalidAction;  // Placed.
+    }
+    for (Action action : unordered_) {
+      if (action != kInvalidAction) (*moves)[out++] = action;
+    }
   }
 
   const Evaluation evaluation_;
   const bool captures_first_, killers_on_;
   std::array<std::array<Action, 2>, kMaxDepth> killer_moves_{};
-  int64_t nodes_ = 0;
+  std::vector<std::pair<int, int>> ranked_;  // Order()'s, reused (no recursion inside it).
+  std::vector<Action> unordered_;
+  std::vector<Entry> table_;
+  uint64_t table_mask_ = 0;
+  int max_turns_ = 0, max_turns_without_capture_ = 0;  // The game's, set by Scores().
+  int64_t nodes_ = 0, table_cutoffs_ = 0;
 };
 
 }  // namespace thud_az

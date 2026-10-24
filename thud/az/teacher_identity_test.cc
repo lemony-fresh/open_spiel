@@ -35,14 +35,35 @@
 //      positions copied with the no-capture counter 1, 2 and 3 turns short of its limit and
 //      the turn counter 1 and 2 short of its, at depth 3 (and 4 with `deep`) — every one of
 //      those searches reaching the limits checked to end a battle (the control that they do).
-//   In these builds (assertions on) MaterialSearch also checks every 16th frontier node
-//   against a full search of it (material_search.h).
+//   6. (2026-10-23) MaterialSearch's transposition table: (a) at depth 3 on the first 30
+//      positions (and 4 on 8 with `deep`) equal to OpenSpiel's alpha-beta with a fresh table a
+//      position and with one table shared by all, of 2^16 entries and of 16 (slots shared and
+//      overwritten all the time), and the table ending some nodes (the control that it is
+//      used); (b) depths 4, 3, 2, 3, 4 in turn on one table, 6 positions, equal to the search
+//      without one (the control: depth 4's scores differ from depth 3's somewhere, so a deeper
+//      entry used in a shallower search would show); (c) each of 8 positions searched with
+//      its own counters, then copied 1-3 turns short of the no-capture limit and 1-2 short of
+//      the turn limit, on one table, in the training's game (no-capture limit 100; with
+//      `deep` the default game too), equal to OpenSpiel's alpha-beta (the control: near the
+//      limits the scores differ from the far copy's somewhere, so a key without the counters
+//      would reuse wrong entries); (d) with `deep`, depth 5 on 6 positions, where
+//      transpositions meet inside a search, the table against none (the control: the table
+//      ends nodes there). The sides alternate, so
+//      a transposition needs two moves by one side, 3 plies down: inside one search the table
+//      meets them only from depth 5 on; at depths 3 and 4 its values end nodes only when a
+//      position comes again (a: each searched twice). (e) The table's bounds: 20 positions
+//      each searched with 40 random windows on one table, every result checked by the
+//      fail-soft rule against the exact value (the control: windows below, above and around
+//      it).
+//   The parts above call AlphaBetaPlayer::Scores, so its table (one a thread, kept from call
+//   to call) is under test there too. In these builds (assertions on) MaterialSearch also
+//   checks every 16th frontier node against a full search of it (material_search.h).
 //
 // Prints PASS or FAIL per part, then ALL PASSED or the count of failures; exits non-zero on
 // a failure. `teacher_identity_test profile [DEPTH] [ROUNDS]` instead runs only the new
 // Scores at DEPTH (default 2) on the positions, ROUNDS times over (default 5), for a
 // profiler (perf record) or a timing, per side to move, and then each of MaterialSearch's
-// orderings once: its time and nodes a position.
+// orderings once, without and with the table: its time and nodes a position.
 
 #include <algorithm>
 #include <chrono>  // NOLINT
@@ -51,6 +72,7 @@
 #include <memory>
 #include <random>
 #include <string>
+#include <tuple>
 #include <vector>
 
 #include "open_spiel/abseil-cpp/absl/strings/match.h"
@@ -204,14 +226,17 @@ int main(int argc, char** argv) {
   if (profile) {
     const int depth = argc > 2 ? std::stoi(argv[2]) : 2;
     const int rounds = argc > 3 ? std::stoi(argv[3]) : 5;
-    const AlphaBetaPlayer teacher(*game, depth);
     double seconds[2] = {0, 0};
     int count[2] = {0, 0};
     for (int round = 0; round < rounds; ++round) {
+      // A fresh table each round: the rounds repeat the positions.
+      open_spiel::thud_az::MaterialSearch teacher(
+          open_spiel::thud_az::Evaluation::kMaterial, true, true,
+          open_spiel::thud_az::MaterialSearch::kTeacherTableBits);
       for (const auto& s : positions) {
         if (s->IsTerminal()) continue;
         const auto t0 = std::chrono::steady_clock::now();
-        teacher.Scores(*s);
+        teacher.Scores(*s, depth);
         seconds[s->CurrentPlayer()] += Seconds(t0);
         ++count[s->CurrentPlayer()];
       }
@@ -221,11 +246,12 @@ int main(int argc, char** argv) {
                                  depth, rounds, 1000 * seconds[0] / std::max(count[0], 1),
                                  count[0], 1000 * seconds[1] / std::max(count[1], 1), count[1])
               << std::endl;
-    for (const auto& [captures, killers] :
-         std::vector<std::pair<bool, bool>>{{false, false}, {true, false}, {false, true},
-                                            {true, true}}) {
+    for (const auto& [captures, killers, bits] :
+         std::vector<std::tuple<bool, bool, int>>{
+             {false, false, 0}, {true, false, 0}, {false, true, 0}, {true, true, 0},
+             {true, true, open_spiel::thud_az::MaterialSearch::kTeacherTableBits}}) {
       open_spiel::thud_az::MaterialSearch search(open_spiel::thud_az::Evaluation::kMaterial,
-                                                 captures, killers);
+                                                 captures, killers, bits);
       double t[2] = {0, 0};
       int64_t nodes[2] = {0, 0};
       int n[2] = {0, 0};
@@ -239,9 +265,9 @@ int main(int argc, char** argv) {
         nodes[p] += search.nodes();
         ++n[p];
       }
-      std::cout << absl::StrFormat("  ordering: captures first %d, killers %d: dwarfs %.2f ms, "
-                                   "%d nodes a position; trolls %.2f ms, %d nodes",
-                                   captures, killers, 1000 * t[0] / std::max(n[0], 1),
+      std::cout << absl::StrFormat("  ordering: captures first %d, killers %d, table 2^%d: "
+                                   "dwarfs %.2f ms, %d nodes a position; trolls %.2f ms, %d nodes",
+                                   captures, killers, bits, 1000 * t[0] / std::max(n[0], 1),
                                    nodes[0] / std::max(n[0], 1), 1000 * t[1] / std::max(n[1], 1),
                                    nodes[1] / std::max(n[1], 1))
                 << std::endl;
@@ -341,11 +367,13 @@ int main(int argc, char** argv) {
             << std::endl;
 
   // 5. MaterialSearch at depth 3 (and 4 with `deep`), and its orderings.
+  std::vector<std::vector<double>> references[5];  // By depth, for part 6a.
   for (int depth : deep ? std::vector<int>{3, 4} : std::vector<int>{3}) {
     const size_t n = std::min<size_t>(positions.size(), depth == 3 ? 30 : 8);
     int moves = 0, differ = 0, ordering_differ = 0;
     for (size_t i = 0; i < n; ++i) {
       const std::vector<double> old_scores = ReferenceScores(*game, *positions[i], depth);
+      references[depth].push_back(old_scores);
       const std::vector<double> new_scores = AlphaBetaPlayer(*game, depth).Scores(*positions[i]);
       if (old_scores.size() != new_scores.size()) {
         ++differ;
@@ -413,6 +441,162 @@ int main(int argc, char** argv) {
                             "quiet line ends the battle inside the search (all required)",
                             depth, differ, n, moves, ended));
     }
+  }
+
+  // 6. The transposition table (2026-10-23).
+  {
+    using open_spiel::thud_az::Evaluation;
+    using open_spiel::thud_az::MaterialSearch;
+    auto plain = [](const State& s, int depth) {  // No table: equal to the reference (part 5).
+      return MaterialSearch(Evaluation::kMaterial).Scores(s, depth);
+    };
+    auto table = [](int bits) { return MaterialSearch(Evaluation::kMaterial, true, true, bits); };
+    // 6a. Against the reference: a fresh table a position, and one shared by all of them in
+    // turn, each searched twice, of 2^16 entries and of 2^4 (16: slots shared all the time,
+    // entries overwritten). The sides alternate, so a transposition needs two moves by one
+    // side — 3 plies down — and the table, above the frontier, meets one inside a search only
+    // from depth 5 on (6d); the repeat is where its values end nodes here (the control: they
+    // do, with 2^16 entries).
+    for (int depth : deep ? std::vector<int>{3, 4} : std::vector<int>{3}) {
+      const std::vector<std::vector<double>>& want = references[depth];  // Part 5's.
+      const size_t n = want.size();
+      for (int bits : {16, 4}) {
+        MaterialSearch shared = table(bits);
+        int differ_fresh = 0, differ_shared = 0;
+        for (size_t i = 0; i < n; ++i) {
+          MaterialSearch fresh = table(bits);
+          differ_fresh += fresh.Scores(*positions[i], depth) != want[i];
+          for (int repeat = 0; repeat < 2; ++repeat) {
+            differ_shared += shared.Scores(*positions[i], depth) != want[i];
+          }
+        }
+        Check(differ_fresh == 0 && differ_shared == 0 && (bits < 16 || shared.table_cutoffs() > 0),
+              absl::StrFormat("6a. the table (2^%d entries) at depth %d on %d positions: %d "
+                              "positions' scores differ from OpenSpiel's alpha-beta's with a "
+                              "fresh table each, %d of %d with one table for all, each searched "
+                              "twice (0 required); %d nodes ended by the shared table (more than "
+                              "0 required with 2^16 entries)",
+                              bits, depth, n, differ_fresh, differ_shared, 2 * n,
+                              shared.table_cutoffs()));
+      }
+    }
+    // 6b. Depths mixed on one table: 4, 3, 2, 3, 4 on each position in turn, each equal to the
+    // search without a table — only an entry of the node's own depth may end it. The control:
+    // the depths' scores differ somewhere, so a deeper entry used in a shallower search shows.
+    {
+      MaterialSearch shared = table(16);
+      int differ = 0, depths_differ = 0;
+      const size_t n = std::min<size_t>(positions.size(), 6);
+      for (size_t i = 0; i < n; ++i) {
+        std::vector<double> by_depth[5];
+        for (int depth : {2, 3, 4}) by_depth[depth] = plain(*positions[i], depth);
+        for (int depth : {4, 3, 2, 3, 4}) differ += shared.Scores(*positions[i], depth) != by_depth[depth];
+        depths_differ += by_depth[4] != by_depth[3];
+      }
+      Check(differ == 0 && depths_differ > 0,
+            absl::StrFormat("6b. depths 4, 3, 2, 3, 4 on one table, %d positions: %d searches' "
+                            "scores differ from the search's without a table (0 required); the "
+                            "control, depth 4's scores differ from depth 3's in %d positions "
+                            "(more than 0 required)",
+                            n, differ, depths_differ));
+    }
+    // 6c. The limits: each position first searched with its own counters (far from the limits),
+    // then copied near them — as part 5 — on the same table, in the training's game (the
+    // no-capture limit 100; with `deep` the default game too — part 5's limits run on
+    // AlphaBetaPlayer's table after the same boards far from them); every search equal to the
+    // reference. The control: near a limit the scores differ from the far copy's in some (so a
+    // key without the counters would reuse wrong entries).
+    for (const char* game_string :
+         deep ? std::vector<const char*>{"thud(max_turns_without_capture=100)", "thud"}
+              : std::vector<const char*>{"thud(max_turns_without_capture=100)"}) {
+      std::shared_ptr<const Game> g = open_spiel::LoadGame(game_string);
+      const int limit = open_spiel::down_cast<const thud::ThudGame&>(*g).max_turns_without_capture();
+      const int max_turns = open_spiel::down_cast<const thud::ThudGame&>(*g).max_turns();
+      MaterialSearch shared = table(16);
+      int searches = 0, differ = 0, far_differ = 0;
+      for (size_t i = 0, used = 0; used < 8 && i < positions.size(); ++i) {
+        const auto& t = open_spiel::down_cast<const thud::ThudState&>(*positions[i]);
+        if (positions[i]->IsTerminal() || t.TurnsWithoutCapture() > limit - 4) continue;
+        ++used;
+        const std::string text = positions[i]->ToString();
+        const std::string rows = text.substr(0, text.rfind('\n'));
+        const std::string side =
+            positions[i]->CurrentPlayer() == thud::kDwarfPlayer ? "dwarfs" : "trolls";
+        auto at = [&](int turns, int quiet) {
+          return g->NewInitialState(absl::StrFormat(
+              "%s\nto_move=%s turns=%d turns_without_capture=%d", rows, side, turns, quiet));
+        };
+        std::unique_ptr<State> far = at(t.TurnsPlayed(), t.TurnsWithoutCapture());
+        const std::vector<double> far_scores = ReferenceScores(*g, *far, 3);
+        differ += shared.Scores(*far, 3) != far_scores;
+        ++searches;
+        for (const auto& [turns, quiet] : std::vector<std::pair<int, int>>{
+                 {300, limit - 1}, {300, limit - 2}, {300, limit - 3},
+                 {max_turns - 1, 50}, {max_turns - 2, 50}}) {
+          if (quiet < t.TurnsWithoutCapture()) continue;
+          std::unique_ptr<State> near_state = at(turns, quiet);
+          const std::vector<double> want = ReferenceScores(*g, *near_state, 3);
+          differ += shared.Scores(*near_state, 3) != want;
+          far_differ += want != far_scores;
+          ++searches;
+        }
+      }
+      Check(differ == 0 && far_differ > 0 && searches >= 30,
+            absl::StrFormat("6c. the limits in %s, depth 3, one table: %d of %d searches' scores "
+                            "differ from OpenSpiel's alpha-beta's (0 required); the control, near "
+                            "the limits %d differ from their far copy's (more than 0 required)",
+                            game_string, differ, searches, far_differ));
+    }
+    // 6d. With `deep`: depth 5, where the table meets transpositions inside a search (their
+    // bounds under other windows), on 6 positions, the table against none; the control: the
+    // table ends nodes there.
+    if (deep) {
+      MaterialSearch shared = table(MaterialSearch::kTeacherTableBits);
+      int differ = 0;
+      const size_t n = 6;
+      for (size_t i = 0; i < n; ++i) differ += shared.Scores(*positions[i], 5) != plain(*positions[i], 5);
+      Check(differ == 0 && shared.table_cutoffs() > 0,
+            absl::StrFormat("6d. depth 5 on %d positions: %d positions' scores differ with the "
+                            "table from without it (0 required); %d nodes ended by the table "
+                            "(more than 0 required)",
+                            n, differ, shared.table_cutoffs()));
+    }
+  }
+
+  // 6e. The table's bounds: 20 positions, each searched at depth 3 with 40 random windows
+  // around its value on one table (the position itself and its children then stored as
+  // exact values or bounds under one window, probed under the next), each result checked
+  // against the exact value by the fail-soft rule — at most alpha: the true value at most
+  // it; at least beta: at least it; in between: it. The control: the windows fall on both
+  // sides of the value and around it.
+  {
+    using open_spiel::thud_az::Evaluation;
+    using open_spiel::thud_az::MaterialSearch;
+    MaterialSearch shared(Evaluation::kMaterial, true, true, 16);
+    std::mt19937 windows(5);
+    int searches = 0, wrong = 0, below = 0, above = 0, inside = 0;
+    for (size_t i = 0, used = 0; used < 20 && i < positions.size(); ++i) {
+      if (positions[i]->IsTerminal()) continue;
+      ++used;
+      const int exact = MaterialSearch(Evaluation::kMaterial).Value(*positions[i], 3, -1000, 1000);
+      for (int w = 0; w < 40; ++w) {
+        const int a = exact - 6 + static_cast<int>(windows() % 13);
+        const int b = a + 1 + static_cast<int>(windows() % 6);
+        const int v = shared.Value(*positions[i], 3, a, b);
+        const bool ok = v <= a ? exact <= v : v >= b ? exact >= v : exact == v;
+        wrong += !ok;
+        below += exact <= a;
+        above += exact >= b;
+        inside += a < exact && exact < b;
+        ++searches;
+      }
+    }
+    Check(wrong == 0 && below > 0 && above > 0 && inside > 0 && shared.table_cutoffs() > 0,
+          absl::StrFormat("6e. the table's bounds: %d of %d searches with random windows break the "
+                          "fail-soft rule against the exact value (0 required); the control, the "
+                          "value below the window %d times, above it %d, inside it %d, and %d nodes "
+                          "ended by the table (more than 0 each required)",
+                          wrong, searches, below, above, inside, shared.table_cutoffs()));
   }
 
   if (failures == 0) {

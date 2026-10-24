@@ -30,6 +30,9 @@
 //   teacher's mass on them;
 //   dwarfs, at positions with an unsafe move (the blunder probe's: one that captures
 //   nothing and ends next to a troll, az_blunder_probe.cc): the same for those.
+//   ms_a_position  the teacher's search time, its Scores alone, once a position
+//               (2026-10-23: the depth's cost, per side; `table_bits`, the search's
+//               transposition table, default the teacher's, 0 none).
 //
 //   thud/az/build.sh thud/experiments/az_teacher_stats.cc
 //   build-shared/az_teacher_stats logs=RUN_DIR [depth=2 temperatures=0.25,0.5,1,2 \
@@ -39,6 +42,7 @@
 // Prints one summary line a side and temperature.
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <filesystem>
 #include <fstream>
@@ -117,6 +121,10 @@ int main(int argc, char** argv) {
   const std::string logs = get("logs", "");
   const int depth = std::stoi(get("depth", "2")), last = std::stoi(get("last", "3"));
   const int max_positions = std::stoi(get("max", "200"));
+  // The timed search's transposition table (material_search.h; 0: none), kept from one
+  // position to the next as the teacher's is.
+  const int table_bits = std::stoi(
+      get("table_bits", std::to_string(open_spiel::thud_az::MaterialSearch::kTeacherTableBits)));
   std::vector<double> temperatures;
   for (absl::string_view t : absl::StrSplit(get("temperatures", "0.25,0.5,1,2"), ',')) {
     temperatures.push_back(std::stod(std::string(t)));
@@ -159,9 +167,13 @@ int main(int argc, char** argv) {
                                games, positions[0].size(), positions[1].size());
 
   const AlphaBetaPlayer teacher(*game, depth);
+  open_spiel::thud_az::MaterialSearch search(open_spiel::thud_az::Evaluation::kMaterial,
+                                             /*captures_first=*/true, /*killers=*/true,
+                                             table_bits);
   for (int side = 0; side < 2; ++side) {
     const auto& all = positions[side];
     std::vector<double> legal, best_share, marked_share, marked_best;
+    double search_seconds = 0;  // The teacher's Scores alone, once a position.
     // Per temperature.
     std::vector<std::vector<double>> best_mass(temperatures.size()),
         marked_mass(temperatures.size());
@@ -174,7 +186,10 @@ int main(int argc, char** argv) {
       ++examined;
       const State& s = *all[i];
       const std::vector<Action> actions = s.LegalActions();
-      const std::vector<double> scores = teacher.Scores(s);
+      const auto start = std::chrono::steady_clock::now();
+      const std::vector<double> scores = search.Scores(s, depth);  // Equal to teacher's.
+      search_seconds +=
+          std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
       const double best = *std::max_element(scores.begin(), scores.end());
       std::map<Action, bool> is_best, marked;
       int n_best = 0, n_marked = 0, n_marked_best = 0;
@@ -208,12 +223,12 @@ int main(int argc, char** argv) {
                        "{\"side\": \"%s\", \"depth\": %d, \"temperature\": %g, "
                        "\"positions\": %d, \"legal\": %.1f, \"best_share\": %.4f, "
                        "\"best_mass\": %.4f, \"with_%s\": %d, \"%s_share\": %.4f, "
-                       "\"%s_tied_for_best\": %.4f, \"%s_mass\": %.4f}",
+                       "\"%s_tied_for_best\": %.4f, \"%s_mass\": %.4f, \"ms_a_position\": %.2f}",
                        side == thud::kTrollPlayer ? "trolls" : "dwarfs", depth,
                        temperatures[t], examined, Mean(legal), Mean(best_share),
                        Mean(best_mass[t]), what, marked_share.size(), what,
                        Mean(marked_share), what, Mean(marked_best), what,
-                       Mean(marked_mass[t]))
+                       Mean(marked_mass[t]), 1000 * search_seconds / examined)
                 << std::endl;
     }
   }
