@@ -275,6 +275,12 @@ class ThudState : public State {
   // The most pieces one move can capture for the side to move — the largest Captures()
   // over LegalActions() — found without generating the moves; 0 in a battle that is over.
   int BestCapture() const;
+  // A 64-bit Zobrist hash of the board and the side to move — the counters left out —
+  // kept up to date as moves are made and taken back (for a search's transposition
+  // table). The same position gives the same hash in every run, however it was reached.
+  uint64_t BoardHash() const { return hash_; }
+  // The same, computed from the board (for tests).
+  uint64_t BoardHashFromScratch() const;
 
  protected:
   void DoApplyAction(Action action) override;
@@ -315,6 +321,7 @@ class ThudState : public State {
   int num_dwarfs_ = 0;
   int num_trolls_ = 0;
   bool terminal_ = false;  // BattleOver(), updated whenever the board changes.
+  uint64_t hash_ = 0;      // BoardHash().
   // What each move in the history took off the board and what it changed that cannot be
   // worked out again, for UndoAction: one record a move.
   struct Undo {
@@ -322,6 +329,7 @@ class ThudState : public State {
     bool troll_taken;           // By a hurl, on the landing cell.
     bool terminal;              // terminal_ before the move.
     int turns_without_capture;  // Before the move.
+    uint64_t hash;              // hash_ before the move.
   };
   std::vector<Undo> undo_;
   int max_turns_without_capture_;

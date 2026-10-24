@@ -34,6 +34,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <map>
 #include <memory>
 #include <random>
 #include <string>
@@ -2715,6 +2716,7 @@ std::vector<std::pair<std::string, std::string>> Describe(const ThudState& state
       {"turns without capture", absl::StrCat(state.TurnsWithoutCapture())},
       {"dwarfs", absl::StrCat(state.NumDwarfs())},
       {"trolls", absl::StrCat(state.NumTrolls())},
+      {"hash", absl::StrCat(state.BoardHash())},
       {"legal actions", absl::StrJoin(state.LegalActions(), ",")},
   };
   for (Player p : {0, 1}) {
@@ -2740,6 +2742,15 @@ void CheckSame(const std::vector<std::pair<std::string, std::string>>& expected,
   }
 }
 
+// The hash kept up to date (BoardHash) is the board's (BoardHashFromScratch).
+void CheckHash(const ThudState& state, const std::string& what) {
+  if (state.BoardHash() != state.BoardHashFromScratch()) {
+    SpielFatalError(absl::StrCat(what, ": the hash kept is ", state.BoardHash(),
+                                 ", the board's ", state.BoardHashFromScratch(), " in\n",
+                                 state.ToString()));
+  }
+}
+
 // What one undo test covered.
 struct UndoTally {
   int moves = 0, dwarf_moves = 0, hurls = 0, troll_steps = 0, capture_steps = 0,
@@ -2759,10 +2770,13 @@ void CheckUndo(const ThudState& state, Action action, UndoTally* tally) {
   const Player player = s.CurrentPlayer();
   s.ApplyAction(action);
   CheckSame(after, s, absl::StrCat(what, "\n(applied)"));
+  CheckHash(s, absl::StrCat(what, "\n(applied)"));
   s.UndoAction(player, action);
   CheckSame(before, s, what);
+  CheckHash(s, what);
   s.ApplyAction(action);
   CheckSame(after, s, absl::StrCat(what, "\n(applied again after the undo)"));
+  CheckHash(s, absl::StrCat(what, "\n(applied again after the undo)"));
   ++tally->moves;
   switch (move.kind) {
     case Kind::kDwarfMove: ++tally->dwarf_moves; break;
@@ -2999,6 +3013,96 @@ void TestCaptures() {
   }
 }
 
+// The opening's hash: fixed, as the keys are.
+constexpr uint64_t kOpeningHash = 3827452289155153197ULL;
+
+// BoardHash() (2026-10-23, for the teacher's transposition table): kept equal to the
+// board's own hash through every move and undo (CheckUndo, above, in every undo test; here
+// every position of random games, uniform and capture-greedy, and every child of every 10th
+// — so every kind of move and capture); the same for a position however it was reached
+// (moves in another order, a cycle back to the start, the position read from text), whatever
+// its counters; different for the other side to move; never the same for two different
+// positions met in the random games; and a fixed value for the opening, the same on every
+// machine (the keys come from a fixed seed).
+void TestHash() {
+  // The board's fifteen rows, as ToString() writes them before the status line.
+  auto board_of = [](const ThudState& state) {
+    std::vector<std::string> lines = absl::StrSplit(state.ToString(), '\n');
+    lines.resize(15);
+    return absl::StrJoin(lines, "\n");
+  };
+  std::shared_ptr<const Game> game = Thud();
+  std::unique_ptr<State> opening = game->NewInitialState();
+  const auto& start = down_cast<const ThudState&>(*opening);
+  CheckHash(start, "The opening");
+  SPIEL_CHECK_EQ(start.BoardHash(), kOpeningHash);
+  // A cycle of four quiet moves back to the opening: the same hash, other counters.
+  std::unique_ptr<State> cycled = opening->Clone();
+  for (const std::string& move : QuietCycle()) cycled->ApplyAction(Parse(move));
+  const auto& c = down_cast<const ThudState&>(*cycled);
+  SPIEL_CHECK_EQ(c.TurnsPlayed(), 4);
+  SPIEL_CHECK_EQ(c.BoardHash(), start.BoardHash());
+  // Two dwarf moves around a troll move, in both orders: one position, one hash; the
+  // position read from text has it too, with other counters; the other side to move not.
+  const std::vector<std::string> a = {"(0,5)-(1,5)", "(6,6)-(5,5)", "(14,9)-(13,9)"};
+  const std::vector<std::string> b = {"(14,9)-(13,9)", "(6,6)-(5,5)", "(0,5)-(1,5)"};
+  std::unique_ptr<State> sa = opening->Clone(), sb = opening->Clone();
+  for (const std::string& move : a) sa->ApplyAction(Parse(move));
+  for (const std::string& move : b) sb->ApplyAction(Parse(move));
+  const auto& ta = down_cast<const ThudState&>(*sa);
+  const auto& tb = down_cast<const ThudState&>(*sb);
+  SPIEL_CHECK_EQ(ta.ToString(), tb.ToString());
+  SPIEL_CHECK_EQ(ta.BoardHash(), tb.BoardHash());
+  SPIEL_CHECK_NE(ta.BoardHash(), start.BoardHash());
+  const std::string board = board_of(ta);
+  std::unique_ptr<ThudState> read =
+      FromDiagram(game, board, "to_move=trolls turns=500 turns_without_capture=77");
+  SPIEL_CHECK_EQ(read->BoardHash(), ta.BoardHash());
+  std::unique_ptr<ThudState> other = FromDiagram(game, board, "to_move=dwarfs");
+  SPIEL_CHECK_NE(other->BoardHash(), ta.BoardHash());
+  CheckHash(*other, "The same board, the dwarfs to move");
+  // Random games: the hash kept equals the board's at every position and every 10th
+  // position's children; distinct positions, distinct hashes.
+  std::map<uint64_t, std::string> seen;  // Hash -> the board and the side to move.
+  int positions = 0, children = 0, repeats = 0;
+  std::mt19937 rng(29);
+  for (int g = 0; g < 12; ++g) {
+    std::unique_ptr<State> state = game->NewInitialState();
+    for (int ply = 0; !state->IsTerminal() && ply < 800; ++ply) {
+      const auto& s = down_cast<const ThudState&>(*state);
+      const std::string what = absl::StrCat("Game ", g, ", ply ", ply);
+      CheckHash(s, what);
+      ++positions;
+      const std::string key = absl::StrCat(board_of(s), "\n", s.CurrentPlayer());
+      auto [it, inserted] = seen.insert({s.BoardHash(), key});
+      if (!inserted) {
+        if (it->second != key) {
+          SpielFatalError(absl::StrCat(what, ": two positions share the hash ", s.BoardHash(),
+                                       ":\n", it->second, "\n", key));
+        }
+        ++repeats;
+      }
+      std::vector<Action> legal = s.LegalActions(), captures;
+      if (ply % 10 == 0) {
+        for (Action action : legal) {
+          std::unique_ptr<State> child = s.Child(action);
+          CheckHash(down_cast<const ThudState&>(*child), absl::StrCat(what, ", a child"));
+          ++children;
+        }
+      }
+      for (Action action : legal) {
+        if (g % 2 == 1 && s.Captures(action) > 0) captures.push_back(action);
+      }
+      const std::vector<Action>& pool = captures.empty() ? legal : captures;
+      state->ApplyAction(pool[rng() % pool.size()]);
+    }
+  }
+  if (positions < 2000 || children < 20000 || seen.size() < 2000) {
+    SpielFatalError(absl::StrCat("Hash coverage: ", positions, " positions, ", children,
+                                 " children, ", seen.size(), " distinct, ", repeats, " repeats"));
+  }
+}
+
 void TestOpenSpielGenericTests() {
   testing::LoadGameTest("thud");
   testing::NoChanceOutcomesTest(*Thud());
@@ -3070,5 +3174,6 @@ int main(int argc, char** argv) {
   thud::TestUndoLimits();
   thud::TestUndoRandomGames();
   thud::TestCaptures();
+  thud::TestHash();
   thud::TestOpenSpielGenericTests();
 }

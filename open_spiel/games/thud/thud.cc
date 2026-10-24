@@ -112,6 +112,41 @@ struct Geometry {
   std::array<Coord, kNumSquares> coord;   // (row, col) of each square.
 };
 
+// Zobrist keys (2026-10-23, for the teacher's transposition table): a random 64-bit number
+// for each grid cell and piece, and one for the trolls to move. A position's hash is the
+// XOR of the keys of its pieces, and of the trolls' key when they are to move. The keys
+// are fixed (splitmix64 from a constant seed), so a hash means the same everywhere.
+struct ZobristKeys {
+  std::array<uint64_t, kGridCells> dwarf;
+  std::array<uint64_t, kGridCells> troll;
+  uint64_t trolls_to_move;
+};
+
+const ZobristKeys& Zobrist() {
+  static const ZobristKeys* keys = [] {
+    uint64_t seed = 0x7468756420323032ULL;  // "thud 202".
+    auto next = [&seed] {  // splitmix64 (Steele, Lea and Flood, 2014).
+      uint64_t z = (seed += 0x9e3779b97f4a7c15ULL);
+      z = (z ^ (z >> 30)) * 0xbf58476d1ce4e5b9ULL;
+      z = (z ^ (z >> 27)) * 0x94d049bb133111ebULL;
+      return z ^ (z >> 31);
+    };
+    auto* k = new ZobristKeys();
+    for (uint64_t& key : k->dwarf) key = next();
+    for (uint64_t& key : k->troll) key = next();
+    k->trolls_to_move = next();
+    return k;
+  }();
+  return *keys;
+}
+
+// The key of `piece` on grid cell `cell`: 0 for anything but a dwarf or a troll.
+uint64_t PieceKey(Cell piece, int cell) {
+  if (piece == Cell::kDwarf) return Zobrist().dwarf[cell];
+  if (piece == Cell::kTroll) return Zobrist().troll[cell];
+  return 0;
+}
+
 const Geometry& Geo() {
   static const Geometry* geometry = [] {
     auto* g = new Geometry();
@@ -446,6 +481,16 @@ void ThudState::SetPosition(const Position& position) {
   turns_played_ = position.turns_played;
   turns_without_capture_ = position.turns_without_capture;
   terminal_ = BattleOver();
+  hash_ = BoardHashFromScratch();
+}
+
+uint64_t ThudState::BoardHashFromScratch() const {
+  uint64_t hash = to_move_ == kTrollPlayer ? Zobrist().trolls_to_move : 0;
+  for (int square = 0; square < kNumSquares; ++square) {
+    const int cell = Geo().cell[square];
+    hash ^= PieceKey(grid_[cell], cell);
+  }
+  return hash;
 }
 
 Position ThudState::GetPosition() const {
@@ -557,15 +602,17 @@ void ThudState::DoApplyAction(Action action) {
   const Cell mover = grid_[from];
   SPIEL_CHECK_TRUE(mover ==
                    (to_move_ == kDwarfPlayer ? Cell::kDwarf : Cell::kTroll));
-  Undo undo{0, false, terminal_, turns_without_capture_};
+  Undo undo{0, false, terminal_, turns_without_capture_, hash_};
   bool captured = false;
   if (mover == Cell::kDwarf && grid_[to] == Cell::kTroll) {
     --num_trolls_;  // A hurl captures the troll it lands on.
     captured = true;
     undo.troll_taken = true;
+    hash_ ^= PieceKey(Cell::kTroll, to);
   }
   grid_[to] = mover;
   grid_[from] = Cell::kEmpty;
+  hash_ ^= PieceKey(mover, from) ^ PieceKey(mover, to);
   if (mover == Cell::kTroll && (move.capture_step || move.distance >= 2)) {
     // A capturing step or a shove captures every dwarf next to the troll.
     for (int d = 0; d < kNumDirections; ++d) {
@@ -575,6 +622,7 @@ void ThudState::DoApplyAction(Action action) {
         --num_dwarfs_;
         captured = true;
         undo.dwarfs_taken |= 1 << d;
+        hash_ ^= PieceKey(Cell::kDwarf, cell);
       }
     }
   }
@@ -582,6 +630,7 @@ void ThudState::DoApplyAction(Action action) {
   ++turns_played_;
   turns_without_capture_ = captured ? 0 : turns_without_capture_ + 1;
   to_move_ = 1 - to_move_;
+  hash_ ^= Zobrist().trolls_to_move;
   terminal_ = BattleOver();
 }
 
@@ -654,6 +703,7 @@ void ThudState::UndoAction(Player player, Action action) {
   turns_without_capture_ = undo.turns_without_capture;
   to_move_ = player;
   terminal_ = undo.terminal;
+  hash_ = undo.hash;
   undo_.pop_back();
   history_.pop_back();
   --move_number_;
