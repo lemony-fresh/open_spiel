@@ -31,7 +31,12 @@
 //      OpenSpiel's alpha-beta's exactly (on the piece counts, by undo: ReferenceScores), and every combination of its move ordering (captures first,
 //      killer moves, both, neither) giving the same scores on them — the order changes only
 //      what is pruned; with `deep`, also depth 4 on the first 8 positions (slow: the old
-//      code takes seconds a position there).
+//      code takes seconds a position there); and the battle ending inside the search: 12
+//      positions copied with the no-capture counter 1, 2 and 3 turns short of its limit and
+//      the turn counter 1 and 2 short of its, at depth 3 (and 4 with `deep`) — every one of
+//      those searches reaching the limits checked to end a battle (the control that they do).
+//   In these builds (assertions on) MaterialSearch also checks every 16th frontier node
+//   against a full search of it (material_search.h).
 //
 // Prints PASS or FAIL per part, then ALL PASSED or the count of failures; exits non-zero on
 // a failure. `teacher_identity_test profile [DEPTH] [ROUNDS]` instead runs only the new
@@ -362,6 +367,52 @@ int main(int argc, char** argv) {
                           "differ from OpenSpiel's alpha-beta's (0 required); %d orderings' scores "
                           "differ from the default's (0 required)",
                           depth, n, differ, moves, ordering_differ));
+  }
+
+  // 5. The battle ending inside the search: the no-capture and turn limits.
+  {
+    const int limit = 200, max_turns = 800;  // thud's defaults (THUD_RULES.md section 6).
+    std::vector<std::unique_ptr<State>> near;
+    for (size_t i = 0; near.size() < 60 && i < positions.size(); ++i) {
+      const auto& t = open_spiel::down_cast<const thud::ThudState&>(*positions[i]);
+      if (positions[i]->IsTerminal()) continue;
+      const std::string text = positions[i]->ToString();
+      const std::string rows = text.substr(0, text.rfind('\n'));
+      const std::string side = positions[i]->CurrentPlayer() == thud::kDwarfPlayer ? "dwarfs" : "trolls";
+      for (const auto& [turns, quiet] : std::vector<std::pair<int, int>>{
+               {300, limit - 1}, {300, limit - 2}, {300, limit - 3},
+               {max_turns - 1, 50}, {max_turns - 2, 50}}) {
+        if (quiet < t.TurnsWithoutCapture()) continue;
+        near.push_back(game->NewInitialState(absl::StrFormat(
+            "%s\nto_move=%s turns=%d turns_without_capture=%d", rows, side, turns, quiet)));
+      }
+    }
+    for (int depth : deep ? std::vector<int>{3, 4} : std::vector<int>{3}) {
+      const size_t n = std::min<size_t>(near.size(), depth == 3 ? 60 : 10);
+      int moves = 0, differ = 0, ended = 0;
+      for (size_t i = 0; i < n; ++i) {
+        const std::vector<double> want = ReferenceScores(*game, *near[i], depth);
+        const std::vector<double> got = AlphaBetaPlayer(*game, depth).Scores(*near[i]);
+        differ += want != got;
+        moves += got.size();
+        // The control: a quiet line of `depth` moves from here ends the battle.
+        std::unique_ptr<State> s = near[i]->Clone();
+        for (int k = 0; k < depth && !s->IsTerminal(); ++k) {
+          for (Action a : s->LegalActions()) {
+            if (open_spiel::down_cast<const thud::ThudState&>(*s).Captures(a) == 0) {
+              s->ApplyAction(a);
+              break;
+            }
+          }
+        }
+        ended += s->IsTerminal();
+      }
+      Check(differ == 0 && ended == static_cast<int>(n) && n >= 10,
+            absl::StrFormat("5. at the limits, depth %d: %d of %d positions' scores (%d moves) "
+                            "differ from OpenSpiel's alpha-beta's (0 required); in %d of them a "
+                            "quiet line ends the battle inside the search (all required)",
+                            depth, differ, n, moves, ended));
+    }
   }
 
   if (failures == 0) {

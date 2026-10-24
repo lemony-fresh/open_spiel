@@ -17,6 +17,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstdint>
 #include <memory>
 #include <utility>
@@ -46,7 +47,14 @@ enum class Evaluation { kMaterial };
 // score — a quiet move keeps the material, and a battle that ends keeps it too — so a node
 // there is worth its material plus its best capture's gain: its material is a lower bound
 // (a cut-off as soon as it reaches beta, with no move generated), and otherwise the best
-// capture is found without generating moves (ThudState::BestCapture), none applied.
+// capture is found without generating moves (ThudState::BestCapture), none applied. The
+// rule depends on the evaluation, so it is tied to it: Evaluate() is the only place the
+// leaves are scored, and the rule runs only for Evaluation::kMaterial. In builds with
+// assertions on (the tests', without NDEBUG), every 16th frontier node is also searched in
+// full — every move applied, each child scored by Evaluate(), or by the game's own return if
+// the battle ends — and must agree (exactly, or as the bound it returned): an evaluation
+// that stops being material alone, or a capture BestCapture misses, fails every test that
+// searches.
 //
 // Above the frontier, moves are tried captures first (the largest gain first) if
 // `captures_first`, then the killer moves of that depth (the last two quiet moves that cut
@@ -71,7 +79,7 @@ class MaterialSearch {
     for (Action action : s.LegalActions()) {
       s.ApplyAction(action);
       const int value = s.IsTerminal() || depth == 1
-                            ? Material(s, me)
+                            ? Evaluate(s, me)
                             : -Search(&s, depth - 1, -kInfinity, kInfinity, 1 - me);
       s.UndoAction(me, action);
       scores.push_back(value);
@@ -87,23 +95,40 @@ class MaterialSearch {
   static constexpr int kInfinity = 1 << 20;
   static constexpr int kMaxDepth = 16;
 
-  // The material in points from `me`'s view.
-  static int Material(const thud::ThudState& s, Player me) {
-    const int margin = s.NumDwarfs() * thud::kDwarfValue - s.NumTrolls() * thud::kTrollValue;
-    return me == thud::kDwarfPlayer ? margin : -margin;
+  // The leaves' score in points from `me`'s view: the only place an evaluation is chosen.
+  int Evaluate(const thud::ThudState& s, Player me) const {
+    switch (evaluation_) {
+      case Evaluation::kMaterial: {
+        const int margin =
+            s.NumDwarfs() * thud::kDwarfValue - s.NumTrolls() * thud::kTrollValue;
+        return me == thud::kDwarfPlayer ? margin : -margin;
+      }
+    }
+    SpielFatalError("MaterialSearch: unknown evaluation");
   }
 
   // Negamax with alpha-beta, fail-soft: the value for `me`, the side to move at `s`.
   int Search(thud::ThudState* s, int depth, int alpha, int beta, Player me) {
     ++nodes_;
-    if (s->IsTerminal() || depth == 0) return Material(*s, me);
+    if (s->IsTerminal() || depth == 0) return Evaluate(*s, me);
     if (depth == 1 && evaluation_ == Evaluation::kMaterial) {  // The frontier rule.
-      const int material = Material(*s, me);
-      if (material >= beta) return material;
+      const int material = Evaluate(*s, me);
       const int worth = me == thud::kDwarfPlayer ? thud::kTrollValue : thud::kDwarfValue;
-      return material + s->BestCapture() * worth;
+      const int value = material >= beta ? material : material + s->BestCapture() * worth;
+#ifndef NDEBUG
+      if ((++frontier_checks_ & 15) == 0) {
+        const int full = FullFrontier(s, me);
+        if (material >= beta) {
+          SPIEL_CHECK_GE(full, material);  // A lower bound.
+        } else {
+          SPIEL_CHECK_EQ(full, value);
+        }
+      }
+#endif
+      return value;
     }
     std::vector<Action> moves = s->LegalActions();
+    SPIEL_DCHECK_FALSE(moves.empty());  // A battle not over always has a move.
     Order(*s, depth, me, &moves);
     int best = -kInfinity;
     for (Action action : moves) {
@@ -122,6 +147,25 @@ class MaterialSearch {
     }
     return best;
   }
+
+#ifndef NDEBUG
+  // The frontier node searched in full, for the rule's check: every move applied, each
+  // child scored by Evaluate(), or by the game's return (in points) if the battle ends.
+  int FullFrontier(thud::ThudState* s, Player me) {
+    int best = -kInfinity;
+    for (Action action : s->LegalActions()) {
+      s->ApplyAction(action);
+      const int value =
+          s->IsTerminal()
+              ? static_cast<int>(std::lround(s->PlayerReturn(me) * thud::kMaxMargin))
+              : Evaluate(*s, me);
+      s->UndoAction(me, action);
+      best = std::max(best, value);
+    }
+    return best;
+  }
+  int64_t frontier_checks_ = 0;
+#endif
 
   // Captures first, the largest gain first; then the killers; then the rest, as listed.
   void Order(const thud::ThudState& s, int depth, Player me, std::vector<Action>* moves) {
