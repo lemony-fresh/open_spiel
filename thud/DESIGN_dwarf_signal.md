@@ -1284,6 +1284,53 @@ So depth 3 gives the network information it has not absorbed in 10 steps — wha
 test found missing — and the payoff may need more steps than an arm's. Arm T (the ties
 shared by the search) follows; the user: then perhaps both into the main line from R261.
 
+**Arm T: the teacher's ties shared by the search — the reasoning, the danger, the
+safeguards** (2026-10-23, recorded at the user's request before a context compaction).
+*Why:* the teacher scores each move by material after alpha-beta to `kickstart_depth`
+plies, and most moves change no material within that horizon, so they tie: at depth 2 a
+typical dwarf position has ~240 legal moves, ~95 of them tied for the teacher's best score
+(`az_teacher_stats`, 60 of run R's positions: 39%, 88% of the teacher's mass; the trolls'
+86% of ~46, 39). The teacher's softmax splits a tie evenly, so it says "these ~95 are equally
+good" and nothing about which of them is better; the dwarfs' target is 0.7 x the teacher +
+0.3 x the visits, so it comes out as flat as ~80 equally likely moves (the targets' entropy
+4.39 nats, the fit test), the network learns that flatness faithfully (its KL above the
+targets 0.10), a flat prior gives the search little guidance, and its visits come out broad
+too — a loop. The teacher is still worth its weight *between* score groups: it puts only ~4%
+of its mass on the dwarfs' unsafe moves (halving its weight, arm RLT, lost −3.98). *What T
+does* (`--kickstart_ties=search`, `TeacherTiesBySearch`): every group of moves the teacher
+scores exactly alike keeps the group's total probability, but shares it as the search's
+visits share themselves within the group, instead of evenly; a group the search visited
+none of stays even, as before; the moves the teacher scores worse keep exactly their
+probability. Example: the best group's 88%, the search's visits to it 90% (A 30%, B 20%, C
+10%, ...): A gets 88% x 30/90 ≈ 29% of the teacher's mass instead of ~0.9%, unvisited tied
+moves 0 instead of ~0.9% each; A's target 0.3 x 0.30 + 0.7 x 0.29 ≈ 0.30 instead of ≈ 0.096.
+The move played is unchanged (the search's), and so are the trolls' root noise (ε 0.25; the
+dwarfs have none, by design) and the dwarfs' search temperature 1.5 — T changes only the
+recorded targets. `even`, the default, records exactly the old targets (kickstart_test
+part 3). *The danger:* T makes the targets follow the search more closely; if the search's
+preferences are wrong or narrow, T reinforces them — training toward what the search
+already prefers, which then shapes the next searches — the narrowing of dwarf play that
+preceded run A's collapse (2026-09-27). The user is worried about it, and reasonably.
+*Detection* — confident for a fast collapse (run A's showed within a few steps in several
+signals at once), less for a slow drift into a narrower but still strong style (matches
+against R261 and hexparrot might even improve while the dwarfs' breadth shrinks, the cost —
+exploitability — showing later): every step's `learner.jsonl` `by_side`:
+`median_prior_effective_moves` (the network prior's breadth: in run R the dwarfs' ~84-130,
+the trolls' ~29-39, ±10 from step to step), `mean_kl_visits_prior`,
+`prior_top_is_most_visited`; every segment's targets' entropy and the networks' KL above it
+(`targets`, ~3 minutes); the matches — the dwarfs' side against N161's on the same openings —
+the blunder gate, measurement 4, self-play survival and margins. *Safeguards, proposed* (not
+yet built): a tripwire in the main line's script — stop and report if the dwarfs' prior
+breadth stays below ~60 moves (well under its normal range) for 2 segments running; a gentler
+T if needed — half of each tied group's mass shared by the search, half kept even, which
+bounds how far the targets can follow the search; T as an arm first (against R261), never
+straight into the main line. The user and Claude decide what goes into the main line only
+after T's, D3's and D4's results together. *Its relatives:* a deeper teacher breaks ties
+itself (the dwarfs' tied moves ~87 at depth 3, ~48 at depth 4, arm D4) and a finer
+evaluation (positional tie-breakers capped below one dwarf — threatened pieces, cohesion,
+blocked shove lines, after hexparrot's AI rules; not built) would too, without following the
+search.
+
 ## Review log
 
 **Review 1** (an adversarial reviewer agent, 2026-10-12, on draft 2; findings checked at
