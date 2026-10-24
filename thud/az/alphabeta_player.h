@@ -15,6 +15,7 @@
 #ifndef THUD_AZ_ALPHABETA_PLAYER_H_
 #define THUD_AZ_ALPHABETA_PLAYER_H_
 
+#include <array>
 #include <cstdint>
 #include <memory>
 #include <vector>
@@ -46,7 +47,12 @@ namespace thud_az {
 // alpha-beta (thud/PLAN.md, How we evaluate networks: training against alpha-beta).
 class AlphaBetaPlayer {
  public:
-  AlphaBetaPlayer(const Game& game, int depth) : game_(game), depth_(depth) {}
+  AlphaBetaPlayer(const Game& game, int depth) : AlphaBetaPlayer(game, {depth, depth}) {}
+  // Our change (2026-10-24; the trainer's player_kickstart_depth): a depth per side to move
+  // — Choose and Scores search depths[the player to move] plies.
+  AlphaBetaPlayer(const Game& game, std::array<int, 2> depths) : game_(game), depths_(depths) {
+    for (int depth : depths_) SPIEL_CHECK_GE(depth, 1);
+  }
 
   // Fixes the tie-break for the next game.
   void NewGame(uint64_t seed) { seed_ = seed; }
@@ -58,16 +64,17 @@ class AlphaBetaPlayer {
     auto value = [this, me, root_hash, root_length](const State& leaf) {
       return Material(leaf, me) + TieBreak(HistoryHash(root_hash, leaf, root_length));
     };
-    return algorithms::AlphaBetaSearch(game_, &state, value, depth_, me,
+    return algorithms::AlphaBetaSearch(game_, &state, value, depths_[me], me,
                                        /*use_undo=*/true)
         .second;
   }
 
-  int depth() const { return depth_; }
+  // The depth it searches with `player` to move.
+  int depth(Player player) const { return depths_[player]; }
 
   // Our change (thud/PLAN.md, kickstarting): each legal action's score, in points of
   // material from the side to move's view — the material after it, the opponent
-  // replying as OpenSpiel's alpha-beta search to depth() - 1 plies would (depth 1: the
+  // replying as OpenSpiel's alpha-beta search to depth(to move) - 1 plies would (depth 1: the
   // material right after the move; depth 2: after the opponent's best reply). No
   // tie-break: a teacher's scores are the same every time. In LegalActions() order.
   std::vector<double> Scores(const State& state) const {
@@ -76,7 +83,7 @@ class AlphaBetaPlayer {
     // table: one a thread, kept from call to call.
     thread_local MaterialSearch search(Evaluation::kMaterial, /*captures_first=*/true,
                                        /*killers=*/true, MaterialSearch::kTeacherTableBits);
-    return search.Scores(state, depth_);
+    return search.Scores(state, depths_[state.CurrentPlayer()]);
   }
 
  private:
@@ -112,7 +119,7 @@ class AlphaBetaPlayer {
   }
 
   const Game& game_;
-  const int depth_;
+  const std::array<int, 2> depths_;  // By the player to move.
   uint64_t seed_ = 0;
 };
 

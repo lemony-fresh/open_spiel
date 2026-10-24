@@ -23,6 +23,7 @@
 #define THUD_AZ_ALPHA_ZERO_H_
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdint>
 #include <iostream>
@@ -153,6 +154,11 @@ struct AlphaZeroConfig {
   // search's. 0: the visits alone, upstream's behaviour.
   double kickstart_weight;
   int kickstart_depth;
+  // Added (2026-10-24; the user: the horizon on a troll move — even depths for the dwarfs,
+  // odd for the trolls): the teacher's depth per player to move, comma-separated
+  // (PerPlayerValues; "4,5": the dwarfs' positions 4 plies, the trolls' 5); empty:
+  // kickstart_depth for both (KickstartDepths below).
+  std::string player_kickstart_depth;
   double kickstart_temperature;
   // Added (2026-10-23; thud/DESIGN_dwarf_signal.md §10, the fit test: the dwarfs' targets
   // spread over ~80 moves, mostly the teacher's ties): how the teacher shares a group of
@@ -222,6 +228,7 @@ struct AlphaZeroConfig {
         {"kickstart_weight", kickstart_weight},
         {"player_kickstart_weight", player_kickstart_weight},
         {"kickstart_depth", kickstart_depth},
+        {"player_kickstart_depth", player_kickstart_depth},
         {"kickstart_temperature", kickstart_temperature},
         {"kickstart_ties", kickstart_ties},
         {"temperature", temperature},
@@ -340,6 +347,9 @@ struct AlphaZeroConfig {
     kickstart_depth = config_json.count("kickstart_depth")
                           ? config_json.at("kickstart_depth").GetInt()
                           : 2;
+    player_kickstart_depth = config_json.count("player_kickstart_depth")
+                                 ? config_json.at("player_kickstart_depth").GetString()
+                                 : "";
     kickstart_temperature = config_json.count("kickstart_temperature")
                                 ? config_json.at("kickstart_temperature").GetDouble()
                                 : 1;
@@ -365,6 +375,11 @@ std::vector<double> PerPlayerValues(const std::string& list);
 // Added (training against alpha-beta): the depth alpha-beta searches when it plays
 // `player` — config.alphabeta_depth's entry for that player, or its one value for both.
 int AlphaBetaDepth(const AlphaZeroConfig& config, open_spiel::Player player);
+
+// The teacher's depth per player to move: config.player_kickstart_depth's entries, or
+// config.kickstart_depth for both where it is empty. Stops on more than two entries or a
+// depth that is not a whole number from 1 to 15.
+std::array<int, 2> KickstartDepths(const AlphaZeroConfig& config);
 
 // Added (kickstarting per player): the teacher's weight in the policy targets of each
 // player's positions — config.player_kickstart_weight's entry for that player, or

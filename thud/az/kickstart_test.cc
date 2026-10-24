@@ -33,10 +33,14 @@
 //      position's target 0.3 x the visits + 0.7 x the teacher's and each troll
 //      position's as with the single weight; an empty list changes nothing.
 //   4. The configuration: the settings round-trip; an older config.json loads with
-//      weight 0 and no per-player weights; KickstartWeights fills missing entries
-//      from the single weight.
+//      weight 0 and no per-player weights or depths; KickstartWeights fills missing
+//      entries from the single weight; KickstartDepths takes the list, one entry for both,
+//      or kickstart_depth.
 //   5. Cost, with `cost=1` only (a measurement, not a test, and the slowest part):
 //      Scores at depths 2 and 3 on self-play-like positions, printed.
+//   7. (2026-10-24) A teacher with a depth per side to move (player_kickstart_depth):
+//      {2, 3} scores the dwarfs' positions as depth 2 and the trolls' as depth 3, {3, 2}
+//      the other way round (the control: depths 2 and 3 differ on some of each side's).
 //   6. The teacher's ties shared by the search (kickstart_ties=search, 2026-10-23):
 //      TeacherTiesBySearch by hand — a tied group's total shared by the visits within
 //      it, evenly where none, single moves and the groups' totals unchanged, the result
@@ -48,6 +52,7 @@
 //   thud/run_tests.sh kickstart_test   # builds and runs it
 //   build-tests/bin/kickstart_test
 
+#include <array>
 #include <chrono>
 #include <cmath>
 #include <iostream>
@@ -58,6 +63,7 @@
 #include <vector>
 
 #include "open_spiel/abseil-cpp/absl/strings/match.h"
+#include "open_spiel/abseil-cpp/absl/strings/str_cat.h"
 #include "open_spiel/games/thud/thud.h"
 #include "open_spiel/spiel.h"
 #include "open_spiel/utils/logger.h"
@@ -347,13 +353,25 @@ int main(int argc, char** argv) {
     c.kickstart_temperature = 0.5;
     c.player_kickstart_weight = "0.7";
     c.kickstart_ties = "search";
+    c.player_kickstart_depth = "4,5";
     AlphaZeroConfig back;
     back.FromJson(c.ToJson());
-    Check(old_ok && back.kickstart_weight == 0.3 && back.kickstart_depth == 3 &&
-              back.kickstart_temperature == 0.5 && back.player_kickstart_weight == "0.7" &&
-              back.kickstart_ties == "search",
+    Check(old_ok && c.player_kickstart_depth.size() == 3 && back.kickstart_weight == 0.3 &&
+              back.kickstart_depth == 3 && back.kickstart_temperature == 0.5 &&
+              back.player_kickstart_weight == "0.7" && back.kickstart_ties == "search" &&
+              back.player_kickstart_depth == "4,5",
           "4. the settings round-trip; an older config.json loads with weight 0, depth 2, "
-          "temperature 1, no weights per player, even ties");
+          "temperature 1, no weights or depths per player, even ties");
+    // KickstartDepths: the list's entries, one entry for both, empty: kickstart_depth.
+    const std::array<int, 2> listed = open_spiel::thud_az::torch_az::KickstartDepths(back);
+    back.player_kickstart_depth = "5";
+    const std::array<int, 2> one = open_spiel::thud_az::torch_az::KickstartDepths(back);
+    back.player_kickstart_depth = "";
+    const std::array<int, 2> none = open_spiel::thud_az::torch_az::KickstartDepths(back);
+    Check(listed == std::array<int, 2>{4, 5} && one == std::array<int, 2>{5, 5} &&
+              none == std::array<int, 2>{3, 3},
+          "4. KickstartDepths: \"4,5\" gives the dwarfs 4 and the trolls 5; \"5\" both 5; "
+          "empty both kickstart_depth (3)");
     const std::vector<double> filled = open_spiel::thud_az::torch_az::KickstartWeights(back);
     back.player_kickstart_weight = "";
     const std::vector<double> single = open_spiel::thud_az::torch_az::KickstartWeights(back);
@@ -364,6 +382,47 @@ int main(int argc, char** argv) {
               both == std::vector<double>({0.3, 0.6}),
           "4. KickstartWeights: \"0.7\" gives the dwarfs 0.7 and the trolls the single "
           "weight; empty gives both the single weight; \"0.3,0.6\" sets both");
+  }
+
+  // 7. The teacher's depth per side to move (player_kickstart_depth, 2026-10-24): a teacher
+  // with the depths {2, 3} scores every dwarf position as one of depth 2 and every troll
+  // position as one of depth 3, and {3, 2} the other way round, on positions of random,
+  // capture-greedy games. The control: depths 2 and 3 score some positions of each side
+  // differently (else a teacher ignoring the side would pass).
+  {
+    std::vector<std::unique_ptr<State>> positions;
+    std::mt19937 rng(7);
+    for (int g = 0; positions.size() < 40; ++g) {
+      std::unique_ptr<State> s = game->NewInitialState();
+      for (int ply = 0; !s->IsTerminal() && ply < 300; ++ply) {
+        if (ply % 11 == 5) positions.push_back(s->Clone());
+        std::vector<Action> legal = s->LegalActions(), captures;
+        for (Action a : legal) {
+          if (absl::EndsWith(s->ActionToString(a), "x")) captures.push_back(a);
+        }
+        const std::vector<Action>& pool = captures.empty() ? legal : captures;
+        s->ApplyAction(pool[rng() % pool.size()]);
+      }
+    }
+    const AlphaBetaPlayer two_three(*game, std::array<int, 2>{2, 3});
+    const AlphaBetaPlayer three_two(*game, std::array<int, 2>{3, 2});
+    int wrong = 0, sides[2] = {0, 0}, differ[2] = {0, 0};
+    for (const auto& s : positions) {
+      const open_spiel::Player p = s->CurrentPlayer();
+      if (p < 0) continue;
+      const std::vector<double> d2 = depth2.Scores(*s), d3 = depth3.Scores(*s);
+      wrong += two_three.Scores(*s) != (p == 0 ? d2 : d3);
+      wrong += three_two.Scores(*s) != (p == 0 ? d3 : d2);
+      ++sides[p];
+      differ[p] += d2 != d3;
+    }
+    Check(wrong == 0 && differ[0] > 0 && differ[1] > 0 && two_three.depth(0) == 2 &&
+              two_three.depth(1) == 3,
+          absl::StrCat("7. a teacher with a depth per side: ", wrong, " of ",
+                       2 * (sides[0] + sides[1]), " positions' scores differ from those of "
+                       "the side's depth (0 required); the control, depths 2 and 3 differ on ",
+                       differ[0], " of ", sides[0], " dwarf positions and ", differ[1], " of ",
+                       sides[1], " troll positions (more than 0 each required)"));
   }
 
   // 5. Cost, if asked for.
@@ -388,7 +447,7 @@ int main(int argc, char** argv) {
             std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
         ++count[s->CurrentPlayer()];
       }
-      std::cout << "  cost at depth " << t->depth() << ": dwarfs "
+      std::cout << "  cost at depth " << t->depth(0) << ": dwarfs "
                 << 1000 * seconds[0] / count[0] << " ms a position (" << count[0]
                 << "), trolls " << 1000 * seconds[1] / count[1] << " ms (" << count[1] << ")"
                 << std::endl;

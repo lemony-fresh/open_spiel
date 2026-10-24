@@ -322,7 +322,8 @@ Trajectory PlayGame(Logger* logger, int game_num, const open_spiel::Game& game,
                 absl::StrJoin(trajectory.returns, " "), trajectory.ending,
                 opponent == nullptr
                     ? ""
-                    : absl::StrCat(" Opponent: alphabeta:", opponent->depth(), " as ",
+                    : absl::StrCat(" Opponent: alphabeta:",
+                                   opponent->depth(opponent_player), " as ",
                                    game.GetType().short_name != "thud" ? absl::StrCat("player", opponent_player)
                                    : opponent_player == 0             ? "dwarfs"
                                                                       : "trolls",
@@ -421,6 +422,21 @@ double LearningRateFactor(const AlphaZeroConfig& config, int step) {
     factor *= scheduled;
   }
   return factor;
+}
+
+std::array<int, 2> KickstartDepths(const AlphaZeroConfig& config) {
+  const std::vector<double> listed = PerPlayerValues(config.player_kickstart_depth);
+  SPIEL_CHECK_LE(listed.size(), 2);
+  std::array<double, 2> depths = {static_cast<double>(config.kickstart_depth),
+                                  static_cast<double>(config.kickstart_depth)};
+  if (listed.size() == 1) depths = {listed[0], listed[0]};
+  if (listed.size() == 2) depths = {listed[0], listed[1]};
+  std::array<int, 2> result;
+  for (int p = 0; p < 2; ++p) {
+    SPIEL_CHECK_TRUE(depths[p] >= 1 && depths[p] <= 15 && depths[p] == std::floor(depths[p]));
+    result[p] = static_cast<int>(depths[p]);
+  }
+  return result;
 }
 
 int AlphaBetaDepth(const AlphaZeroConfig& config, open_spiel::Player player) {
@@ -533,11 +549,12 @@ void actor(const open_spiel::Game& game, const AlphaZeroConfig& config, int num,
   std::unique_ptr<AlphaBetaPlayer> teacher;
   const std::vector<double> kickstart_weights = KickstartWeights(config);
   if (kickstart_weights[0] > 0 || kickstart_weights[1] > 0) {
-    teacher = std::make_unique<AlphaBetaPlayer>(game, config.kickstart_depth);
-    logger->Print("Kickstarting: weight %g (per player %g, %g), depth %d, temperature %g, "
-                  "ties %s",
+    const std::array<int, 2> depths = KickstartDepths(config);
+    teacher = std::make_unique<AlphaBetaPlayer>(game, depths);
+    logger->Print("Kickstarting: weight %g (per player %g, %g), depth %d (per player %d, %d), "
+                  "temperature %g, ties %s",
                   config.kickstart_weight, kickstart_weights[0], kickstart_weights[1],
-                  config.kickstart_depth, config.kickstart_temperature,
+                  config.kickstart_depth, depths[0], depths[1], config.kickstart_temperature,
                   config.kickstart_ties.c_str());
   }
   for (int game_num = 1; !stop->StopRequested(); ++game_num) {

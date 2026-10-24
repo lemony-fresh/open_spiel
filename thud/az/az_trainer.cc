@@ -95,6 +95,9 @@ ABSL_FLAG(std::string, player_kickstart_weight, "",
           "dwarfs' positions 0.7, the trolls' 0.3); empty or a missing second entry: "
           "kickstart_weight.");
 ABSL_FLAG(int, kickstart_depth, 2, "The teacher's alpha-beta depth, in plies.");
+ABSL_FLAG(std::string, player_kickstart_depth, "",
+          "The teacher's depth per player to move, comma-separated (\"4,5\": the dwarfs' "
+          "positions 4 plies, the trolls' 5); empty: kickstart_depth for both.");
 ABSL_FLAG(double, kickstart_temperature, 1,
           "The teacher's softmax temperature, in points of material.");
 ABSL_FLAG(std::string, kickstart_ties, "even",
@@ -251,12 +254,14 @@ int main(int argc, char** argv) {
     config.kickstart_weight = absl::GetFlag(FLAGS_kickstart_weight);
     config.player_kickstart_weight = absl::GetFlag(FLAGS_player_kickstart_weight);
     config.kickstart_depth = absl::GetFlag(FLAGS_kickstart_depth);
+    config.player_kickstart_depth = absl::GetFlag(FLAGS_player_kickstart_depth);
     config.kickstart_temperature = absl::GetFlag(FLAGS_kickstart_temperature);
     config.kickstart_ties = absl::GetFlag(FLAGS_kickstart_ties);
     SPIEL_CHECK_TRUE(config.kickstart_ties == "even" || config.kickstart_ties == "search");
     for (int p = 0; p < 2; ++p) {  // Stops here, not in an actor, on a malformed list.
       open_spiel::thud_az::torch_az::AlphaBetaDepth(config, p);
     }
+    open_spiel::thud_az::torch_az::KickstartDepths(config);  // The same.
     config.learner_batches = absl::GetFlag(FLAGS_learner_batches);
     config.symmetry_augmentation = absl::GetFlag(FLAGS_symmetry_augmentation);
     config.policy_target_pruning = absl::GetFlag(FLAGS_policy_target_pruning);
