@@ -32,7 +32,8 @@
 //   nothing and ends next to a troll, az_blunder_probe.cc): the same for those.
 //   ms_a_position  the teacher's search time, its Scores alone, once a position
 //               (2026-10-23: the depth's cost, per side; `table_bits`, the search's
-//               transposition table, default the teacher's, 0 none).
+//               transposition table, default the teacher's, 0 none);
+//   table_differs  with check=1: the positions whose scores differ without the table.
 //
 //   thud/az/build.sh thud/experiments/az_teacher_stats.cc
 //   build-shared/az_teacher_stats logs=RUN_DIR [depth=2 temperatures=0.25,0.5,1,2 \
@@ -125,6 +126,10 @@ int main(int argc, char** argv) {
   // position to the next as the teacher's is.
   const int table_bits = std::stoi(
       get("table_bits", std::to_string(open_spiel::thud_az::MaterialSearch::kTeacherTableBits)));
+  // check=1: every position also searched without a table (a fresh search each), and the
+  // positions whose scores differ counted (`table_differs`; 0 expected: the table changes no
+  // score, teacher_identity_test part 6).
+  const bool check = get("check", "0") == "1";
   std::vector<double> temperatures;
   for (absl::string_view t : absl::StrSplit(get("temperatures", "0.25,0.5,1,2"), ',')) {
     temperatures.push_back(std::stod(std::string(t)));
@@ -174,6 +179,7 @@ int main(int argc, char** argv) {
     const auto& all = positions[side];
     std::vector<double> legal, best_share, marked_share, marked_best;
     double search_seconds = 0;  // The teacher's Scores alone, once a position.
+    int table_differs = 0;
     // Per temperature.
     std::vector<std::vector<double>> best_mass(temperatures.size()),
         marked_mass(temperatures.size());
@@ -190,6 +196,11 @@ int main(int argc, char** argv) {
       const std::vector<double> scores = search.Scores(s, depth);  // Equal to teacher's.
       search_seconds +=
           std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+      if (check) {
+        table_differs +=
+            open_spiel::thud_az::MaterialSearch(open_spiel::thud_az::Evaluation::kMaterial)
+                .Scores(s, depth) != scores;
+      }
       const double best = *std::max_element(scores.begin(), scores.end());
       std::map<Action, bool> is_best, marked;
       int n_best = 0, n_marked = 0, n_marked_best = 0;
@@ -223,12 +234,14 @@ int main(int argc, char** argv) {
                        "{\"side\": \"%s\", \"depth\": %d, \"temperature\": %g, "
                        "\"positions\": %d, \"legal\": %.1f, \"best_share\": %.4f, "
                        "\"best_mass\": %.4f, \"with_%s\": %d, \"%s_share\": %.4f, "
-                       "\"%s_tied_for_best\": %.4f, \"%s_mass\": %.4f, \"ms_a_position\": %.2f}",
+                       "\"%s_tied_for_best\": %.4f, \"%s_mass\": %.4f, \"ms_a_position\": %.2f%s}",
                        side == thud::kTrollPlayer ? "trolls" : "dwarfs", depth,
                        temperatures[t], examined, Mean(legal), Mean(best_share),
                        Mean(best_mass[t]), what, marked_share.size(), what,
                        Mean(marked_share), what, Mean(marked_best), what,
-                       Mean(marked_mass[t]), 1000 * search_seconds / examined)
+                       Mean(marked_mass[t]), 1000 * search_seconds / examined,
+                       check ? absl::StrFormat(", \"table_differs\": %d", table_differs)
+                             : std::string())
                 << std::endl;
     }
   }
