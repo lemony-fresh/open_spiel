@@ -691,6 +691,8 @@ the search and trainer*, run C'.
 | 2026-10-23 | D3's result (+1.70, −1.47 to +4.87: not shown by the rule; its targets sharper, with more for the network to learn, KL 0.42 against 0.08) — wait for arm T, then perhaps the main line from R261 with both the depth-3 teacher and the ties shared by the search | user | `DESIGN_dwarf_signal.md` §10 |
 | 2026-10-23 | **Arm D4** (the teacher at depth 4, by the teacher's own search) queued after arm T: depth 4 cuts the dwarfs' moves tied for the teacher's best from ~87 to ~48; its evaluation adds the network's KL above its targets at steps 251, 256 and 261 — the ceiling of what it can learn, and how fast | user | `~/thud-runs/depth4_arm_2026-10-23.sh` |
 | 2026-10-23 | **Nothing goes into the main line before the user and Claude have looked at all the arms' results together** (T, D3, D4); merging the code (the faster search) into the main checkout changes no recipe | user | status block |
+| 2026-10-23 | T's result (T261 against R261 −1.23, −3.59 to +1.14: not shown by the rule; its targets much sharper, the dwarfs' entropy 3.02 against 4.33, the trolls' 2.72 against 3.16, and more for the network to learn, KL 0.49 against 0.08; the dwarfs' prior narrowed from ~95 to ~70 moves from step 256, R's 78-104, above the proposed tripwire of ~60) — the decision with D4's result, together | Claude, by the rule fixed beforehand; the decision the user's | `DESIGN_dwarf_signal.md` §10 |
+| 2026-10-23 | Compile flags: none worth it (`-fno-semantic-interposition`, `-mcpu=native`, ThinLTO all within the noise on the depth-4 teacher, the same results); the build stays as it is, and the build techniques not tried join the list to revisit on a new machine (group 6) | user, Claude | the GPU options, *the settings to revisit*, 6 |
 | 2026-10-18 | **The reset network is the main line, run R** (R181: the reset at the run's step 181), continued in self-play from N′'s run's state at step 181, run N's recipe unchanged; started after 02:00 once the laptop has been idle 20 minutes; each segment adds the plasticity test, to see whether R keeps learning | user | status block, `~/thud-runs/r_run_2026-10-19.sh` |
 
 **Considered and set aside** (with the reason): the Python AlphaZero (a layout bug, and
@@ -1534,9 +1536,12 @@ first session, with no patch at all.**
      7x buffer ~4.4 GB of RAM plus its copy written each step, ~26 s here; checkpoints
      ~110 MB a step at 64 x 4); and the CPU cores beside the GPU, which alpha-beta
      needs — as training opponent and as kickstarting's teacher it runs on the actors'
-     CPU threads, ~21 ms a position at depth 2 here, ~4% of a self-play move: where the
-     network gets much faster, that share grows, and alpha-beta may set the pace
-     (added 2026-10-08).
+     CPU threads, ~21 ms a position at depth 2 here until 2026-10-23, ~4% of a self-play
+     move (since then the opponent's alpha-beta runs with undo and material from the
+     piece counts, which made the teacher 21x faster, 1.3 ms at depth 2 — the opponent's own
+     time not measured — and the teacher's own search takes ~9 ms at depth 3 and ~165 ms at
+     depth 4: the GPU checklist, item 3): where the network gets
+     much faster, that share grows, and alpha-beta may set the pace (added 2026-10-08).
   2. *Compute-budget settings* — what becomes affordable; they change learning, and
      our CPU answers were shaped by scarce compute: simulations a move (100 won here at
      equal time early in training — try 200-800); playout caps (3b); the network's size
@@ -1547,7 +1552,9 @@ first session, with no patch at all.**
      2026-10-06, not yet used); alpha-beta's depth as opponent and as teacher
      (`--alphabeta_depth`, `--kickstart_depth`: depth 3 costs ~180x depth 2 for the dwarfs
      (3.8 s a position) and ~23x for the trolls (0.5 s) with OpenSpiel's alpha-beta —
-     more cores, or an alpha-beta of our own, make it affordable; added 2026-10-08).
+     more cores, or an alpha-beta of our own, make it affordable; added 2026-10-08. The
+     teacher's own search since 2026-10-23: depth 3 ~9 ms, depth 4 ~165 ms a position; arms
+     D3 and D4 test them).
   3. *Algorithm settings* — machine-independent but never tuned; on the GPU with
      several runs per setting: `uct_c` (2), the untried-move reduction (0.2), root noise
      (α 0.1, perhaps per side; ε 0.25), the temperature and its drop (10 moves); the
@@ -1565,6 +1572,41 @@ first session, with no patch at all.**
      against players without a network, and only if they are still in the recipe by
      then (on a faster machine, a run from scratch may need them less, or for fewer
      steps).
+  6. *Build settings* (added 2026-10-23; the user: what more the compiler can give) — speed
+     only, every result the same; our own code only (LibTorch, ~90% of a self-play step on
+     this CPU, comes prebuilt). **Measured here 2026-10-23, none worth it**
+     (`~/thud-runs/compile_flags_2026-10-23.sh`: the depth-4 teacher, `az_teacher_stats` on
+     80 of run R's self-play positions — our code alone, CPU-bound — OpenSpiel's shared
+     library and the program built alike, three rounds alternating, beside arm D4's trainer,
+     the CPU's limit 75-81%; seconds at best / on average): CMake's Release (`-O3
+     -DNDEBUG`, as now) 11.52 / 12.17; + `-fno-semantic-interposition` (direct calls inside
+     the library: a profile had shown `DecodeAction@plt` at ~5%) 12.27 / 12.50; +
+     `-mcpu=native` 11.80 / 12.18; + ThinLTO (`-flto=thin`, the library and the program
+     each) 11.82 / 11.99 — all within the noise (as now alone 11.5-13.1 s between rounds),
+     every result the same as now's. The build stays as it is. On a new machine worth
+     measuring only where our code's share of a step grows (a network much faster on a GPU,
+     a deeper alpha-beta), with the same benchmark and then the trainer's step time:
+     - the three flags above again (another CPU or compiler may differ; `-mcpu=native` /
+       `-march=native` only for binaries built on the machine that runs them);
+     - **the game compiled into our programs** rather than reached through
+       `libopen_spiel.so`: no link-time optimisation crosses a shared library's boundary,
+       so the move generation, `ApplyAction` and `UndoAction` stay calls through the PLT
+       (not tried; a static library of what our programs use);
+     - **profile-guided optimisation** (clang's `-fprofile-generate` / `-fprofile-use`,
+       trained on a self-play step; or sampled profiles, AutoFDO) and **BOLT** (the binary's
+       layout rearranged after linking, from a `perf` profile; best with branch records —
+       on ARM, SPE or ETM — not checked whether WSL exposes them here);
+     - **the allocator** (jemalloc, tcmalloc or mimalloc, through `LD_PRELOAD` first: the
+       search allocates nodes and move lists in many threads at once);
+     - **the compiler** (clang 21 here; GCC; another version);
+     - **LibTorch's own build** (the pip wheel's here; on a GPU the CUDA wheel with cuDNN;
+       on x86 the wheels' MKL and oneDNN; a build from source for the CPU's own
+       instructions only if inference stays on the CPU);
+     - **the safe part of fast math** (`-fno-math-errno`, FMA contraction across statements
+       `-ffp-contract=fast`) only if the search's share grows on the GPU machine; full
+       `-ffast-math` only after the code stops relying on NaN and infinity
+       (`-ffinite-math-only` lets the compiler drop `std::isnan` / `std::isinf` tests) and
+       the bit-exact tests move to tolerances (the user, 2026-10-23: likely little to gain).
   **Order on a new machine**: (1) set up and check correctness — the build, our test
   programs, `identity_test`, a short tic-tac-toe control; (2) benchmark group 1, ~1
   hour — `az_search_cost`, then actors x inference threads x batch with the real

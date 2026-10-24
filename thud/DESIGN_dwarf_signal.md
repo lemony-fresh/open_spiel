@@ -1331,6 +1331,18 @@ evaluation (positional tie-breakers capped below one dwarf — threatened pieces
 blocked shove lines, after hexparrot's AI rules; not built) would too, without following the
 search.
 
+**T's result: not shown in 10 steps, and the narrowing has begun** (2026-10-23) — T261
+against R261 −1.23 (−3.59 to +1.14; 16 won, 2 drawn, 22 lost), hexparrot:3 +40.5 (R261
++42.9), the gates pass (blunders 7.0% against N161's 5.9%, within the gate). Its targets are
+much sharper than D3's — the dwarfs' entropy 3.02 against R's 4.33 (D3's 4.25), the trolls'
+2.72 against 3.16 — and hold far more to learn: T261's KL above them 0.49 (dwarfs) and 0.62
+(trolls), R261's on T's positions 0.77 and 0.63, so 10 steps learnt about a third of the
+dwarfs' gap. The danger's first signal showed as predicted: the dwarfs' prior breadth
+(`median_prior_effective_moves`) fell from ~92-97 in steps 252-255 to ~69-83 in steps 256-261,
+R's control 78-104 over the same steps; the trolls' unchanged (~36-41, R's ~36-41). Above the
+proposed tripwire (~60), but a narrowing from the fifth step of T's targets on.
+The decision on T is taken with D4's result, together (the user).
+
 ## Review log
 
 **Review 1** (an adversarial reviewer agent, 2026-10-12, on draft 2; findings checked at
