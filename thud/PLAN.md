@@ -694,6 +694,8 @@ the search and trainer*, run C'.
 | 2026-10-23 | T's result (T261 against R261 −1.23, −3.59 to +1.14: not shown by the rule; its targets much sharper, the dwarfs' entropy 3.02 against 4.33, the trolls' 2.72 against 3.16, and more for the network to learn, KL 0.49 against 0.08; the dwarfs' prior narrowed from ~95 to ~70 moves from step 256, R's 78-104, above the proposed tripwire of ~60) — the decision with D4's result, together | Claude, by the rule fixed beforehand; the decision the user's | `DESIGN_dwarf_signal.md` §10 |
 | 2026-10-23 | **The main line continues from D4_261 with the depth-4 teacher** (the user, after all three arms' results): D4_261 against R261 +4.15 (+0.99 to +7.31) by the rule, confirmed on seeds 4-6 — pooled over 160 pairs +4.69 (+3.11 to +6.26), 105 won, 50 lost; its gain on the dwarfs' side, their prior wider (87-114 moves), its KL above its own targets falling (0.90, 0.77, 0.68 at steps 251, 256, 261). T not adopted (not shown, the dwarfs' prior narrowing); D3 superseded. Run R4 (`runR4`, networks R4_271, R4_281, ...), each segment's matches adding one against R261 | user, Claude | `~/thud-runs/r4_run_2026-10-23.sh` |
 | 2026-10-23 | Compile flags: none worth it (`-fno-semantic-interposition`, `-mcpu=native`, ThinLTO all within the noise on the depth-4 teacher, the same results); the build stays as it is, and the build techniques not tried join the list to revisit on a new machine (group 6) | user, Claude | the GPU options, *the settings to revisit*, 6 |
+| 2026-10-24 | **The teacher's transposition table, on by default** (the user: if the tests make us confident): the same scores (OpenSpiel's alpha-beta at depths 3-4, the search without a table at 5, random windows by the fail-soft rule, 0 of 800 searches on self-play positions; 5 broken tables and 5 broken hash updates each caught); its key's counters only near the limits (the user's quantisation); and the move order without a full sort (~40% at depth 4, ~30% at 5). Merged into `thud` before the arms below | user, Claude | `thud/az/material_search.h`, the GPU checklist, item 3 |
+| 2026-10-24 | **Arms DS (the teacher at depth 4 for the dwarfs, 5 for the trolls) and D5 (5 for both)** from D4_261 against R4_271 (120 pairs each, three seeds); they also measure depth 5's cost (seconds a step, games waiting, the teacher's time on the idle machine). The main line paused after R4_271 (against R201 +23.75, R261 +14.00) and goes on from 271 at depth 4 afterwards | user | `~/thud-runs/depth_arms_2026-10-24.sh` |
 | 2026-10-18 | **The reset network is the main line, run R** (R181: the reset at the run's step 181), continued in self-play from N′'s run's state at step 181, run N's recipe unchanged; started after 02:00 once the laptop has been idle 20 minutes; each segment adds the plasticity test, to see whether R keeps learning | user | status block, `~/thud-runs/r_run_2026-10-19.sh` |
 
 **Considered and set aside** (with the reason): the Python AlphaZero (a layout bug, and
@@ -1689,9 +1691,19 @@ first session, with no patch at all.**
      every step's end), so the actors absorbed the teacher. At depth 3 the ordering gains
      little (the teacher scores every root move with a full window, so only the frontier's
      cut-off profits): captures first 2.3 against 4.1 ms a troll position, killers none.
-     **In progress** (2026-10-24, the worktree's branch `ttable`, the user: a transposition
-     table, its key's counters only near the limits): the table, a faster move order, and
-     the game's own Zobrist hash; the threat and line moves first still to do.
+     **Then** (2026-10-24, merged 05:00; the user: a transposition table, its key's
+     counters only near the limits): the game's own Zobrist hash (`ThudState::BoardHash`);
+     the table (cut-offs only from entries of the node's own depth, so the scores stay
+     exact; on by default, the user — 0 of 800 searches on self-play positions differ); the
+     sides alternate, so a transposition needs two moves by one side, 3 plies down: depth 4
+     gains nothing, depth 5 6-14%. A profile then found a quarter of depth 5 in sorting every
+     node's moves: only the few above priority 0 are sorted now — depth 4 ~40% faster, depth
+     5 ~30% (beside a trainer: depth 4 93 and 26 ms a dwarf and a troll position, depth 5
+     278 and 366). The teacher's depth per side (`--player_kickstart_depth`). Next in the
+     profile (depth 5): the board scanned for pieces — `BestCapture` 27%, the side-can-move
+     check 14%, move generation 15%; piece lists estimated ~20% (the side-can-move check
+     most), a capture check from the trolls' side ~10% more, decoding actions from a table
+     ~5%. Still to do: those, and the threat and line moves first.
   4. **Tapers by results, gated** (the row below): long unattended runs.
   5. **float16 inference** (the row below; the user, 2026-10-19: not now, but before
      renting): small, the same mechanism as bfloat16.

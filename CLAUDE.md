@@ -329,7 +329,9 @@ as `vs_alphabeta`), `--kickstart_weight`, `--kickstart_depth` and
 a softmax of alpha-beta's move scores, a teacher; actors log the settings),
 `--kickstart_ties=even|search` (2026-10-23: `search` shares each group of moves the teacher
 scores alike by the search's visits within it, the groups' totals unchanged; `even`, the
-default, as before),
+default, as before), `--player_kickstart_depth` (2026-10-24: the teacher's depth per player to
+move, "4,5"; empty: `--kickstart_depth` for both; the teacher's search keeps a transposition
+table a thread, 4 MB, the same scores — `thud/az/material_search.h`),
 `--player_kickstart_weight` and `--player_policy_alpha` / `--player_policy_epsilon`
 (2026-10-13: the teacher's weight and the root noise per player to move; empty: as
 before; built as `az_trainer_d1`), `--lr_warmup_steps`, `--lr_warmup_start`,
@@ -356,7 +358,7 @@ extra arguments, as its header says), `untried_move_test`, `conv_policy_test`,
 `search_settings_test`, `alphabeta_training_test`, `kickstart_test`, `input_planes_test`
 (the 50 input planes inside the network; `features_test` tests the planes themselves),
 `grow_test` (Net2Net, on small networks), `thread_count_test` (the thread counts per thread),
-`teacher_identity_test` (2026-10-23: the faster teacher computes exactly what it did; `ThudState::UndoAction` is tested in `thud_test`),
+`teacher_identity_test` (2026-10-23: the faster teacher computes exactly what it did, since 2026-10-24 with its transposition table; `ThudState::UndoAction` and `BoardHash` are tested in `thud_test`),
 `make_test_network` (small untrained networks for the tests), and from
 `thud/experiments/`
 `az_match` (since 2026-10-07 also against players without a network:
@@ -364,7 +366,8 @@ extra arguments, as its header says), `untried_move_test`, `conv_policy_test`,
 2026-10-13 self-play's root noise per side and sampled plies, `noise=`, `sample_plies=`,
 and the teacher in one network's prior, `teacher_mix_a=`), `az_forgetting`, `az_merge_buffers`, `az_target_quality`, `az_head_probe`,
 `az_reference_pilot`, `az_noise_probe`, `az_search_cost`, `az_blunder_probe`,
-`az_capture_targets`, `az_teacher_stats`, `az_feature_probe`, `az_long_capture_probe`,
+`az_capture_targets`, `az_teacher_stats` (since 2026-10-24 the search's time a position,
+`ms_a_position`, and `check=1`: the table against none), `az_feature_probe`, `az_long_capture_probe`,
 `az_input_plane_trace`, `az_risk_probe`, `az_dwarf_value_probe` (since 2026-10-17 `each=`:
 every position's values, for `thud/experiments/dwarf_value_report.py`'s intervals, which
 resample whole games) and `teacher_mix_test`;
