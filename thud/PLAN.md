@@ -692,6 +692,7 @@ the search and trainer*, run C'.
 | 2026-10-23 | **Arm D4** (the teacher at depth 4, by the teacher's own search) queued after arm T: depth 4 cuts the dwarfs' moves tied for the teacher's best from ~87 to ~48; its evaluation adds the network's KL above its targets at steps 251, 256 and 261 — the ceiling of what it can learn, and how fast | user | `~/thud-runs/depth4_arm_2026-10-23.sh` |
 | 2026-10-23 | **Nothing goes into the main line before the user and Claude have looked at all the arms' results together** (T, D3, D4); merging the code (the faster search) into the main checkout changes no recipe | user | status block |
 | 2026-10-23 | T's result (T261 against R261 −1.23, −3.59 to +1.14: not shown by the rule; its targets much sharper, the dwarfs' entropy 3.02 against 4.33, the trolls' 2.72 against 3.16, and more for the network to learn, KL 0.49 against 0.08; the dwarfs' prior narrowed from ~95 to ~70 moves from step 256, R's 78-104, above the proposed tripwire of ~60) — the decision with D4's result, together | Claude, by the rule fixed beforehand; the decision the user's | `DESIGN_dwarf_signal.md` §10 |
+| 2026-10-23 | **The main line continues from D4_261 with the depth-4 teacher** (the user, after all three arms' results): D4_261 against R261 +4.15 (+0.99 to +7.31) by the rule, confirmed on seeds 4-6 — pooled over 160 pairs +4.69 (+3.11 to +6.26), 105 won, 50 lost; its gain on the dwarfs' side, their prior wider (87-114 moves), its KL above its own targets falling (0.90, 0.77, 0.68 at steps 251, 256, 261). T not adopted (not shown, the dwarfs' prior narrowing); D3 superseded. Run R4 (`runR4`, networks R4_271, R4_281, ...), each segment's matches adding one against R261 | user, Claude | `~/thud-runs/r4_run_2026-10-23.sh` |
 | 2026-10-23 | Compile flags: none worth it (`-fno-semantic-interposition`, `-mcpu=native`, ThinLTO all within the noise on the depth-4 teacher, the same results); the build stays as it is, and the build techniques not tried join the list to revisit on a new machine (group 6) | user, Claude | the GPU options, *the settings to revisit*, 6 |
 | 2026-10-18 | **The reset network is the main line, run R** (R181: the reset at the run's step 181), continued in self-play from N′'s run's state at step 181, run N's recipe unchanged; started after 02:00 once the laptop has been idle 20 minutes; each segment adds the plasticity test, to see whether R keeps learning | user | status block, `~/thud-runs/r_run_2026-10-19.sh` |
 
@@ -1540,7 +1541,8 @@ first session, with no patch at all.**
      move (since then the opponent's alpha-beta runs with undo and material from the
      piece counts, which made the teacher 21x faster, 1.3 ms at depth 2 — the opponent's own
      time not measured — and the teacher's own search takes ~9 ms at depth 3 and ~165 ms at
-     depth 4: the GPU checklist, item 3): where the network gets
+     depth 4 beside a trainer, 89 ms a dwarf position and 15 ms a troll's at depth 4 on the
+     idle machine: the GPU checklist, item 3): where the network gets
      much faster, that share grows, and alpha-beta may set the pace (added 2026-10-08).
   2. *Compute-budget settings* — what becomes affordable; they change learning, and
      our CPU answers were shaped by scarce compute: simulations a move (100 won here at
@@ -1553,8 +1555,10 @@ first session, with no patch at all.**
      (`--alphabeta_depth`, `--kickstart_depth`: depth 3 costs ~180x depth 2 for the dwarfs
      (3.8 s a position) and ~23x for the trolls (0.5 s) with OpenSpiel's alpha-beta —
      more cores, or an alpha-beta of our own, make it affordable; added 2026-10-08. The
-     teacher's own search since 2026-10-23: depth 3 ~9 ms, depth 4 ~165 ms a position; arms
-     D3 and D4 test them).
+     teacher's own search since 2026-10-23: depth 3 ~9 ms, depth 4 ~165 ms a position beside a
+     trainer; on the idle machine depth 4 89 ms a dwarf position and 15 ms a troll's, depth 5
+     239 and 282 ms; arm D4 won, and its cost did not show in the step time — the learner sets
+     the pace there; the main line runs at depth 4 since 2026-10-23).
   3. *Algorithm settings* — machine-independent but never tuned; on the GPU with
      several runs per setting: `uct_c` (2), the untried-move reduction (0.2), root noise
      (α 0.1, perhaps per side; ε 0.25), the temperature and its drop (10 moves); the
@@ -1676,11 +1680,18 @@ first session, with no patch at all.**
      any other evaluation runs without it — the user: assert it rather than hide it behind
      a switch). Above it, captures first (the biggest first) and killer moves. The same
      values exactly (OpenSpiel's alpha-beta at depths 3 and 4); on run R's self-play
-     positions depth 3 ~9 ms a position, **depth 4 ~165 ms** (unordered 4.7 s) — a depth-4
-     teacher ~+30-40% a step. At depth 3 the ordering gains little (the teacher scores every
-     root move with a full window, so only the frontier's cut-off profits): captures first
-     2.3 against 4.1 ms a troll position, killers none. Still to do: a table of positions,
-     iterative deepening, the threat and line moves first — measured at depth 4.
+     positions depth 3 ~9 ms a position, **depth 4 ~165 ms** beside a running trainer
+     (unordered 4.7 s), and on the idle machine (2026-10-23, 40 positions a side, the CPU's
+     limit 100%) depth 4 89 ms a dwarf position and 15 ms a troll's, depth 5 239 and 282 ms
+     (~5x depth 4, not the ~18x of depth 3 to 4: depth 5 adds a troll ply to the dwarfs'
+     searches and a dwarf ply to the trolls'). Arm D4's steps took no longer than the
+     depth-2 arms' (1,098 s; P's 1,094): the learner sets the pace (40-50 games waiting at
+     every step's end), so the actors absorbed the teacher. At depth 3 the ordering gains
+     little (the teacher scores every root move with a full window, so only the frontier's
+     cut-off profits): captures first 2.3 against 4.1 ms a troll position, killers none.
+     **In progress** (2026-10-24, the worktree's branch `ttable`, the user: a transposition
+     table, its key's counters only near the limits): the table, a faster move order, and
+     the game's own Zobrist hash; the threat and line moves first still to do.
   4. **Tapers by results, gated** (the row below): long unattended runs.
   5. **float16 inference** (the row below; the user, 2026-10-19: not now, but before
      renting): small, the same mechanism as bfloat16.

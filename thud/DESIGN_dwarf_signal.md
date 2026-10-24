@@ -1343,6 +1343,22 @@ R's control 78-104 over the same steps; the trolls' unchanged (~36-41, R's ~36-4
 proposed tripwire (~60), but a narrowing from the fifth step of T's targets on.
 The decision on T is taken with D4's result, together (the user).
 
+**D4 (the teacher at depth 4, by the teacher's own search, the opponent at depth 2): yes**
+(2026-10-23) — D4_261 against R261 +4.15 (+0.99 to +7.31; 24 won, 3 drawn, 13 lost), the
+first arm to win by the rule; confirmed on seeds 4, 5 and 6 (+3.17, +6.67, +4.75), pooled over
+160 pairs **+4.69 (+3.11 to +6.26)**, 105 won, 5 drawn, 50 lost. hexparrot:3 +41.5 (R261
++42.9), the gates pass (blunders 5.5% against N161's 5.9%). The gain is the dwarfs': as
+dwarfs against R261's trolls −16.1 pooled (on seed 3 −16.7, where D3 had −19.6, T −22.1, P
+−23.0), as trolls +20.8 (the others' alike). Its dwarfs' targets only a little sharper (the
+entropy 4.12 against R's 4.33; T's 3.02), but they hold more to learn and the network learns
+it: the arm's network's KL above them 0.90 at step 251 (R251), 0.77 at 256, 0.68 at 261 —
+still falling — and R261's 0.955 (R drifted away from them in its own 10 steps); the trolls'
+0.36, 0.35, 0.34 (little new for them). No narrowing: the dwarfs' prior breadth rose from
+87-95 moves in steps 252-255 to 104-114 in 257-261 (R's 78-104), the trolls' 34-40. So what
+helped was better information from the teacher, not sharper targets: T's were far sharper
+and did not win. Its cost did not show (1,098 s a step; P's 1,094). The user: the main line
+continues from D4_261 at depth 4 (run R4); T not adopted, D3 superseded.
+
 ## Review log
 
 **Review 1** (an adversarial reviewer agent, 2026-10-12, on draft 2; findings checked at
