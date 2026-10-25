@@ -507,8 +507,8 @@ main teacher.
   lines) the network's value can learn, so a deeper material teacher matters less as the
   network gets better. Only if the measurement above still favours a deeper teacher.
 - **The last alpha-beta measure: tie-breaking by a finer evaluation** (the user). At depth
-  4-5 the teacher ties 40-50% of the dwarfs' moves and 60-75% of the trolls' for its best
-  score; within a tied group it says nothing. Positional terms worth together less than one
+  4-5 the teacher ties 20-50% of the dwarfs' moves and 50-75% of the trolls' for its best
+  score (by position set and depth: `az_teacher_stats`, 2026-10-23/24); within a tied group it says nothing. Positional terms worth together less than one
   dwarf (so material still decides between groups) would order the moves inside a group —
   after hexparrot's AI rules: threatened pieces, the dwarfs' cohesion, blocked shove lines,
   dwarfs next to trolls, mobility. Unlike arm T (the ties shared by the search's own visits,
