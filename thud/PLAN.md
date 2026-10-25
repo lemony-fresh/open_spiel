@@ -487,6 +487,60 @@ equal machine time. Never stack changes that have not been shown to work.
 | 5c — decided 2026-10-02, started 2026-10-03 | **Instrumentation** (the user, 2026-10-02): per-side splits of the trainer's losses and value statistics, self-play results as margins and how games ended, search statistics per side (breadth, the prior's entropy, how far the search moves it) — **built and checked 2026-10-03**; and **a ladder of anchors with a rating** for strength (*How we evaluate networks*) — **the rating script built 2026-10-03** (`ladder.py`; anchors A14, E44, D29, C29, C16, and G'44 at the top since the promotion rule was decided, 2026-10-04). The fixed validation set was **shelved** (the user, 2026-10-03): the pilot showed strong searches agreeing on the best move only ~20% of the time, so its policy targets would measure a reference's style; its value-only variant judged of low value. **The evaluation watcher and the game analyser** (items 5 and 6) **built 2026-10-05**, for the GPU phase's tuning | Each statistic checked against an independent computation (done: the mixed numbers, replayed games, `az_buffer_stats`, a hand-built position per ending); the ladder's ratings reproduce the matches we have |
 | 6 | Cloud GPU, longer runs — first a weaker, cheaper GPU with many CPU cores, stronger ones as the network grows (the user, 2026-10-03; options in *Cloud GPU options*) | Throughput measured there first, and **every machine-dependent setting reasoned about or benchmarked on each new machine** (buffer, network and batch sizes, threads, cadence; *Cloud GPU options*) |
 
+**After the depth-5 teacher: how to teach the network better** (the user and Claude,
+2026-10-24). The teacher at depth 5 for the dwarfs (arms D5 and D54) is the last cheap step
+in depth; the user expects it to be learnt out within days. Then the question is what
+teaches the network better — the user: not depth 6, and alpha-beta should stop being the
+main teacher.
+
+- **The trigger — when the teacher is used up**, read from measurements rather than guessed:
+  the network's KL above its targets stops falling (D5: 0.48, 0.44, 0.42 over its 10 steps,
+  still falling); each segment's gain against the previous network shrinks; and, decisive,
+  **the teacher against the search** (to build): on the same self-play positions, the
+  teacher's policy and the search's own visits each compared with a much longer search's
+  (thousands of simulations, as `az_target_quality` did on 2026-10-01) — once the search's
+  visits come closer to it than the teacher's policy does, the teacher holds the network
+  back.
+- **Depth 6: not the main route.** Each ply multiplies the cost again (depth 4 to 5: ~3x
+  for the dwarfs, ~15x for the trolls, after every speed-up), and the teacher sees only
+  material within its horizon — none of the positional value (cohesion, mobility, blocked
+  lines) the network's value can learn, so a deeper material teacher matters less as the
+  network gets better. Only if the measurement above still favours a deeper teacher.
+- **The last alpha-beta measure: tie-breaking by a finer evaluation** (the user). At depth
+  4-5 the teacher ties 40-50% of the dwarfs' moves and 60-75% of the trolls' for its best
+  score; within a tied group it says nothing. Positional terms worth together less than one
+  dwarf (so material still decides between groups) would order the moves inside a group —
+  after hexparrot's AI rules: threatened pieces, the dwarfs' cohesion, blocked shove lines,
+  dwarfs next to trolls, mobility. Unlike arm T (the ties shared by the search's own visits,
+  which narrowed the dwarfs' prior) this brings in information from outside the
+  network-and-search loop. The cheap form: the positional terms scored only on the root
+  moves' resulting positions, breaking ties among the root moves — the material search and
+  its frontier rule (exact only for a material evaluation, `material_search.h`) stay as
+  they are; terms at the search's leaves would need the frontier searched in full, many
+  times slower. The risk: the network learns the heuristic's biases where they are wrong.
+  An arm against the 5/x main line, before the teacher is tapered.
+- **Then taper the teacher**, gated (*Tapers by results*, the design's conditions; arm RLT,
+  the dwarfs' weight 0.35, lost −3.98 on 2026-10-20, when the network still needed it), with
+  the search's own targets taking over:
+  - **Gumbel targets** (Danihelka et al., ICLR 2022): the policy target from the moves'
+    search values (completed Q) instead of their visits — at 100 simulations over ~250
+    dwarf moves most moves get 0-1 visits, so visit counts are a noisy target; the notes of
+    2026-10-04 below (*Changes to the search and trainer*) have the formula (`mctx`'s
+    `qtransform_completed_by_mix_value`) and the caveats with our PUCT search; Gumbel's
+    root search (sampled candidates, sequential halving) would go with it.
+  - **More simulations** (S400, and playout-cap randomisation, built and off): the user,
+    2026-10-24 — the equal-time argument counted at the start, when games mattered more
+    than their targets; now the targets limit learning (the fit test, 2026-10-22) and
+    better targets are worth more time per step, at least while training. Claude agrees,
+    with one piece of evidence to recheck: on 2026-10-04 (G'44, a weak network with a
+    near-flat dwarf prior) more simulations spread the dwarfs' search rather than settling
+    it (two noise seeds' top moves agreeing 6%, 11%, 10% at 100, 200, 400 simulations); the
+    dwarfs' prior is still broad today (110-140 effective moves), so first `az_noise_probe
+    sims=100,200,400` on the current network — if it settles now, S400; if not, Gumbel's
+    value targets first. On a GPU machine more simulations cost little.
+- **Alpha-beta keeps its other roles**: the training opponent (30% of the positions) and
+  the regression gates, where it catches tactical blunders.
+
 **Later, when a trigger fires** (details in *Notes for later*):
 
 - **Before publishing a network**: check that OpenSpiel's default LibTorch (2.3.0,
@@ -513,7 +567,8 @@ equal machine time. Never stack changes that have not been shown to work.
 - **End-of-battle limits** — re-measure once the engine plays strongly (*Deferred
   decisions*).
 - **Gumbel AlphaZero** — only if few-simulation search remains the bottleneck after 3b
-  and 3c; a large change.
+  and 3c; a large change. Since 2026-10-24 one of the candidates for after the teacher
+  (*After the depth-5 teacher*, above).
 - **Convolutional policy heads, again** (the user, 2026-10-03) — **done: since runs L and M
   (2026-10-11/12) the convolutional head serves both sides; the hybrid (the trolls only)
   is superseded** (the user, 2026-10-15). The original note: for both sides, or for
