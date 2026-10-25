@@ -1377,7 +1377,20 @@ the teacher on the idle machine (D5's positions, with the table and the move ord
 2026-10-24) depth 4 45.5 ms a dwarf position and 11.0 a troll's, depth 5 143.2 and 177.9 (on
 DS's: 49.5, 12.9, 156.0, 227.5); D5's steps 1,557 s at the CPU's limit 73% on average, against
 D4's 1,098 at ~75% (2026-10-23) — ~40% longer, though 41-54 games waited at every step's end
-(the learner still sets the pace; the teacher's work takes CPU from it). DS's steps 2,422 s at
+(the learner still sets the pace; the teacher's work takes CPU from it). Corrected: against
+depth 4 with the same code (run R4's steps 272-281, after the faster move order: 952 s at 76%)
+D5's steps are ~60% longer — the teacher's speed showed in depth 4's step time after all.
+**Why can blurrier targets teach better?** The user's explanation: depth 5 classifies which
+moves belong to the best group better, even though the group is larger — a cleaner label is
+easier to learn than a narrower, noisier one. The mechanism for the dwarfs: a depth-4 search
+from a dwarf position ends on a troll move, so it sees a troll take a dwarf (−1) but not the
+dwarfs' answer (a hurl onto that troll, +4) and marks such moves worse than they are; depth 5
+sees the answer and puts many back among the best. Evidence for it: the same network, D4_261
+(trained on depth-4 targets), sat closer to the depth-5 dwarf targets than to the depth-4
+ones — KL 0.48 on D5's positions against 0.58 on DS's and 0.585 on R4's, which had depth-4
+dwarf targets. A caveat: a broader target is also easier to match for a broad prior, so this
+suggests, not proves. Arm D54 (depth 5 for the dwarfs, 4 for the trolls; horizon on a dwarf
+move for both sides — the opposite of DS) tests the cheaper split. DS's steps 2,422 s at
 45% (the laptop throttled to 28-35% for hours).
 
 ## Review log
