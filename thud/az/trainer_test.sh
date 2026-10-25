@@ -380,4 +380,35 @@ BIN=$bin "$repo/thud/experiments/bench_trainer.sh" "$run" "$tmp/bench" 3,2,1,1,3
 check "8. ... run again, the same results, nothing trained" bash -c \
   "cmp -s '$tmp/bench.jsonl' '$tmp/bench_again.jsonl' && [ ! -e '$tmp/bench/s0/replay_buffer.data' ]"
 
+# 9. The teacher against the search (az_teacher_vs_search, 2026-10-24): on the run's own
+# games, with its settings (the teacher at depths 1 and 2, weights 0.7 and 0.3), the
+# trainer's own budget and 24 simulations against references of 16 and 32.
+"$bin/az_teacher_vs_search" run="$run" step=-1 sims=24 refs=16,32 last=2 max=3 threads=2 batch=2 \
+  inference_threads=1 > "$tmp/teacher_vs_search.jsonl" 2> "$tmp/teacher_vs_search.err"
+check "9. az_teacher_vs_search exits 0 (its self-test passed), with the run's teacher" \
+  bash -c "[ $? -eq 0 ] && grep -q \"the teacher's depths 1, 2, weights 0.7, 0.3\" '$tmp/teacher_vs_search.err'"
+check "9. ... every position each candidate against both references, the uniform one agreeing 1/legal (ties shared); the summaries per side, candidate and reference, the uniform one spread over every legal move, and the references' stability" \
+  python3 - "$tmp/teacher_vs_search.jsonl" <<'EOF'
+import json, sys
+lines = [json.loads(l) for l in open(sys.argv[1])]
+rows = [d for d in lines if "position" in d]
+summaries = [d for d in lines if d.get("summary") and not d.get("stability")]
+stability = [d for d in lines if d.get("stability")]
+ok = len(rows) >= 4 and {d["side"] for d in rows} == {"dwarfs", "trolls"}
+for d in rows:
+  for c in ("visits", "visits24", "teacher", "target", "uniform"):
+    for r in (16, 32):
+      x = d[f"{c}_ref{r}"]
+      ok &= all(0 <= x[k] <= 1 + 1e-9 for k in ("agrees", "mass_on_best", "distance"))
+    ok &= abs(d[f"uniform_ref16"]["agrees"] - 1 / d["legal"]) < 1e-3
+ok &= len(summaries) == 2 * 5 * 2 and len(stability) == 2
+ok &= all(s["minus_visits"]["distance"][0] == 0 for s in summaries if s["candidate"] == "visits")
+ok &= all(s["effective_moves"][0] >= 1 - 1e-9 for s in summaries)
+legal = {side: [d["legal"] for d in rows if d["side"] == side] for side in ("dwarfs", "trolls")}
+ok &= all(abs(s["effective_moves"][0] - sum(legal[s["side"]]) / len(legal[s["side"]])) < 1e-3
+          for s in summaries if s["candidate"] == "uniform")
+if not ok: print(lines[:3], summaries[:2])
+sys.exit(0 if ok else 1)
+EOF
+
 finish

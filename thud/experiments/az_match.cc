@@ -44,6 +44,9 @@
 //   b=hexparrot:LOOKAHEAD hexparrot/thudgame's AI (its default lookahead is 3), in a
 //                         Python process per thread (thud/experiments/hexparrot_player.py;
 //                         `hexparrot_player` gives another path to it)
+//   b=teacher:DEPTH       kickstarting's teacher as a player (2026-10-25): the material
+//                         after DEPTH plies by the teacher's own search, a move drawn
+//                         evenly from those with the best score (TeacherOpponent below)
 // Each starts every battle from a seed fixed by `seed`, the pair and the side, so reruns
 // play the same games whichever thread plays them. The pair lines then also give the
 // pair's seconds and each side's seconds per move it chose (wall clock: on a loaded
@@ -321,6 +324,32 @@ class AlphaBetaOpponent : public Opponent {
   open_spiel::thud_az::AlphaBetaPlayer player_;
 };
 
+// Kickstarting's teacher as a player (teacher:DEPTH; the user, 2026-10-25: does the student
+// beat its teacher?): AlphaBetaPlayer::Scores — the material after DEPTH plies of the
+// teacher's own search (MaterialSearch), what the trainer's targets are made from — and a
+// move drawn evenly from the moves with the best score, seeded by the battle: the teacher's
+// policy at a temperature near 0. Unlike alphabeta:DEPTH, whose random values at the leaves
+// favour moves that keep more options open (alphabeta_player.h), it knows material alone.
+class TeacherOpponent : public Opponent {
+ public:
+  TeacherOpponent(const open_spiel::Game& game, int depth) : teacher_(game, depth) {}
+  void NewBattle(int seed) override { rng_.seed(seed); }
+  Action Choose(const open_spiel::State& state) override {
+    const std::vector<Action> legal = state.LegalActions();
+    const std::vector<double> scores = teacher_.Scores(state);
+    const double best = *std::max_element(scores.begin(), scores.end());
+    std::vector<Action> tied;
+    for (size_t i = 0; i < legal.size(); ++i) {
+      if (scores[i] == best) tied.push_back(legal[i]);
+    }
+    return tied[std::uniform_int_distribution<size_t>(0, tied.size() - 1)(rng_)];
+  }
+
+ private:
+  const open_spiel::thud_az::AlphaBetaPlayer teacher_;
+  std::mt19937 rng_;
+};
+
 // hexparrot/thudgame's AI (hexparrot:LOOKAHEAD), run by thud/experiments/hexparrot_player.py
 // in a Python process of its own, which this talks to over pipes (the protocol is in that
 // file). Positions cross, not moves: this sends the board and plays the one legal action
@@ -483,9 +512,11 @@ int main(int argc, char** argv) {
               << std::endl;
     return 1;
   }
-  // Side B without a network: "mcts:SIMS", "alphabeta:DEPTH" or "hexparrot:LOOKAHEAD".
+  // Side B without a network: "mcts:SIMS", "alphabeta:DEPTH", "hexparrot:LOOKAHEAD" or
+  // "teacher:DEPTH".
   const std::string kind_b = spec_b.substr(0, spec_b.find(':'));
-  const bool outside = kind_b == "mcts" || kind_b == "alphabeta" || kind_b == "hexparrot";
+  const bool outside = kind_b == "mcts" || kind_b == "alphabeta" || kind_b == "hexparrot" ||
+                       kind_b == "teacher";
   const int strength_b = outside ? std::stoi(spec_b.substr(kind_b.size() + 1)) : 0;
   if (outside && kind_b == "hexparrot") {
     // A Python player that stopped shows as an error reading its reply, not a SIGPIPE.
@@ -613,6 +644,8 @@ int main(int argc, char** argv) {
         opponent = std::make_unique<MctsOpponent>(*game, strength_b, mcts_memory);
       } else if (kind_b == "alphabeta") {
         opponent = std::make_unique<AlphaBetaOpponent>(*game, strength_b);
+      } else if (kind_b == "teacher") {
+        opponent = std::make_unique<TeacherOpponent>(*game, strength_b);
       } else {
         opponent = std::make_unique<HexparrotOpponent>(strength_b, hexparrot_player);
       }

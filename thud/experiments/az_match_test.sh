@@ -30,8 +30,10 @@
 #   5. The teacher in A's prior (teacher_mix_a=0,0.5): reproducible, and (the control)
 #      different from the match without it. Its arithmetic: teacher_mix_test.
 #   6. Players without a network, as documented, the same battles whichever thread:
-#      b=alphabeta:1 and b=mcts:20 with 1 and 2 threads; b=hexparrot:1 too if hexparrot
-#      is set up (thud/experiments/perft_reference.py) — skipped, and said so, if not.
+#      b=alphabeta:1, b=mcts:20 and b=teacher:2 (2026-10-25) with 1 and 2 threads;
+#      b=hexparrot:1 too if hexparrot is set up (thud/experiments/perft_reference.py) —
+#      skipped, and said so, if not. The control for the teacher's tie-break: another seed
+#      plays other battles.
 #
 #   thud/experiments/az_match_test.sh [BIN_DIR]    # default build-tests/bin
 #
@@ -125,7 +127,7 @@ match teacher teacher_mix_a=0,0.5 && match teacher_again teacher_mix_a=0,0.5 && 
   check "5. control: teacher_mix_a=0,0.5 differs from the match without it" differ teacher base
 }
 
-opponents="alphabeta:1 mcts:20"
+opponents="alphabeta:1 mcts:20 teacher:2"
 if python3 -c "import sys; sys.path.insert(0, '$repo/thud/experiments'); import perft_reference as r; r.load_hexparrot(r.DEFAULT_HEXPARROT)" \
     > /dev/null 2>&1; then
   opponents="$opponents hexparrot:1"
@@ -137,6 +139,10 @@ for o in $opponents; do
   match "${n}_1" "b=$o" && match "${n}_2" "b=$o" threads=2 &&
     check "6. b=$o: 1 and 2 threads play the same battles" same "${n}_1" "${n}_2"
 done
+
+match teacher_seed2 b=teacher:2 seed=2 &&
+  check "6. control: b=teacher:2 with seed 2 plays other battles (its ties drawn by the seed)" \
+    differ teacher_1 teacher_seed2
 
 if [ "$failures" -eq 0 ]; then echo "ALL PASSED"; else echo "$failures FAILED"; fi
 [ "$failures" -eq 0 ]
