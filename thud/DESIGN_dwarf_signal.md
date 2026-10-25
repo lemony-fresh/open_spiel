@@ -1359,6 +1359,27 @@ helped was better information from the teacher, not sharper targets: T's were fa
 and did not win. Its cost did not show (1,098 s a step; P's 1,094). The user: the main line
 continues from D4_261 at depth 4 (run R4); T not adopted, D3 superseded.
 
+**DS and D5: the teacher at depth 5** (2026-10-24; each from D4_261, 10 steps, against run
+R4's own R4_271 at depth 4, 120 pairs pooled over seeds 3-5). **DS (depth 4 for the dwarfs, 5
+for the trolls — the user's hypothesis, the horizon on a troll move): no** — −0.97 (−3.23 to
++1.30; 58 won, 4 drawn, 58 lost); hexparrot:3 +43.7 (R4_271 +43.3); blunders 8.2% against
+N161's 5.9% (the gate passes; R4_271 6.2%). The trolls' targets hardly changed (entropy 3.000
+against R4's 3.008): their teacher weighs 0.3, and depth 5 ties 62.5% of their moves against
+72.6% at depth 4. **D5 (depth 5 for both): yes** — +2.43 (+0.50 to +4.37; 70 won, 6 drawn, 44
+lost; the seeds +1.52, +2.20, +3.58), hexparrot:3 +41.7, blunders 6.0%; the gain the dwarfs'
+(as dwarfs −9.35 against R4's trolls, DS −11.73; as trolls +11.78, DS +10.77). So the dwarfs'
+depth 5 helps and the trolls' does not show. Its dwarfs' targets are *less* sharp (entropy
+4.362 against 4.246; depth 5 ties 50.6% of their moves against 41.4% at depth 4 on D5's
+positions) and still win — as with D4 against T, better information, not sharper targets;
+the user's even/odd reading of the ties holds for the dwarfs' ties but not for what they are
+worth. The network learns them: KL 0.483, 0.437, 0.419 at steps 261, 266, 271. **The cost**:
+the teacher on the idle machine (D5's positions, with the table and the move order of
+2026-10-24) depth 4 45.5 ms a dwarf position and 11.0 a troll's, depth 5 143.2 and 177.9 (on
+DS's: 49.5, 12.9, 156.0, 227.5); D5's steps 1,557 s at the CPU's limit 73% on average, against
+D4's 1,098 at ~75% (2026-10-23) — ~40% longer, though 41-54 games waited at every step's end
+(the learner still sets the pace; the teacher's work takes CPU from it). DS's steps 2,422 s at
+45% (the laptop throttled to 28-35% for hours).
+
 ## Review log
 
 **Review 1** (an adversarial reviewer agent, 2026-10-12, on draft 2; findings checked at
