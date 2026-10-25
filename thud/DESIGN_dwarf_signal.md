@@ -1390,7 +1390,29 @@ sees the answer and puts many back among the best. Evidence for it: the same net
 ones — KL 0.48 on D5's positions against 0.58 on DS's and 0.585 on R4's, which had depth-4
 dwarf targets. A caveat: a broader target is also easier to match for a broad prior, so this
 suggests, not proves. Arm D54 (depth 5 for the dwarfs, 4 for the trolls; horizon on a dwarf
-move for both sides — the opposite of DS) tests the cheaper split. DS's steps 2,422 s at
+move for both sides — the opposite of DS) tests the cheaper split.
+
+**D54: no** (2026-10-25; from R4_271 against R4_281, 120 pairs): +0.26 (−1.59 to +2.11; 56
+won, 3 drawn, 61 lost), hexparrot:3 +44.6, blunders 6.6%; its steps 1,140 s against R4's 952
+at a like CPU limit (+20%, 51-59 games waiting). Its network's KL above its targets 0.383,
+0.367, 0.347 at steps 271, 276, 281 — and R4_281, trained on depth-4 targets, sat about as
+close to them (0.364): from R4_271 on, the dwarfs' depth 5 added little the network did not
+learn anyway. By the rule fixed beforehand run R5 continues from R4_281 at 5/5.
+
+**Where the blunders come from** (2026-10-25, `az_blunder_probe` on R4_281's games against
+hexparrot: 131 blunders in 1,902 dwarf moves; and the margin after each, followed 10 plies):
+mostly real losses — within 10 plies 5% pay off as sacrifices (a troll taken back, net +3 or
+more), 37% get back to even, 56% lose 2 points or more (after the dwarfs' other moves 43%,
+81%, 12%). The search sees the capture (it visits the trolls' reply in 98.5% of them), and
+the value registers most of the dwarf: after the reply the blunder's line is 0.024 below the
+safe move's (a dwarf is 0.031). But the root's mean values favour the blunder by 0.105 (±
+0.011; the blunder 45 visits, the best safe move 9). The likely mechanism (an inference
+from these numbers, not measured apart): the side-to-move gap — the value with the trolls to
+move, a capture available, is far lower (−0.29) than after the capture (−0.12) — makes the
+more deeply searched child look better, so the search's averaging, not its sight, picks the
+blunder. The prior helps it there: it puts 0.33 of its mass on such
+unsafe moves, twice their share of the legal moves, and the blunder was its top move in 44%.
+800 simulations avoid two thirds of them (the same move chosen in 32%; at 100, 91%). DS's steps 2,422 s at
 45% (the laptop throttled to 28-35% for hours).
 
 ## Review log

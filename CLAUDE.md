@@ -362,11 +362,14 @@ extra arguments, as its header says), `untried_move_test`, `conv_policy_test`,
 `make_test_network` (small untrained networks for the tests), and from
 `thud/experiments/`
 `az_match` (since 2026-10-07 also against players without a network:
-`b=hexparrot:N`, through `hexparrot_player.py`, `b=alphabeta:N`, `b=mcts:N`; since
+`b=hexparrot:N`, through `hexparrot_player.py`, `b=alphabeta:N`, `b=mcts:N`, since 2026-10-25
+`b=teacher:N` — kickstarting's teacher as a player, a move drawn among its best-scored; since
 2026-10-13 self-play's root noise per side and sampled plies, `noise=`, `sample_plies=`,
 and the teacher in one network's prior, `teacher_mix_a=`), `az_forgetting`, `az_merge_buffers`, `az_target_quality`, `az_head_probe`,
 `az_reference_pilot`, `az_noise_probe`, `az_search_cost`, `az_blunder_probe`,
-`az_capture_targets`, `az_teacher_stats` (since 2026-10-24 the search's time a position,
+`az_capture_targets`, `az_teacher_vs_search` (2026-10-25: the trainer's search's visits at
+several budgets, the teacher's policy and the recorded target, each against the network's own
+long search, on a run's own games), `az_teacher_stats` (since 2026-10-24 the search's time a position,
 `ms_a_position`, and `check=1`: the table against none), `az_feature_probe`, `az_long_capture_probe`,
 `az_input_plane_trace`, `az_risk_probe`, `az_dwarf_value_probe` (since 2026-10-17 `each=`:
 every position's values, for `thud/experiments/dwarf_value_report.py`'s intervals, which
