@@ -526,12 +526,15 @@ main teacher.
   that strength — today `alphabeta:2` for 30% of the positions — so that the dwarfs' value
   learns those losses from results. **Built 2026-10-26** (`--alphabeta_player=teacher`, the
   user: straight into the main line, no arm — its benefit may take longer than an arm's 10
-  steps): run R6, from R5_331, the opponent the teacher at 5,5; watched each segment by its
-  dwarfs against teacher:5 (R5_331's baseline taken before R6 starts), the blunder gate, and
-  its match against R5_331. Claude's proposed rule for reverting (the user's to confirm):
-  after two segments, if the dwarfs against teacher:5 have not improved on R5_331's and R6
-  does not beat R5_331, back to R5_331 with the old opponent; a failed blunder gate stops it
-  at once to be looked at.
+  steps): run R6, from R5_331, the opponent as the trolls the teacher at depth 5, as the
+  dwarfs as before (the search at depth 2; the user: level up our dwarfs first, **the
+  teacher on the other side later** — `--alphabeta_player=search,teacher
+  --alphabeta_depth=2,5`); watched each segment by its dwarfs against teacher:5 (R5_331's
+  baseline taken before R6 starts), the blunder gate, and its match against R5_331. **The
+  rule** (the user, softened from Claude's): after two segments, if the dwarfs against
+  teacher:5 have not improved on R5_331's and R6 does not beat R5_331, one more segment; if
+  still neither, back to R5_331 with the old opponent; a failed blunder gate stops it at once
+  to be looked at.
 - **Depth 6: not the main route.** Each ply multiplies the cost again (depth 4 to 5: ~3x
   for the dwarfs, ~15x for the trolls, after every speed-up), and the teacher sees only
   material within its horizon — none of the positional value (cohesion, mobility, blocked
@@ -782,7 +785,7 @@ the search and trainer*, run C'.
 | 2026-10-23 | Compile flags: none worth it (`-fno-semantic-interposition`, `-mcpu=native`, ThinLTO all within the noise on the depth-4 teacher, the same results); the build stays as it is, and the build techniques not tried join the list to revisit on a new machine (group 6) | user, Claude | the GPU options, *the settings to revisit*, 6 |
 | 2026-10-24 | **The teacher's transposition table, on by default** (the user: if the tests make us confident): the same scores (OpenSpiel's alpha-beta at depths 3-4, the search without a table at 5, random windows by the fail-soft rule, 0 of 800 searches on self-play positions; 5 broken tables and 5 broken hash updates each caught); its key's counters only near the limits (the user's quantisation); and the move order without a full sort (~40% at depth 4, ~30% at 5). Merged into `thud` before the arms below | user, Claude | `thud/az/material_search.h`, the GPU checklist, item 3 |
 | 2026-10-24 | **Arms DS (the teacher at depth 4 for the dwarfs, 5 for the trolls) and D5 (5 for both)** from D4_261 against R4_271 (120 pairs each, three seeds); they also measure depth 5's cost (seconds a step, games waiting, the teacher's time on the idle machine). The main line paused after R4_271 (against R201 +23.75, R261 +14.00) and goes on from 271 at depth 4 afterwards | user | `~/thud-runs/depth_arms_2026-10-24.sh` |
-| 2026-10-26 | **The training opponent as strong as the teacher, straight into the main line** (the user: no arm, its benefit may take longer than 10 steps; it is the right thing to build): `--alphabeta_player=teacher --alphabeta_depth=5,5` from R5_331 as run R6, watched each segment (the dwarfs against teacher:5, the blunder gate, against R5_331); run R5 kept at 5/5 until then (the user) | user | `~/thud-runs/r6_run_2026-10-26.sh`, `switch_r6_2026-10-26.sh` |
+| 2026-10-26 | **The training opponent as strong as the teacher, straight into the main line** (the user: no arm, its benefit may take longer than 10 steps; it is the right thing to build): `--alphabeta_player=search,teacher --alphabeta_depth=2,5` (the teacher as the trolls only; its dwarfs later) from R5_331 as run R6, watched each segment (the dwarfs against teacher:5, the blunder gate, against R5_331); back to R5_331 only if after three segments neither the dwarfs against teacher:5 nor R6 against R5_331 improved; run R5 kept at 5/5 until then (the user) | user | `~/thud-runs/r6_run_2026-10-26.sh`, `switch_r6_2026-10-26.sh` |
 | 2026-10-24 | DS's and D5's results: DS (trolls at depth 5) −0.97 (−3.23 to +1.30), no; **D5 (depth 5 for both) +2.43 (+0.50 to +4.37), yes**, its gain the dwarfs'; D5's steps ~40% longer than D4's at a like CPU limit (1,557 s against 1,098) — **corrected the same day: ~60% longer** than depth 4 with the same code (R4's steps 272-281 952 s at 76%; D4's 1,098 s ran before the faster move order). The main line's teacher depth: the user's decision | Claude, by the rule fixed beforehand | `DESIGN_dwarf_signal.md` §10 |
 | 2026-10-25 | D54's result: D54_281 against R4_281 +0.26 (−1.59 to +2.11) over 120 pairs — not shown; by the rule fixed beforehand **run R5 from R4_281 at 5/5** (since 2026-10-25 04:01, after a crash in its setup and the measurements of the gap). DS, D54 and D5 together: neither side's depth 5 alone shows, both together did once (D5, from D4_261) — an interaction, a teacher whose lead shrinks as the network improves (R4_281 sat as close to D54's depth-5 targets as D54's own network: KL 0.36 against 0.35), or D5's +2.43 partly chance among four arms | Claude, by the rule; the user's to revisit | the design's §10 |
 | 2026-10-24 | **Arm D54 (depth 5 for the dwarfs, 4 for the trolls; the user: test it, then train with it for the time being, 5/5 perhaps later)** from R4_271 against R4_281 (120 pairs); the rule fixed before: the interval above 0 → run R5 from D54_281 at 5/4; else run R5 from R4_281 at 5/5 (D5's regime). Run R4 stopped after R4_281 (against R201 +28.93, R261 +18.68) | user | `~/thud-runs/d54_arm_2026-10-24.sh`, `r5_run_2026-10-24.sh` |
