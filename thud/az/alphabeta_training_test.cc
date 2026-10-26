@@ -41,7 +41,8 @@
 //      1: every one of its moves is one the teacher's Scores rate best, and the one Choose
 //      picks there with the game's seed (reproducible); the control: another seed draws
 //      other moves somewhere (its choice among tied moves is the seed's). alphabeta_player
-//      round-trips; an older config.json loads with "search".
+//      round-trips; an older config.json loads with "search"; per side (AlphaBetaMode),
+//      "search,teacher" is the search as the dwarfs and the teacher as the trolls.
 //
 //   thud/run_tests.sh alphabeta_training_test   # builds and runs it
 //   build-tests/bin/alphabeta_training_test
@@ -403,6 +404,18 @@ int main() {
     back.FromJson(teacher_config.ToJson());
     Check(back.alphabeta_player == "teacher" && from_old.alphabeta_player == "search",
           "9. alphabeta_player round-trips; an older config.json loads with \"search\"");
+    // Per side (AlphaBetaMode): "search,teacher" the search as the dwarfs, the teacher as the
+    // trolls; one value both; the default the search.
+    using open_spiel::thud_az::torch_az::AlphaBetaMode;
+    using Mode = AlphaBetaPlayer::Mode;
+    AlphaZeroConfig split = config;
+    split.alphabeta_player = "search,teacher";
+    Check(AlphaBetaMode(split, 0) == Mode::kSearch && AlphaBetaMode(split, 1) == Mode::kTeacher &&
+              AlphaBetaMode(back, 0) == Mode::kTeacher && AlphaBetaMode(back, 1) == Mode::kTeacher &&
+              AlphaBetaMode(from_old, 0) == Mode::kSearch &&
+              AlphaBetaMode(from_old, 1) == Mode::kSearch,
+          "9. the mode per side: \"search,teacher\" the search as the dwarfs and the teacher as "
+          "the trolls; \"teacher\" both; the default the search");
   }
 
   std::cout << (failures == 0 ? "ALL PASSED" : "FAILURES: " + std::to_string(failures))

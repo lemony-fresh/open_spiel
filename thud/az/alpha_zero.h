@@ -148,7 +148,10 @@ struct AlphaZeroConfig {
   std::string alphabeta_depth;
   // Added (2026-10-26; the user: a training opponent as strong as the teacher): how that
   // opponent plays — "search", OpenSpiel's alpha-beta with random values at its leaves (as
-  // since 2026-10-07), or "teacher", kickstarting's teacher as a player (AlphaBetaPlayer::Mode).
+  // since 2026-10-07), or "teacher", kickstarting's teacher as a player (AlphaBetaPlayer::Mode)
+  // — per player it plays, comma-separated ("search,teacher": the search as the dwarfs, the
+  // teacher as the trolls; the user: level up our dwarfs first), one value for both
+  // (AlphaBetaMode below).
   std::string alphabeta_player = "search";
   // Added (thud/PLAN.md, kickstarting; Schmitt et al., "Kickstarting deep
   // reinforcement learning", 2018): every recorded position's policy target becomes
@@ -383,6 +386,11 @@ std::vector<double> PerPlayerValues(const std::string& list);
 // Added (training against alpha-beta): the depth alpha-beta searches when it plays
 // `player` — config.alphabeta_depth's entry for that player, or its one value for both.
 int AlphaBetaDepth(const AlphaZeroConfig& config, open_spiel::Player player);
+
+// Added (2026-10-26): how alpha-beta plays when it plays `player` — config.alphabeta_player's
+// entry for that player, or its one value for both. Stops on more than two entries or one
+// other than "search" and "teacher".
+AlphaBetaPlayer::Mode AlphaBetaMode(const AlphaZeroConfig& config, open_spiel::Player player);
 
 // The teacher's depth per player to move: config.player_kickstart_depth's entries, or
 // config.kickstart_depth for both where it is empty. Stops on more than two entries or a

@@ -89,7 +89,8 @@ ABSL_FLAG(std::string, alphabeta_depth, "2",
 ABSL_FLAG(std::string, alphabeta_player, "search",
           "How the training opponent plays: \"search\", OpenSpiel's alpha-beta with random "
           "values at its leaves, or \"teacher\", kickstarting's teacher as a player (its fast "
-          "search, a move drawn among those it scores best).");
+          "search, a move drawn among those it scores best); per player it plays, comma-"
+          "separated (\"search,teacher\": the teacher as the trolls), one value for both.");
 ABSL_FLAG(double, kickstart_weight, 0,
           "Kickstarting: each recorded position's policy target is (1 - w) x the "
           "search's visits + w x a teacher's (alpha-beta's move scores, softmax); 0: "
@@ -256,7 +257,7 @@ int main(int argc, char** argv) {
     config.player_policy_epsilon = absl::GetFlag(FLAGS_player_policy_epsilon);
     config.alphabeta_depth = absl::GetFlag(FLAGS_alphabeta_depth);
     config.alphabeta_player = absl::GetFlag(FLAGS_alphabeta_player);
-    SPIEL_CHECK_TRUE(config.alphabeta_player == "search" || config.alphabeta_player == "teacher");
+
     config.kickstart_weight = absl::GetFlag(FLAGS_kickstart_weight);
     config.player_kickstart_weight = absl::GetFlag(FLAGS_player_kickstart_weight);
     config.kickstart_depth = absl::GetFlag(FLAGS_kickstart_depth);
@@ -266,6 +267,7 @@ int main(int argc, char** argv) {
     SPIEL_CHECK_TRUE(config.kickstart_ties == "even" || config.kickstart_ties == "search");
     for (int p = 0; p < 2; ++p) {  // Stops here, not in an actor, on a malformed list.
       open_spiel::thud_az::torch_az::AlphaBetaDepth(config, p);
+      open_spiel::thud_az::torch_az::AlphaBetaMode(config, p);
     }
     open_spiel::thud_az::torch_az::KickstartDepths(config);  // The same.
     config.learner_batches = absl::GetFlag(FLAGS_learner_batches);

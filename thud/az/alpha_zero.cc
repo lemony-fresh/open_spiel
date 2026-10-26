@@ -439,6 +439,15 @@ std::array<int, 2> KickstartDepths(const AlphaZeroConfig& config) {
   return result;
 }
 
+AlphaBetaPlayer::Mode AlphaBetaMode(const AlphaZeroConfig& config, open_spiel::Player player) {
+  const std::vector<std::string> modes =
+      absl::StrSplit(config.alphabeta_player, ',', absl::SkipEmpty());
+  SPIEL_CHECK_TRUE(modes.size() == 1 || modes.size() == 2);
+  for (const std::string& m : modes) SPIEL_CHECK_TRUE(m == "search" || m == "teacher");
+  return modes[modes.size() == 1 ? 0 : player] == "teacher" ? AlphaBetaPlayer::Mode::kTeacher
+                                                             : AlphaBetaPlayer::Mode::kSearch;
+}
+
 int AlphaBetaDepth(const AlphaZeroConfig& config, open_spiel::Player player) {
   const std::vector<double> depths = PerPlayerValues(config.alphabeta_depth);
   SPIEL_CHECK_TRUE(depths.size() == 1 || depths.size() == 2);
@@ -537,20 +546,21 @@ void actor(const open_spiel::Game& game, const AlphaZeroConfig& config, int num,
   // so far fall short of the share; it plays the trolls in every other one, the dwarfs
   // in the rest, each side at its own depth (AlphaBetaDepth). Draws no random number
   // unless such a game is played.
-  // Since 2026-10-26 it can play as kickstarting's teacher (alphabeta_player "teacher").
+  // Since 2026-10-26 it can play as kickstarting's teacher, per side (alphabeta_player,
+  // AlphaBetaMode).
   std::array<std::unique_ptr<AlphaBetaPlayer>, 2> alphabeta;  // By the player it plays.
   if (config.alphabeta_share > 0) {
-    SPIEL_CHECK_TRUE(config.alphabeta_player == "search" || config.alphabeta_player == "teacher");
+    auto name = [](AlphaBetaPlayer::Mode m) {
+      return m == AlphaBetaPlayer::Mode::kTeacher ? "teacher" : "search";
+    };
     for (int p = 0; p < 2; ++p) {
       alphabeta[p] = std::make_unique<AlphaBetaPlayer>(game, AlphaBetaDepth(config, p));
-      alphabeta[p]->SetMode(config.alphabeta_player == "teacher"
-                                ? AlphaBetaPlayer::Mode::kTeacher
-                                : AlphaBetaPlayer::Mode::kSearch);
+      alphabeta[p]->SetMode(AlphaBetaMode(config, p));
     }
-    logger->Print("Training against alpha-beta: share %g, depth %d as the dwarfs and %d as the "
-                  "trolls, playing as the %s",
-                  config.alphabeta_share, AlphaBetaDepth(config, 0), AlphaBetaDepth(config, 1),
-                  config.alphabeta_player == "teacher" ? "teacher" : "search");
+    logger->Print("Training against alpha-beta: share %g; as the dwarfs the %s at depth %d, as "
+                  "the trolls the %s at depth %d",
+                  config.alphabeta_share, name(AlphaBetaMode(config, 0)), AlphaBetaDepth(config, 0),
+                  name(AlphaBetaMode(config, 1)), AlphaBetaDepth(config, 1));
   }
   int alphabeta_games = 0;
   int64_t positions = 0, alphabeta_positions = 0;

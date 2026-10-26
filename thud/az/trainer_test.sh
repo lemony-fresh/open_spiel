@@ -126,7 +126,7 @@ steps() { python3 -c "import json,sys; print(' '.join(str(json.loads(l)['step'])
   --player_policy_temperature=1.5,1 --replay_buffer_size=2048 --replay_buffer_reuse=4 \
   --train_batch_size=64 --learner_batches=2 --checkpoint_freq=1 --max_steps=2 \
   --symmetry_augmentation --policy_target_pruning --alphabeta_share=0.5 \
-  --alphabeta_depth=1,1 --alphabeta_player=teacher --kickstart_weight=0.3 --player_kickstart_weight=0.7,0.3 \
+  --alphabeta_depth=1,1 --alphabeta_player=search,teacher --kickstart_weight=0.3 --player_kickstart_weight=0.7,0.3 \
   --kickstart_depth=1 --player_kickstart_depth=1,2 --kickstart_ties=search \
   --player_policy_epsilon=0,0.25 --untried_move_value=sibling_mean_minus_reduction \
   --lr_warmup_steps=2 --lr_schedule=3:0.5 --value_loss_weight=2 --inference_precision=mixed \
@@ -176,7 +176,7 @@ want = {"devices": "/cpu:0,/cpu:0", "explicit_learning": True, "learner_batches"
         "lr_schedule": "3:0.5", "value_loss_weight": 2, "playout_cap_full_share": 0.5,
         "playout_cap_fast_simulations": 4, "inference_precision": "mixed",
         "learner_threads": 3, "kickstart_ties": "search", "player_kickstart_depth": "1,2",
-        "alphabeta_player": "teacher"}
+        "alphabeta_player": "search,teacher"}
 bad = {k: (c.get(k), v) for k, v in want.items() if c.get(k) != v}
 if bad: print(bad)
 sys.exit(1 if bad else 0)
@@ -199,8 +199,8 @@ check "1. the learner's thread count 3, the inference thread's OMP_NUM_THREADS 2
   thread_counts "$run/learner.jsonl" 1 3 2
 check "1. the actors log the kickstarting settings" \
   grep -q "Kickstarting: weight 0.3 (per player 0.7, 0.3), depth 1 (per player 1, 2), temperature 1, ties search" "$run/log-actor-0.txt"
-check "1. the actors log the training opponent, the teacher as a player" \
-  grep -q "Training against alpha-beta: share 0.5, depth 1 as the dwarfs and 1 as the trolls, playing as the teacher" "$run/log-actor-0.txt"
+check "1. the actors log the training opponent per side, the teacher as the trolls" \
+  grep -q "Training against alpha-beta: share 0.5; as the dwarfs the search at depth 1, as the trolls the teacher at depth 1" "$run/log-actor-0.txt"
 check "1. the actors log the playout caps" \
   grep -q "Playout caps: a full search on 0.5 of the moves, else 4 simulations" "$run/log-actor-0.txt"
 
