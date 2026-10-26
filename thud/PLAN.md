@@ -577,6 +577,14 @@ main teacher.
 
 **Later, when a trigger fires** (details in *Notes for later*):
 
+- **The training opponent as the dwarfs at the teacher's strength** (the user, 2026-10-26:
+  still to do): since run R6 the opponent plays the trolls as the teacher at depth 5, but
+  the dwarfs still as the old search at depth 2 (`--alphabeta_player=search,teacher
+  --alphabeta_depth=2,5`) — so our trolls still train against weak dwarfs. Later the same for
+  that side: `--alphabeta_player=teacher --alphabeta_depth=5,5`. The trigger: our dwarfs have
+  levelled up against the teacher's trolls (R6's watched number, its dwarfs against
+  teacher:5, closing on even), or R6's rule settled after its first two or three segments.
+
 - **Before publishing a network**: check that OpenSpiel's default LibTorch (2.3.0,
   `global_variables.sh:89`) loads checkpoints saved with our 2.10, and remember that any
   user needs our Thud implementation (this fork) — Thud is not upstream.
