@@ -537,11 +537,20 @@ void actor(const open_spiel::Game& game, const AlphaZeroConfig& config, int num,
   // so far fall short of the share; it plays the trolls in every other one, the dwarfs
   // in the rest, each side at its own depth (AlphaBetaDepth). Draws no random number
   // unless such a game is played.
+  // Since 2026-10-26 it can play as kickstarting's teacher (alphabeta_player "teacher").
   std::array<std::unique_ptr<AlphaBetaPlayer>, 2> alphabeta;  // By the player it plays.
   if (config.alphabeta_share > 0) {
+    SPIEL_CHECK_TRUE(config.alphabeta_player == "search" || config.alphabeta_player == "teacher");
     for (int p = 0; p < 2; ++p) {
       alphabeta[p] = std::make_unique<AlphaBetaPlayer>(game, AlphaBetaDepth(config, p));
+      alphabeta[p]->SetMode(config.alphabeta_player == "teacher"
+                                ? AlphaBetaPlayer::Mode::kTeacher
+                                : AlphaBetaPlayer::Mode::kSearch);
     }
+    logger->Print("Training against alpha-beta: share %g, depth %d as the dwarfs and %d as the "
+                  "trolls, playing as the %s",
+                  config.alphabeta_share, AlphaBetaDepth(config, 0), AlphaBetaDepth(config, 1),
+                  config.alphabeta_player == "teacher" ? "teacher" : "search");
   }
   int alphabeta_games = 0;
   int64_t positions = 0, alphabeta_positions = 0;

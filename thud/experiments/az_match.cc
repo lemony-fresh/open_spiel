@@ -325,29 +325,23 @@ class AlphaBetaOpponent : public Opponent {
 };
 
 // Kickstarting's teacher as a player (teacher:DEPTH; the user, 2026-10-25: does the student
-// beat its teacher?): AlphaBetaPlayer::Scores — the material after DEPTH plies of the
-// teacher's own search (MaterialSearch), what the trainer's targets are made from — and a
-// move drawn evenly from the moves with the best score, seeded by the battle: the teacher's
-// policy at a temperature near 0. Unlike alphabeta:DEPTH, whose random values at the leaves
-// favour moves that keep more options open (alphabeta_player.h), it knows material alone.
+// beat its teacher?): AlphaBetaPlayer's Mode::kTeacher — the material after DEPTH plies of the
+// teacher's own search (MaterialSearch), what the trainer's targets are made from, and a move
+// drawn among the best-scored by the battle's seed: the teacher's policy at a temperature
+// near 0. Unlike alphabeta:DEPTH, whose random values at the leaves favour moves that keep more
+// options open (alphabeta_player.h), it knows material alone. (Until 2026-10-26 the draw was
+// its own, by a generator seeded per battle; now the trainer's opponent's, so the same seed
+// plays other battles than on 2026-10-25.)
 class TeacherOpponent : public Opponent {
  public:
-  TeacherOpponent(const open_spiel::Game& game, int depth) : teacher_(game, depth) {}
-  void NewBattle(int seed) override { rng_.seed(seed); }
-  Action Choose(const open_spiel::State& state) override {
-    const std::vector<Action> legal = state.LegalActions();
-    const std::vector<double> scores = teacher_.Scores(state);
-    const double best = *std::max_element(scores.begin(), scores.end());
-    std::vector<Action> tied;
-    for (size_t i = 0; i < legal.size(); ++i) {
-      if (scores[i] == best) tied.push_back(legal[i]);
-    }
-    return tied[std::uniform_int_distribution<size_t>(0, tied.size() - 1)(rng_)];
+  TeacherOpponent(const open_spiel::Game& game, int depth) : player_(game, depth) {
+    player_.SetMode(open_spiel::thud_az::AlphaBetaPlayer::Mode::kTeacher);
   }
+  void NewBattle(int seed) override { player_.NewGame(seed); }
+  Action Choose(const open_spiel::State& state) override { return player_.Choose(state); }
 
  private:
-  const open_spiel::thud_az::AlphaBetaPlayer teacher_;
-  std::mt19937 rng_;
+  open_spiel::thud_az::AlphaBetaPlayer player_;
 };
 
 // hexparrot/thudgame's AI (hexparrot:LOOKAHEAD), run by thud/experiments/hexparrot_player.py

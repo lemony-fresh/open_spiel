@@ -146,6 +146,10 @@ struct AlphaZeroConfig {
   // value for both.
   double alphabeta_share;
   std::string alphabeta_depth;
+  // Added (2026-10-26; the user: a training opponent as strong as the teacher): how that
+  // opponent plays — "search", OpenSpiel's alpha-beta with random values at its leaves (as
+  // since 2026-10-07), or "teacher", kickstarting's teacher as a player (AlphaBetaPlayer::Mode).
+  std::string alphabeta_player = "search";
   // Added (thud/PLAN.md, kickstarting; Schmitt et al., "Kickstarting deep
   // reinforcement learning", 2018): every recorded position's policy target becomes
   // (1 - kickstart_weight) x the search's visits + kickstart_weight x a teacher's —
@@ -225,6 +229,7 @@ struct AlphaZeroConfig {
         {"player_policy_epsilon", player_policy_epsilon},
         {"alphabeta_share", alphabeta_share},
         {"alphabeta_depth", alphabeta_depth},
+        {"alphabeta_player", alphabeta_player},
         {"kickstart_weight", kickstart_weight},
         {"player_kickstart_weight", player_kickstart_weight},
         {"kickstart_depth", kickstart_depth},
@@ -336,6 +341,9 @@ struct AlphaZeroConfig {
         : config_json.at("alphabeta_depth").IsInt()
             ? std::to_string(config_json.at("alphabeta_depth").GetInt())
             : config_json.at("alphabeta_depth").GetString();
+    alphabeta_player = config_json.count("alphabeta_player")
+                           ? config_json.at("alphabeta_player").GetString()
+                           : "search";
     // A run from before kickstarting trained on the visits alone.
     kickstart_weight = config_json.count("kickstart_weight")
                            ? config_json.at("kickstart_weight").GetDouble()

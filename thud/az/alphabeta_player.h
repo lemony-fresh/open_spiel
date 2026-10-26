@@ -15,6 +15,7 @@
 #ifndef THUD_AZ_ALPHABETA_PLAYER_H_
 #define THUD_AZ_ALPHABETA_PLAYER_H_
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <memory>
@@ -44,9 +45,19 @@ namespace thud_az {
 // of the game; the same values either way — teacher_identity_test).
 //
 // The opponent of az_match's b=alphabeta:DEPTH and, in training, of the games against
-// alpha-beta (thud/PLAN.md, How we evaluate networks: training against alpha-beta).
+// alpha-beta (thud/PLAN.md, How we evaluate networks: training against alpha-beta). Since
+// 2026-10-26 it can instead play as kickstarting's teacher (Mode::kTeacher: az_match's
+// b=teacher:DEPTH, the trainer's --alphabeta_player=teacher).
 class AlphaBetaPlayer {
  public:
+  // How Choose picks its move (2026-10-26; the user: a training opponent as strong as the
+  // teacher). kSearch, as since 2026-10-07: OpenSpiel's alpha-beta with the random values at
+  // its leaves, which favour moves that keep options open. kTeacher: kickstarting's teacher
+  // as a player — Scores, the teacher's own fast search, and a move drawn among those it
+  // scores best by a hash of the game's seed and the moves so far (the same move each time
+  // in the same game; another seed, other draws). Material alone: no leaf noise.
+  enum class Mode { kSearch, kTeacher };
+
   AlphaBetaPlayer(const Game& game, int depth) : AlphaBetaPlayer(game, {depth, depth}) {}
   // Our change (2026-10-24; the trainer's player_kickstart_depth): a depth per side to move
   // — Choose and Scores search depths[the player to move] plies.
@@ -57,7 +68,11 @@ class AlphaBetaPlayer {
   // Fixes the tie-break for the next game.
   void NewGame(uint64_t seed) { seed_ = seed; }
 
+  void SetMode(Mode mode) { mode_ = mode; }
+  Mode mode() const { return mode_; }
+
   Action Choose(const State& state) const {
+    if (mode_ == Mode::kTeacher) return ChooseByScores(state);
     const Player me = state.CurrentPlayer();
     const uint64_t root_hash = HistoryHash(mix(seed_), state, 0);
     const size_t root_length = state.FullHistory().size();
@@ -67,6 +82,19 @@ class AlphaBetaPlayer {
     return algorithms::AlphaBetaSearch(game_, &state, value, depths_[me], me,
                                        /*use_undo=*/true)
         .second;
+  }
+
+  // Mode::kTeacher's move: one of the moves Scores rates best, drawn by the game's seed and
+  // the moves so far.
+  Action ChooseByScores(const State& state) const {
+    const std::vector<Action> legal = state.LegalActions();
+    const std::vector<double> scores = Scores(state);
+    const double best = *std::max_element(scores.begin(), scores.end());
+    std::vector<Action> tied;
+    for (size_t i = 0; i < legal.size(); ++i) {
+      if (scores[i] == best) tied.push_back(legal[i]);
+    }
+    return tied[mix(HistoryHash(mix(seed_), state, 0)) % tied.size()];
   }
 
   // The depth it searches with `player` to move.
@@ -121,6 +149,7 @@ class AlphaBetaPlayer {
   const Game& game_;
   const std::array<int, 2> depths_;  // By the player to move.
   uint64_t seed_ = 0;
+  Mode mode_ = Mode::kSearch;
 };
 
 }  // namespace thud_az

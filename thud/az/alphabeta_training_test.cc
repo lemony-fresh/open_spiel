@@ -36,10 +36,17 @@
 //      the depth as a number (before 2026-10-08) as that number.
 //   8. The depth per side (AlphaBetaDepth): "2,1" is 2 as the dwarfs, 1 as the
 //      trolls; one value is both.
+//   9. (2026-10-26) The teacher as the opponent (alphabeta_player "teacher",
+//      AlphaBetaPlayer::Mode::kTeacher), as the trolls at depth 2 and as the dwarfs at depth
+//      1: every one of its moves is one the teacher's Scores rate best, and the one Choose
+//      picks there with the game's seed (reproducible); the control: another seed draws
+//      other moves somewhere (its choice among tied moves is the seed's). alphabeta_player
+//      round-trips; an older config.json loads with "search".
 //
 //   thud/run_tests.sh alphabeta_training_test   # builds and runs it
 //   build-tests/bin/alphabeta_training_test
 
+#include <algorithm>
 #include <iostream>
 #include <memory>
 #include <random>
@@ -350,6 +357,53 @@ int main() {
             AlphaBetaDepth(one, 0) == 3 && AlphaBetaDepth(one, 1) == 3,
         "8. the depth per side: \"2,1\" is 2 as the dwarfs and 1 as the trolls; one value "
         "is both");
+
+  // 9. The teacher as the opponent.
+  for (const auto& [side, depth] : std::vector<std::pair<Player, int>>{{1, 2}, {0, 1}}) {
+    AlphaBetaPlayer teacher(*game, depth);
+    teacher.SetMode(AlphaBetaPlayer::Mode::kTeacher);
+    teacher.NewGame(kSeed);
+    const Game g = Play(*game, &teacher, side, kSeed);
+    // Each of its moves among the best-scored.
+    int moves = 0, best = 0;
+    std::unique_ptr<State> state = game->NewInitialState();
+    for (const std::string& move : g.moves) {
+      const std::vector<Action> legal = state->LegalActions();
+      Action played = open_spiel::kInvalidAction;
+      for (Action a : legal) {
+        if (state->ActionToString(a) == move) played = a;
+      }
+      if (played == open_spiel::kInvalidAction) break;
+      if (state->CurrentPlayer() == side) {
+        const std::vector<double> scores = teacher.Scores(*state);
+        const double top = *std::max_element(scores.begin(), scores.end());
+        for (size_t i = 0; i < legal.size(); ++i) best += legal[i] == played && scores[i] == top;
+        ++moves;
+      }
+      state->ApplyAction(played);
+    }
+    AlphaBetaPlayer other(*game, depth);
+    other.SetMode(AlphaBetaPlayer::Mode::kTeacher);
+    other.NewGame(kSeed + 1);
+    const std::string as = side == 1 ? "trolls" : "dwarfs";
+    std::cout << "  the teacher as the " << as << ": a game of " << g.moves.size() << " moves, "
+              << moves << " of them its own" << std::endl;
+    Check(moves > 10 && best == moves && g.trajectory.opponent == side,
+          "9. the teacher as the " + as + " (depth " + std::to_string(depth) +
+              "): every one of its moves is one its scores rate best");
+    Check(OpponentMovesMatch(*game, g.moves, side, teacher),
+          "9. ... and the one it chooses there with the game's seed");
+    Check(!OpponentMovesMatch(*game, g.moves, side, other),
+          "9. control: with another seed it draws another move somewhere");
+  }
+  {
+    AlphaZeroConfig teacher_config = config;
+    teacher_config.alphabeta_player = "teacher";
+    AlphaZeroConfig back;
+    back.FromJson(teacher_config.ToJson());
+    Check(back.alphabeta_player == "teacher" && from_old.alphabeta_player == "search",
+          "9. alphabeta_player round-trips; an older config.json loads with \"search\"");
+  }
 
   std::cout << (failures == 0 ? "ALL PASSED" : "FAILURES: " + std::to_string(failures))
             << std::endl;

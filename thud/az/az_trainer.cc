@@ -86,6 +86,10 @@ ABSL_FLAG(std::string, player_policy_epsilon, "",
 ABSL_FLAG(std::string, alphabeta_depth, "2",
           "The alpha-beta search's depth in plies, per player it plays, comma-"
           "separated (\"2,1\": 2 as the dwarfs, 1 as the trolls); one value for both.");
+ABSL_FLAG(std::string, alphabeta_player, "search",
+          "How the training opponent plays: \"search\", OpenSpiel's alpha-beta with random "
+          "values at its leaves, or \"teacher\", kickstarting's teacher as a player (its fast "
+          "search, a move drawn among those it scores best).");
 ABSL_FLAG(double, kickstart_weight, 0,
           "Kickstarting: each recorded position's policy target is (1 - w) x the "
           "search's visits + w x a teacher's (alpha-beta's move scores, softmax); 0: "
@@ -251,6 +255,8 @@ int main(int argc, char** argv) {
     config.player_policy_alpha = absl::GetFlag(FLAGS_player_policy_alpha);
     config.player_policy_epsilon = absl::GetFlag(FLAGS_player_policy_epsilon);
     config.alphabeta_depth = absl::GetFlag(FLAGS_alphabeta_depth);
+    config.alphabeta_player = absl::GetFlag(FLAGS_alphabeta_player);
+    SPIEL_CHECK_TRUE(config.alphabeta_player == "search" || config.alphabeta_player == "teacher");
     config.kickstart_weight = absl::GetFlag(FLAGS_kickstart_weight);
     config.player_kickstart_weight = absl::GetFlag(FLAGS_player_kickstart_weight);
     config.kickstart_depth = absl::GetFlag(FLAGS_kickstart_depth);
