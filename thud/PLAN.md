@@ -581,9 +581,12 @@ main teacher.
   still to do): since run R6 the opponent plays the trolls as the teacher at depth 5, but
   the dwarfs still as the old search at depth 2 (`--alphabeta_player=search,teacher
   --alphabeta_depth=2,5`) — so our trolls still train against weak dwarfs. Later the same for
-  that side: `--alphabeta_player=teacher --alphabeta_depth=5,5`. The trigger: our dwarfs have
-  levelled up against the teacher's trolls (R6's watched number, its dwarfs against
-  teacher:5, closing on even), or R6's rule settled after its first two or three segments.
+  that side: `--alphabeta_player=teacher --alphabeta_depth=5,5`. The trigger (the user,
+  2026-10-27: let the dwarfs improve for a while first, until the two sides are almost
+  equally strong — how realistic that is we will see, handled flexibly): R6's watched number,
+  its dwarfs against the teacher's trolls (−13.0 at R5_331, −8.7 at R6_341), close to even.
+  Meanwhile R6 trains on without pausing for that decision (the user: continue, and
+  interrupt later if needed).
 
 - **Before publishing a network**: check that OpenSpiel's default LibTorch (2.3.0,
   `global_variables.sh:89`) loads checkpoints saved with our 2.10, and remember that any
