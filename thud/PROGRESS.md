@@ -3984,5 +3984,12 @@ the push's and the rename's tests ran (memory beside the trainer), to resume.
   segment's jump, R6's strength has held for two segments; its gain went into the dwarfs'
   safety.
 
-**Next step:** as recorded in `## Current status` — run R6 on; the rule (the user, 2026-10-26: after two segments without gain one more, then back to R5_331); the teacher as the opponent's dwarfs later; then more simulations
+- **2026-10-27, 13:00-13:30: the switch to 200/100 simulations queued.** The user: switch to
+  `--player_simulations=200,100` (temporary stagnation seen before, not worrying); keep a list
+  of the levers still open (the plan's *Levers still open*, written). `r6_run.stop` set at
+  13:17; `~/thud-runs/switch_r7_2026-10-27.sh` starts **run R7** (`r7_run_2026-10-27.sh`: from
+  R6_371, the dwarfs' searches 200 simulations, the trolls' 100) after R6_371's evaluation
+  (~19:30).
+
+**Next step:** as recorded in `## Current status` — run R7's first segment (from ~19:30); the rule (the user, 2026-10-26: after two segments without gain one more, then back to R5_331); the teacher as the opponent's dwarfs later; then more simulations
 (200/100), Gumbel, the finer evaluation's cheap form, the measurement's control.
