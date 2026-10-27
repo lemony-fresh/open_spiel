@@ -3103,6 +3103,56 @@ void TestHash() {
   }
 }
 
+// The golden fingerprint (2026-10-27, before the speed-ups — a move table, piece sets, the
+// dwarfs' capture check from the trolls' side): what the rules compute, folded into one number
+// over every position of 24 seeded random games, uniform and capture-greedy — the legal
+// actions in their order, each one's Captures, BestCapture, IsTerminal, the piece counts, the
+// returns at the end. Recorded with the code before them; any change to a result, or to the
+// order of the moves (which the games' random choices follow), changes it.
+constexpr uint64_t kGoldenRules = 7766489815996475360ULL;
+
+uint64_t Fold(uint64_t h, uint64_t x) {  // splitmix64's finaliser over h ^ x.
+  uint64_t z = (h ^ x) + 0x9e3779b97f4a7c15ULL;
+  z = (z ^ (z >> 30)) * 0xbf58476d1ce4e5b9ULL;
+  z = (z ^ (z >> 27)) * 0x94d049bb133111ebULL;
+  return z ^ (z >> 31);
+}
+
+void TestGolden() {
+  std::shared_ptr<const Game> game = Thud();
+  std::mt19937 rng(2027);
+  uint64_t h = 0;
+  int positions = 0, captures = 0;
+  for (int g = 0; g < 24; ++g) {
+    std::unique_ptr<State> state = game->NewInitialState();
+    for (int ply = 0; ply < 800; ++ply) {
+      const auto& s = down_cast<const ThudState&>(*state);
+      h = Fold(h, s.IsTerminal());
+      h = Fold(h, s.NumDwarfs() * 16 + s.NumTrolls());
+      h = Fold(h, s.BestCapture());
+      if (s.IsTerminal()) break;
+      const std::vector<Action> legal = s.LegalActions();
+      std::vector<Action> taking;
+      for (Action a : legal) {
+        h = Fold(h, a);
+        const int c = s.Captures(a);
+        h = Fold(h, c);
+        if (c > 0) taking.push_back(a);
+      }
+      ++positions;
+      captures += !taking.empty();
+      const std::vector<Action>& pool = g % 2 == 1 && !taking.empty() ? taking : legal;
+      state->ApplyAction(pool[rng() % pool.size()]);
+    }
+    for (double r : state->Returns()) h = Fold(h, static_cast<uint64_t>(std::llround(r * 1e6)));
+  }
+  if (positions < 3000 || captures < 300) {
+    SpielFatalError(absl::StrCat("Golden coverage: ", positions, " positions, ", captures,
+                                 " with a capture"));
+  }
+  SPIEL_CHECK_EQ(h, kGoldenRules);
+}
+
 void TestOpenSpielGenericTests() {
   testing::LoadGameTest("thud");
   testing::NoChanceOutcomesTest(*Thud());
@@ -3175,5 +3225,6 @@ int main(int argc, char** argv) {
   thud::TestUndoRandomGames();
   thud::TestCaptures();
   thud::TestHash();
+  thud::TestGolden();
   thud::TestOpenSpielGenericTests();
 }

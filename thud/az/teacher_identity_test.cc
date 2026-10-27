@@ -563,6 +563,37 @@ int main(int argc, char** argv) {
     }
   }
 
+  // 7. The golden fingerprint of the teacher (2026-10-27, before the speed-ups of the game's
+  // rules): the scores of every legal move of the first 40 positions at depth 3 and of the
+  // first 6 at depth 4, folded into one number, recorded with the code before them — so that
+  // a change to the rules' results or to the order of the moves fails here even where the
+  // reference (OpenSpiel's alpha-beta on the same game) would change alike.
+  {
+    constexpr uint64_t kGoldenScores = 18313312276673694004ULL;
+    uint64_t h = 0;
+    auto fold = [&h](uint64_t x) {
+      uint64_t z = (h ^ x) + 0x9e3779b97f4a7c15ULL;
+      z = (z ^ (z >> 30)) * 0xbf58476d1ce4e5b9ULL;
+      z = (z ^ (z >> 27)) * 0x94d049bb133111ebULL;
+      h = z ^ (z >> 31);
+    };
+    int scored = 0;
+    for (int depth : {3, 4}) {
+      const size_t n = std::min<size_t>(positions.size(), depth == 3 ? 40 : 6);
+      for (size_t i = 0; i < n; ++i) {
+        for (Action a : positions[i]->LegalActions()) fold(a);
+        for (double v : open_spiel::thud_az::MaterialSearch().Scores(*positions[i], depth)) {
+          fold(static_cast<uint64_t>(static_cast<int64_t>(std::llround(v))));
+          ++scored;
+        }
+      }
+    }
+    Check(h == kGoldenScores && scored > 5000,
+          absl::StrFormat("7. the teacher's golden fingerprint (depths 3 and 4, %d scores): %d "
+                          "(%d required)",
+                          scored, h, kGoldenScores));
+  }
+
   // 6e. The table's bounds: 20 positions, each searched at depth 3 with 40 random windows
   // around its value on one table (the position itself and its children then stored as
   // exact values or bounds under one window, probed under the next), each result checked
