@@ -3991,5 +3991,20 @@ the push's and the rename's tests ran (memory beside the trainer), to resume.
   R6_371, the dwarfs' searches 200 simulations, the trolls' 100) after R6_371's evaluation
   (~19:30).
 
-**Next step:** as recorded in `## Current status` — run R7's first segment (from ~19:30); the rule (the user, 2026-10-26: after two segments without gain one more, then back to R5_331); the teacher as the opponent's dwarfs later; then more simulations
+- **2026-10-27, 13:30-15:40: the speed-ups, and R7's settings.** The user asked what 200/100
+  costs (the search work 1.5x; the step less, the learner setting the pace) and for the
+  cheap savings: the trolls' teacher back to depth 4 in R7 (`--player_kickstart_depth=5,4`;
+  its depth 5 never showed a gain and cost ~180-230 ms a troll position), and all of the
+  following, tests first, results unchanged, then a pause, a speed comparison, and R7 on
+  the new code. Built in the worktree (branch `speed`): the golden fingerprints of the rules
+  and the teacher, recorded with the old code and committed first; then the game's piece
+  sets, the move table (inline `Decode`), the dwarfs' capture check from the trolls' side,
+  and the actors' `PushPatiently`; five hand-broken speed-ups each fail `thud_test`; all 38
+  tests pass (78 minutes beside the trainer — the user then asked to stop training to free
+  the machine: R6 stopped at 15:33 right after step 366 was saved, nothing lost; R7 starts
+  from R6_366, its segments ending at 376, 386, ...). The plan's *Levers still open* gained
+  the trolls' teacher at depth 5 as a lever, and a new *Speed levers* table.
+
+**Next step:** as recorded in `## Current status` — the speed comparison, the merge and R7's start
+(`~/thud-runs/speedup_r7_2026-10-27.sh`); R7's first segment; the rule (the user, 2026-10-26: after two segments without gain one more, then back to R5_331); the teacher as the opponent's dwarfs later; then more simulations
 (200/100), Gumbel, the finer evaluation's cheap form, the measurement's control.
