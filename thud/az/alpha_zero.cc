@@ -576,7 +576,9 @@ void actor(const open_spiel::Game& game, const AlphaZeroConfig& config, int num,
                   config.kickstart_depth, depths[0], depths[1], config.kickstart_temperature,
                   config.kickstart_ties.c_str());
   }
+  int waited_games = 0, total_games = 0;  // Our change: games that waited for the queue.
   for (int game_num = 1; !stop->StopRequested(); ++game_num) {
+    ++total_games;
     double cutoff =
         (dist(rng) < config.cutoff_probability ? config.cutoff_value
                                                : game.MaxUtility() + 1);
@@ -600,11 +602,13 @@ void actor(const open_spiel::Game& game, const AlphaZeroConfig& config, int num,
     if (opponent != open_spiel::kInvalidPlayer) {
       alphabeta_positions += trajectory.states.size();
     }
-    if (!trajectory_queue->Push(trajectory, absl::Seconds(10))) {
-      logger->Print("Failed to push a trajectory after 10 seconds.");
-    }
+    // Our change (2026-10-27): wait for room rather than drop the game after 10 seconds.
+    int tries;
+    PushPatiently(trajectory_queue, trajectory, *stop, absl::Seconds(1), &tries);
+    if (tries > 1) ++waited_games;
   }
-  logger->Print("Got a quit.");
+  logger->Print("Got a quit. Waited for room in the queue after %d of %d games.", waited_games,
+                total_games);
 }
 
 class EvalResults {

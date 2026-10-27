@@ -110,6 +110,7 @@ struct Geometry {
   std::array<int, kBoardSize> row_start;  // Square number of each row's first.
   std::array<int, kNumSquares> cell;      // Grid cell of each square.
   std::array<Coord, kNumSquares> coord;   // (row, col) of each square.
+  std::array<int, kGridCells> square;     // Square of each grid cell, -1 off the board.
 };
 
 // Zobrist keys (2026-10-23, for the teacher's transposition table): a random 64-bit number
@@ -150,12 +151,14 @@ uint64_t PieceKey(Cell piece, int cell) {
 const Geometry& Geo() {
   static const Geometry* geometry = [] {
     auto* g = new Geometry();
+    g->square.fill(-1);
     int square = 0;
     for (int row = 0; row < kBoardSize; ++row) {
       g->row_start[row] = square;
       for (int col = FirstCol(row); col < kBoardSize - FirstCol(row); ++col) {
         g->cell[square] = GridCell(row, col);
         g->coord[square] = {row, col};
+        g->square[g->cell[square]] = square;
         ++square;
       }
     }
@@ -164,6 +167,18 @@ const Geometry& Geo() {
   }();
   return *geometry;
 }
+
+// Sets of squares, a bit each in three words (ThudState's dwarf_squares_ and troll_squares_).
+using SquareSet = std::array<uint64_t, 3>;
+void AddSquare(SquareSet* set, int square) {
+  (*set)[square >> 6] |= uint64_t{1} << (square & 63);
+}
+void RemoveSquare(SquareSet* set, int square) {
+  (*set)[square >> 6] &= ~(uint64_t{1} << (square & 63));
+}
+// The set's squares in increasing order: for (int w = 0; w < 3; ++w) for (uint64_t b = set[w];
+// b != 0; b &= b - 1) the square w * 64 + LowestBit(b).
+int LowestBit(uint64_t bits) { return __builtin_ctzll(bits); }
 
 char CellChar(Cell cell) {
   switch (cell) {
@@ -239,16 +254,49 @@ Action EncodeCaptureStepAction(int square, int direction) {
   return kNumLineActions + square * kNumDirections + direction;
 }
 
+namespace {
+
+// Every action's parts, worked out once (2026-10-27, a speed-up: the profile of the teacher's
+// search put ~8% of its time in DecodeAction, called through the library's symbol table from
+// the moves made and undone and the captures counted; Decode, inline here, reads this table).
+struct PackedAction {
+  uint8_t square, direction, distance;
+  bool capture_step;
+};
+
+constexpr std::array<PackedAction, kNumDistinctActions> MakeActionTable() {
+  std::array<PackedAction, kNumDistinctActions> table{};
+  for (int action = 0; action < kNumDistinctActions; ++action) {
+    PackedAction& p = table[action];
+    if (action >= kNumLineActions) {
+      const int index = action - kNumLineActions;
+      p = {static_cast<uint8_t>(index / kNumDirections),
+           static_cast<uint8_t>(index % kNumDirections), 1, true};
+    } else {
+      p = {static_cast<uint8_t>(action / (kNumDirections * kMaxDistance)),
+           static_cast<uint8_t>(action / kMaxDistance % kNumDirections),
+           static_cast<uint8_t>(action % kMaxDistance + 1), false};
+    }
+  }
+  return table;
+}
+static_assert(kNumSquares <= 255 && kMaxDistance <= 255, "an action's parts fit in a byte");
+constexpr std::array<PackedAction, kNumDistinctActions> kActionTable = MakeActionTable();
+
+// DecodeAction for the state's own use: the action is legal there, so in range.
+inline DecodedAction Decode(Action action) {
+  SPIEL_DCHECK_GE(action, 0);
+  SPIEL_DCHECK_LT(action, kNumDistinctActions);
+  const PackedAction& p = kActionTable[action];
+  return {p.square, p.direction, p.distance, p.capture_step};
+}
+
+}  // namespace
+
 DecodedAction DecodeAction(Action action) {
   SPIEL_CHECK_GE(action, 0);
   SPIEL_CHECK_LT(action, kNumDistinctActions);
-  if (action >= kNumLineActions) {
-    const int index = action - kNumLineActions;
-    return {index / kNumDirections, index % kNumDirections, 1, true};
-  }
-  return {static_cast<int>(action / (kNumDirections * kMaxDistance)),
-          static_cast<int>(action / kMaxDistance % kNumDirections),
-          static_cast<int>(action % kMaxDistance) + 1, false};
+  return Decode(action);
 }
 
 int PolicyPlaneIndex(Action action) {
@@ -463,6 +511,8 @@ void ThudState::SetPosition(const Position& position) {
   grid_.fill(Cell::kOffBoard);
   num_dwarfs_ = 0;
   num_trolls_ = 0;
+  dwarf_squares_ = {};
+  troll_squares_ = {};
   for (int square = 0; square < kNumSquares; ++square) {
     const Cell cell = position.board[square];
     SPIEL_CHECK_TRUE(cell != Cell::kOffBoard);
@@ -470,6 +520,8 @@ void ThudState::SetPosition(const Position& position) {
     grid_[Geo().cell[square]] = cell;
     num_dwarfs_ += cell == Cell::kDwarf;
     num_trolls_ += cell == Cell::kTroll;
+    if (cell == Cell::kDwarf) AddSquare(&dwarf_squares_, square);
+    if (cell == Cell::kTroll) AddSquare(&troll_squares_, square);
   }
   SPIEL_CHECK_LE(num_dwarfs_, kNumDwarfs);
   SPIEL_CHECK_LE(num_trolls_, kNumTrolls);
@@ -482,6 +534,16 @@ void ThudState::SetPosition(const Position& position) {
   turns_without_capture_ = position.turns_without_capture;
   terminal_ = BattleOver();
   hash_ = BoardHashFromScratch();
+}
+
+bool ThudState::PieceSetsMatchBoard() const {
+  SquareSet dwarfs{}, trolls{};
+  for (int square = 0; square < kNumSquares; ++square) {
+    const Cell cell = grid_[Geo().cell[square]];
+    if (cell == Cell::kDwarf) AddSquare(&dwarfs, square);
+    if (cell == Cell::kTroll) AddSquare(&trolls, square);
+  }
+  return dwarfs == dwarf_squares_ && trolls == troll_squares_;
 }
 
 uint64_t ThudState::BoardHashFromScratch() const {
@@ -578,17 +640,22 @@ std::vector<Action> ThudState::LegalActions() const {
   if (terminal_) return {};
   const Cell own = to_move_ == kDwarfPlayer ? Cell::kDwarf : Cell::kTroll;
   // Squares and directions are visited in increasing order, and every capture
-  // step's ID is above every line action's, so the result is sorted.
+  // step's ID is above every line action's, so the result is sorted. The own pieces' set
+  // gives their squares in increasing order (2026-10-27; before, every square was looked at).
   std::vector<Action> actions;
   std::vector<Action> capture_steps;
   actions.reserve(256);
-  for (int square = 0; square < kNumSquares; ++square) {
-    const int cell = Geo().cell[square];
-    if (grid_[cell] != own) continue;
-    if (own == Cell::kDwarf) {
-      AddDwarfMoves(square, cell, &actions);
-    } else {
-      AddTrollMoves(square, cell, &actions, &capture_steps);
+  const Geometry& geo = Geo();
+  const SquareSet& pieces = own == Cell::kDwarf ? dwarf_squares_ : troll_squares_;
+  for (int w = 0; w < 3; ++w) {
+    for (uint64_t bits = pieces[w]; bits != 0; bits &= bits - 1) {
+      const int square = w * 64 + LowestBit(bits);
+      const int cell = geo.cell[square];
+      if (own == Cell::kDwarf) {
+        AddDwarfMoves(square, cell, &actions);
+      } else {
+        AddTrollMoves(square, cell, &actions, &capture_steps);
+      }
     }
   }
   actions.insert(actions.end(), capture_steps.begin(), capture_steps.end());
@@ -596,23 +663,28 @@ std::vector<Action> ThudState::LegalActions() const {
 }
 
 void ThudState::DoApplyAction(Action action) {
-  const DecodedAction move = DecodeAction(action);
+  const DecodedAction move = Decode(action);
   const int from = Geo().cell[move.square];
   const int to = from + move.distance * kGridStep[move.direction];
   const Cell mover = grid_[from];
   SPIEL_CHECK_TRUE(mover ==
                    (to_move_ == kDwarfPlayer ? Cell::kDwarf : Cell::kTroll));
   Undo undo{0, false, terminal_, turns_without_capture_, hash_};
+  const Geometry& geo = Geo();
+  SquareSet& movers = mover == Cell::kDwarf ? dwarf_squares_ : troll_squares_;
   bool captured = false;
   if (mover == Cell::kDwarf && grid_[to] == Cell::kTroll) {
     --num_trolls_;  // A hurl captures the troll it lands on.
     captured = true;
     undo.troll_taken = true;
     hash_ ^= PieceKey(Cell::kTroll, to);
+    RemoveSquare(&troll_squares_, geo.square[to]);
   }
   grid_[to] = mover;
   grid_[from] = Cell::kEmpty;
   hash_ ^= PieceKey(mover, from) ^ PieceKey(mover, to);
+  RemoveSquare(&movers, move.square);
+  AddSquare(&movers, geo.square[to]);
   if (mover == Cell::kTroll && (move.capture_step || move.distance >= 2)) {
     // A capturing step or a shove captures every dwarf next to the troll.
     for (int d = 0; d < kNumDirections; ++d) {
@@ -623,6 +695,7 @@ void ThudState::DoApplyAction(Action action) {
         captured = true;
         undo.dwarfs_taken |= 1 << d;
         hash_ ^= PieceKey(Cell::kDwarf, cell);
+        RemoveSquare(&dwarf_squares_, geo.square[cell]);
       }
     }
   }
@@ -635,7 +708,7 @@ void ThudState::DoApplyAction(Action action) {
 }
 
 int ThudState::Captures(Action action) const {
-  const DecodedAction move = DecodeAction(action);
+  const DecodedAction move = Decode(action);
   const int from = Geo().cell[move.square];
   const int to = from + move.distance * kGridStep[move.direction];
   if (grid_[from] == Cell::kDwarf) return grid_[to] == Cell::kTroll ? 1 : 0;
@@ -649,23 +722,35 @@ int ThudState::Captures(Action action) const {
 
 int ThudState::BestCapture() const {
   if (terminal_) return 0;
-  const Cell own = to_move_ == kDwarfPlayer ? Cell::kDwarf : Cell::kTroll;
+  const Geometry& geo = Geo();
+  if (to_move_ == kDwarfPlayer) {
+    // A hurl takes one troll, the most a dwarf move can, so the question is whether there is
+    // one — looked for from the trolls' side (2026-10-27, a speed-up: at most 8 trolls against
+    // up to 32 dwarfs): from each troll along each line, the empty path to the first piece; a
+    // dwarf there at `distance` hurls onto the troll if its line behind it, away from the
+    // troll, is at least that long (as AddDwarfMoves: a hurl goes at most the line's length).
+    for (int w = 0; w < 3; ++w) {
+      for (uint64_t bits = troll_squares_[w]; bits != 0; bits &= bits - 1) {
+        const int troll = geo.cell[w * 64 + LowestBit(bits)];
+        for (int step : kGridStep) {
+          int cell = troll + step;
+          int distance = 1;
+          for (; grid_[cell] == Cell::kEmpty; ++distance) cell += step;
+          if (grid_[cell] == Cell::kDwarf && distance <= LineLength(cell, step)) return 1;
+        }
+      }
+    }
+    return 0;
+  }
   int best = 0;
-  for (int square = 0; square < kNumSquares; ++square) {
-    const int cell = Geo().cell[square];
-    if (grid_[cell] != own) continue;
-    for (int d = 0; d < kNumDirections; ++d) {
-      const int step = kGridStep[d];
-      int target = cell + step;
-      if (own == Cell::kDwarf) {
-        // As AddDwarfMoves: a hurl onto the troll that ends the empty path, if the line
-        // behind reaches it. It takes one troll, the most a move can.
-        int distance = 1;
-        for (; grid_[target] == Cell::kEmpty; ++distance) target += step;
-        if (grid_[target] == Cell::kTroll && distance <= LineLength(cell, -step)) return 1;
-      } else {
+  for (int w = 0; w < 3; ++w) {
+    for (uint64_t bits = troll_squares_[w]; bits != 0; bits &= bits - 1) {
+      const int cell = geo.cell[w * 64 + LowestBit(bits)];
+      for (int d = 0; d < kNumDirections; ++d) {
         // As AddTrollMoves: the capture step, and the shoves up to the line's length. At most
         // 7 dwarfs: of the landing square's 8 neighbours one is on the troll's path.
+        const int step = kGridStep[d];
+        int target = cell + step;
         if (grid_[target] != Cell::kEmpty) continue;
         best = std::max(best, DwarfsNextTo(target));
         const int line = LineLength(cell, -step);
@@ -687,15 +772,22 @@ void ThudState::UndoAction(Player player, Action action) {
   SPIEL_CHECK_EQ(history_.back().action, action);
   SPIEL_CHECK_EQ(undo_.size(), history_.size());  // A record for every move made.
   const Undo undo = undo_.back();
-  const DecodedAction move = DecodeAction(action);
+  const DecodedAction move = Decode(action);
   const int from = Geo().cell[move.square];
   const int to = from + move.distance * kGridStep[move.direction];
-  grid_[from] = grid_[to];
+  const Geometry& geo = Geo();
+  const Cell mover = grid_[to];
+  SquareSet& movers = mover == Cell::kDwarf ? dwarf_squares_ : troll_squares_;
+  grid_[from] = mover;
   grid_[to] = undo.troll_taken ? Cell::kTroll : Cell::kEmpty;
+  RemoveSquare(&movers, geo.square[to]);
+  AddSquare(&movers, move.square);
   num_trolls_ += undo.troll_taken;
+  if (undo.troll_taken) AddSquare(&troll_squares_, geo.square[to]);
   for (int d = 0; d < kNumDirections; ++d) {
     if (undo.dwarfs_taken & (1 << d)) {
       grid_[to + kGridStep[d]] = Cell::kDwarf;
+      AddSquare(&dwarf_squares_, geo.square[to + kGridStep[d]]);
       ++num_dwarfs_;
     }
   }
@@ -729,13 +821,16 @@ std::string ThudState::ActionToString(Player player, Action action_id) const {
 
 bool ThudState::SideToMoveCanMove() const {
   const Cell own = to_move_ == kDwarfPlayer ? Cell::kDwarf : Cell::kTroll;
-  for (int square = 0; square < kNumSquares; ++square) {
-    const int cell = Geo().cell[square];
-    if (grid_[cell] != own) continue;
-    for (int step : kGridStep) {
-      const Cell next = grid_[cell + step];
-      if (next == Cell::kEmpty) return true;
-      if (own == Cell::kDwarf && next == Cell::kTroll) return true;
+  const Geometry& geo = Geo();
+  const SquareSet& pieces = own == Cell::kDwarf ? dwarf_squares_ : troll_squares_;
+  for (int w = 0; w < 3; ++w) {
+    for (uint64_t bits = pieces[w]; bits != 0; bits &= bits - 1) {
+      const int cell = geo.cell[w * 64 + LowestBit(bits)];
+      for (int step : kGridStep) {
+        const Cell next = grid_[cell + step];
+        if (next == Cell::kEmpty) return true;
+        if (own == Cell::kDwarf && next == Cell::kTroll) return true;
+      }
     }
   }
   return false;

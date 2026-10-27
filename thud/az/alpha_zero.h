@@ -41,6 +41,7 @@
 #include "open_spiel/utils/json.h"
 #include "open_spiel/utils/logger.h"
 #include "open_spiel/utils/thread.h"
+#include "open_spiel/utils/threaded_queue.h"
 #include "thud/az/alphabeta_player.h"
 #include "thud/az/mcts.h"
 
@@ -485,6 +486,22 @@ std::unique_ptr<MCTSBot> InitAZBot(const AlphaZeroConfig& config,
                                    bool evaluation, int player = -1);
 
 bool AlphaZero(AlphaZeroConfig config, StopToken* stop, bool resuming);
+
+// Our change (2026-10-27; the user: actors that wait rather than drop their games): pushes
+// `item` onto `queue`, trying again every `per_try` while it is full, until it is taken or a
+// stop is requested; returns whether it was taken, and counts the tries in `tries`. Upstream's
+// actor tried once for 10 seconds and dropped the game (run R6's ~4.5% of its games, their
+// work lost) — while it waits, its CPU goes to the learner.
+template <typename T>
+bool PushPatiently(ThreadedQueue<T>* queue, const T& item, const StopToken& stop,
+                   absl::Duration per_try, int* tries) {
+  *tries = 0;
+  while (!stop.StopRequested()) {
+    ++*tries;
+    if (queue->Push(item, per_try)) return true;
+  }
+  return false;
+}
 
 // Our change (thud/PLAN.md, runs G and G'): the size of a growing buffer — KataGo's
 // rule (arXiv 1902.10565, section 3 and appendix C; KataGo calls it a "growing moving

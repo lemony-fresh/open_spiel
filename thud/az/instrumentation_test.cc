@@ -18,15 +18,21 @@
 // ending — every one of the five, so each branch is exercised (the trainer's
 // smoke runs end almost only with the dwarfs gone) — and a cut-off game and
 // another game's end give "cutoff" and "terminal". Control: a position one move
-// before an ending is not terminal.
+// before an ending is not terminal. Since 2026-10-27 also PushPatiently, the actors' push:
+// on a full queue of one, a single try of 50 ms fails (the control: the queue really is full,
+// so upstream's single try would drop the item), while PushPatiently — trying every 50 ms —
+// succeeds once a reader takes the waiting item after 300 ms, in several tries, the item
+// then in the queue; and with no reader it returns false soon after a stop is requested.
 //
 //   thud/run_tests.sh instrumentation_test   # builds and runs it
 //   build-tests/bin/instrumentation_test
 //
 // Exits non-zero on any failure.
 
+#include <chrono>  // NOLINT
 #include <iostream>
 #include <memory>
+#include <thread>  // NOLINT
 #include <string>
 #include <vector>
 
@@ -121,6 +127,51 @@ int main(int argc, char** argv) {
   Expect(tic->IsTerminal() && GameEnding(*tic, false) == "terminal",
          "another game: terminal");
 
+  // PushPatiently.
+  {
+    using open_spiel::ThreadedQueue;
+    ThreadedQueue<int> queue(1);
+    SPIEL_CHECK_TRUE(queue.Push(1));
+    const bool single_try = queue.Push(2, absl::Milliseconds(50));
+    std::thread reader([&queue] {
+      std::this_thread::sleep_for(std::chrono::milliseconds(300));
+      queue.Pop();
+    });
+    open_spiel::StopToken never;
+    int tries = 0;
+    const bool pushed = open_spiel::thud_az::torch_az::PushPatiently(
+        &queue, 2, never, absl::Milliseconds(50), &tries);
+    reader.join();
+    const absl::optional<int> taken = queue.Pop(absl::Milliseconds(10));
+    if (single_try || !pushed || tries < 2 || !taken || *taken != 2) {
+      std::cerr << "FAIL: PushPatiently: single try " << single_try << ", pushed " << pushed
+                << ", tries " << tries << std::endl;
+      ++failures;
+    } else {
+      std::cout << "PASS PushPatiently waits for room (" << tries
+                << " tries; a single try fails)" << std::endl;
+    }
+    // A full queue, no reader: a stop ends the waiting.
+    SPIEL_CHECK_TRUE(queue.Push(3));
+    open_spiel::StopToken stop;
+    std::thread stopper([&stop] {
+      std::this_thread::sleep_for(std::chrono::milliseconds(100));
+      stop.Stop();
+    });
+    const auto t0 = std::chrono::steady_clock::now();
+    const bool after_stop = open_spiel::thud_az::torch_az::PushPatiently(
+        &queue, 4, stop, absl::Milliseconds(50), &tries);
+    const double seconds =
+        std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
+    stopper.join();
+    if (after_stop || seconds > 1.0) {
+      std::cerr << "FAIL: PushPatiently after a stop: pushed " << after_stop << " after "
+                << seconds << " s" << std::endl;
+      ++failures;
+    } else {
+      std::cout << "PASS PushPatiently returns after a stop (" << seconds << " s)" << std::endl;
+    }
+  }
   std::cout << (failures ? "INSTRUMENTATION TEST FAILED"
                          : "instrumentation test passed")
             << std::endl;

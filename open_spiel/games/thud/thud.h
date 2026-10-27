@@ -281,6 +281,8 @@ class ThudState : public State {
   uint64_t BoardHash() const { return hash_; }
   // The same, computed from the board (for tests).
   uint64_t BoardHashFromScratch() const;
+  // Whether the sets of squares kept for each side's pieces equal the board (for tests).
+  bool PieceSetsMatchBoard() const;
 
  protected:
   void DoApplyAction(Action action) override;
@@ -322,6 +324,12 @@ class ThudState : public State {
   int num_trolls_ = 0;
   bool terminal_ = false;  // BattleOver(), updated whenever the board changes.
   uint64_t hash_ = 0;      // BoardHash().
+  // Each side's pieces as a set of square numbers, a bit each in three words (2026-10-27, a
+  // speed-up: the moves, BestCapture and the end of the battle walk these instead of all 165
+  // squares; set bits in increasing order are the squares in their order, so the moves come
+  // out in the same order), kept equal to the board by every change to it.
+  std::array<uint64_t, 3> dwarf_squares_{};
+  std::array<uint64_t, 3> troll_squares_{};
   // What each move in the history took off the board and what it changed that cannot be
   // worked out again, for UndoAction: one record a move.
   struct Undo {

@@ -2742,11 +2742,16 @@ void CheckSame(const std::vector<std::pair<std::string, std::string>>& expected,
   }
 }
 
-// The hash kept up to date (BoardHash) is the board's (BoardHashFromScratch).
+// What the state keeps up to date equals the board's: the hash (BoardHash against
+// BoardHashFromScratch) and, since 2026-10-27, the sets of each side's squares.
 void CheckHash(const ThudState& state, const std::string& what) {
   if (state.BoardHash() != state.BoardHashFromScratch()) {
     SpielFatalError(absl::StrCat(what, ": the hash kept is ", state.BoardHash(),
                                  ", the board's ", state.BoardHashFromScratch(), " in\n",
+                                 state.ToString()));
+  }
+  if (!state.PieceSetsMatchBoard()) {
+    SpielFatalError(absl::StrCat(what, ": the piece sets kept differ from the board in\n",
                                  state.ToString()));
   }
 }
@@ -3072,6 +3077,9 @@ void TestHash() {
       const auto& s = down_cast<const ThudState&>(*state);
       const std::string what = absl::StrCat("Game ", g, ", ply ", ply);
       CheckHash(s, what);
+      int best = 0;  // BestCapture against the legal moves' captures, every position.
+      for (Action a : s.LegalActions()) best = std::max(best, s.Captures(a));
+      SPIEL_CHECK_EQ(s.BestCapture(), best);
       ++positions;
       const std::string key = absl::StrCat(board_of(s), "\n", s.CurrentPlayer());
       auto [it, inserted] = seen.insert({s.BoardHash(), key});
@@ -3116,6 +3124,30 @@ uint64_t Fold(uint64_t h, uint64_t x) {  // splitmix64's finaliser over h ^ x.
   z = (z ^ (z >> 30)) * 0xbf58476d1ce4e5b9ULL;
   z = (z ^ (z >> 27)) * 0x94d049bb133111ebULL;
   return z ^ (z >> 31);
+}
+
+// DecodeAction (2026-10-27: read from a table) against the arithmetic it replaced, for every
+// action.
+void TestDecodeTable() {
+  for (Action action = 0; action < kNumDistinctActions; ++action) {
+    const DecodedAction d = DecodeAction(action);
+    int square, direction, distance;
+    bool capture_step;
+    if (action >= kNumLineActions) {
+      const int index = action - kNumLineActions;
+      square = index / kNumDirections, direction = index % kNumDirections, distance = 1;
+      capture_step = true;
+    } else {
+      square = action / (kNumDirections * kMaxDistance);
+      direction = action / kMaxDistance % kNumDirections;
+      distance = action % kMaxDistance + 1;
+      capture_step = false;
+    }
+    if (d.square != square || d.direction != direction || d.distance != distance ||
+        d.capture_step != capture_step) {
+      SpielFatalError(absl::StrCat("DecodeAction(", action, ") differs from the arithmetic"));
+    }
+  }
 }
 
 void TestGolden() {
@@ -3225,6 +3257,7 @@ int main(int argc, char** argv) {
   thud::TestUndoRandomGames();
   thud::TestCaptures();
   thud::TestHash();
+  thud::TestDecodeTable();
   thud::TestGolden();
   thud::TestOpenSpielGenericTests();
 }
