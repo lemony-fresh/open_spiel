@@ -575,6 +575,32 @@ main teacher.
 - **Alpha-beta keeps its other roles**: the training opponent (30% of the positions) and
   the regression gates, where it catches tactical blunders.
 
+**Levers still open** (the user, 2026-10-27: keep track of what we still have to help the
+network improve; kept up to date here — tried and settled ones say so). As of run R7 (from
+R6_371: the teacher at 5/5, the training opponent as the trolls the teacher at depth 5, the
+dwarfs' searches 200 simulations):
+
+| Lever | Status | Trigger, or what it needs |
+|---|---|---|
+| **More simulations for our trolls** (200 too) | not tried | after the dwarfs' 200 settles (run R7); their targets gain less (16% to 19% agreement at 200) |
+| **More simulations for the dwarfs** beyond 200 (400) | not tried | if R7's 200 helps: distance to the long search 0.50 at 200, 0.38 at 400 |
+| **Playout cap randomisation** (deep searches on a share of the moves) | built, off | cheaper deep targets; on the GPU or when simulations cost too much |
+| **The training opponent as the dwarfs at the teacher's strength** (our trolls' opponent) | not on (`--alphabeta_player=search,teacher`) | our two sides almost equally strong (the user; *Later*, below) |
+| **Gumbel AlphaZero** (value-based targets, an even root search) | not built; established (Danihelka et al., ICLR 2022), no guarantee for us | larger build, checked against `mctx`; equal root visits would also undo the blunders' visit bias |
+| **A finer evaluation for the teacher's ties** (cheap form: the root moves only) | not built | the user wants to discuss its cheap form first |
+| **The teacher's taper** | built (the gates), not started | the search beating the teacher in `az_teacher_vs_search` (2026-10-25: not yet for the distribution) |
+| **The teacher at depth 6** | not the main route | only if the teacher-vs-search measurement still favours depth |
+| **The bigger buffer** (KataGo's formula, ~1M) | to retry | the trigger is met: the main line's own positions since R281 fill ~2M |
+| **The learning-rate sweep** (the trainer may underfit) | not run | any gap; offline on a buffer first (`az_restructure`) |
+| **Grow the network** (Net2Net, `az_grow`) | built | when learning flattens (KL and matches flat over several segments) |
+| **Plasticity fixes** (a fresh network trained on the archive; shrink and perturb) | built in part (`az_restructure copy=none`) | if plasticity keeps rising (R5/R6 ~1.0-1.3 at times, R4 ~0.55) |
+| **Training the dwarfs more than the trolls** (more learning on dwarf positions); larger filters in the policy head | ideas (2026-10-02) | not designed |
+| **Search settings never tuned**: `uct_c`, root noise, the temperature and its drop, the policy temperature per side | not tuned | on the GPU, several runs a setting (*the settings to revisit*, group 3) |
+| **Speed for deeper teachers**: piece lists (~20%), a capture check from the trolls' side (~10%), action decoding by a table (~5%) | estimated from the profile | if depth or simulations grow |
+| **Tree reuse** (3c) | postponed | — |
+| **Match-aware play; the end-of-battle limits re-measured** | later | a strong single-battle agent (*Deferred decisions*) |
+| *Tried and settled*: policy target pruning (no), the ties shared by the search (T: no; a gentler half-shared form untested), the teacher at 5/4 or 4/5 alone (no), lowering the teacher's weight early (RLT: no) | — | the design's §10 |
+
 **Later, when a trigger fires** (details in *Notes for later*):
 
 - **The training opponent as the dwarfs at the teacher's strength** (the user, 2026-10-26:
