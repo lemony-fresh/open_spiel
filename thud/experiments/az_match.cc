@@ -628,12 +628,9 @@ int main(int argc, char** argv) {
         }
         return bot;
       };
-      std::unique_ptr<MCTSBot> a = make_bot(search_eval_a, sims_a, rule_a, temperatures_a,
-                                            capture_floors_a, /*bot_seed=*/t, 0, 0);
-      std::unique_ptr<MCTSBot> b;
-      std::unique_ptr<Opponent> opponent;
+      std::unique_ptr<Opponent> opponent;  // Side B without a network.
       if (!outside) {
-        b = make_bot(eval_b, sims_b, rule_b, temperatures_b, {}, /*bot_seed=*/t, 0, 0);
+        // Side B a network: its searches, as A's, made for each battle (below).
       } else if (kind_b == "mcts") {
         opponent = std::make_unique<MctsOpponent>(*game, strength_b, mcts_memory);
       } else if (kind_b == "alphabeta") {
@@ -643,18 +640,25 @@ int main(int argc, char** argv) {
       } else {
         opponent = std::make_unique<HexparrotOpponent>(strength_b, hexparrot_player);
       }
-      const Chooser choose_a = NetworkChooser(a.get());
-      const Chooser choose_b =
-          outside ? Chooser([&opponent](const open_spiel::State& state) {
-            return opponent->Choose(state);
-          })
-                  : NetworkChooser(b.get());
-      // One battle of pair i, network A playing a_player; in self-play's conditions with
-      // searches of its own, per network and player to move, seeded from the battle.
+      const Chooser choose_outside = [&opponent](const open_spiel::State& state) {
+        return opponent->Choose(state);
+      };
+      // One battle of pair i, network A playing a_player, each network's search seeded from
+      // the battle (2026-10-27: until then a search per thread, seeded by the thread, so that a
+      // battle's games depended on which thread played it and after which battles — each
+      // node's children are shuffled by the search's generator; az_match_test's teacher:2
+      // battles showed it); in self-play's conditions with searches of their own, per network
+      // and player to move.
       auto battle = [&](int i, int a_player) {
         if (outside) opponent->NewBattle(BattleSeed(seed, i, a_player));
         if (!self_play_conditions) {
-          return Play(*game, openings[i], choose_a, choose_b, a_player);
+          const int base = 8 * BattleSeed(seed, i, a_player);
+          std::unique_ptr<MCTSBot> a = make_bot(search_eval_a, sims_a, rule_a, temperatures_a,
+                                                capture_floors_a, base, 0, 0);
+          std::unique_ptr<MCTSBot> b;
+          if (!outside) b = make_bot(eval_b, sims_b, rule_b, temperatures_b, {}, base + 2, 0, 0);
+          return Play(*game, openings[i], NetworkChooser(a.get()),
+                      outside ? choose_outside : NetworkChooser(b.get()), a_player);
         }
         const int base = 8 * BattleSeed(seed, i, a_player);
         std::array<std::unique_ptr<MCTSBot>, 2> bots_a, bots_b;
@@ -672,7 +676,7 @@ int main(int argc, char** argv) {
         const Chooser self_play_a =
             SelfPlayChooser({bots_a[0].get(), bots_a[1].get()}, sample_plies, &rng);
         const Chooser self_play_b =
-            outside ? choose_b
+            outside ? choose_outside
                     : SelfPlayChooser({bots_b[0].get(), bots_b[1].get()}, sample_plies, &rng);
         return Play(*game, openings[i], self_play_a, self_play_b, a_player);
       };
