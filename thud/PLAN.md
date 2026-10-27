@@ -610,9 +610,7 @@ measured ones say so):
 | The teacher's transposition table | on since 2026-10-24 | depth 4 none, depth 5 6-14% of the teacher's time |
 | The teacher's move order without a full sort | on since 2026-10-24 | depth 4 ~40%, depth 5 ~30% of the teacher's time |
 | The trolls' teacher at depth 4 (5/4) | in run R7 (2026-10-27) | the teacher's most expensive part: ~15% of all compute, estimated |
-| The game's piece sets (no scan of all 165 squares in move generation, BestCapture and the end check) | built 2026-10-27 (branch `speed`, into R7) | measured before R7 starts (`~/thud-runs/speedup_r7_2026-10-27.sh`) |
-| The move table (DecodeAction read from a table, inline inside the library) | built 2026-10-27 | measured with the above |
-| The dwarfs' capture check from the trolls' side (≤8 trolls, not ~30 dwarfs) | built 2026-10-27 | measured with the above |
+| The game's piece sets (no scan of all 165 squares in move generation, BestCapture and the end check), the move table (DecodeAction read from a table, inline inside the library), the dwarfs' capture check from the trolls' side (≤8 trolls, not ~30 dwarfs) | on since run R7 (2026-10-27) | **measured together** on the idle machine (`~/thud-runs/speedup_2026-10-27/`, run R6's positions, two rounds): the teacher at depth 5 1.58x for the dwarfs (158 to 100 ms a position), 1.62x for the trolls (226 to 139); at depth 4 1.36x for the dwarfs (51 to 37), 1.62x for the trolls (10.9 to 6.7); the tree search with a free network unchanged (0.98-1.02x: its own work, not the rules', sets its pace). With R7's teacher (5/4) ~53 ms a position on average, against R6's (5/5, old code) ~192 |
 | Actors waiting for room rather than dropping games | built 2026-10-27 | ~4.5% of self-play's games (run R6) no longer thrown away |
 | Compile flags (`-fno-semantic-interposition`, `-mcpu=native`, ThinLTO) | measured 2026-10-23 | none |
 | PGO, BOLT, an allocator, the game compiled into our programs, LibTorch's build | not tried | *the settings to revisit*, group 6 |
