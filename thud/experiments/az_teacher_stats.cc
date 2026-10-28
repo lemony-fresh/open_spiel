@@ -35,6 +35,15 @@
 //               transposition table, default the teacher's, 0 none);
 //   table_differs  with check=1: the positions whose scores differ without the table.
 //
+// And per side a line with "gaps": true (2026-10-27, for the root window's margin): the root
+// moves' share at each gap below the best score (`gap_moves`, 0 to 6+ points), the policy's
+// mass there at the first temperature (`gap_mass`), per margin m the share of moves m or more
+// points below (`cut_share`) and the bound on how much a root window at m changes the policy
+// (`bound_mean`, `bound_max`: those moves' count times e^(-m/T), over the normaliser), and
+// the search's nodes a position (`nodes_a_position`, unchanged by the machine's load).
+// `margin=M`: the timed search with the root window M; `window_violations` counts the moves
+// where it breaks its promise (0 expected), `window_bounds` those it scored by a bound.
+//
 //   thud/az/build.sh thud/experiments/az_teacher_stats.cc
 //   build-shared/az_teacher_stats logs=RUN_DIR [depth=2 temperatures=0.25,0.5,1,2 \
 //     last=3 max=200]
@@ -130,6 +139,11 @@ int main(int argc, char** argv) {
   // positions whose scores differ counted (`table_differs`; 0 expected: the table changes no
   // score, teacher_identity_test part 6).
   const bool check = get("check", "0") == "1";
+  // margin=M (2026-10-27): the timed search with the root window M (MaterialSearch::Scores);
+  // the statistics then come from an exact search of its own, and every position is checked
+  // against the window's promise — the moves less than M below the best exact, the others a
+  // bound between their score and best - M (`window_violations`, 0 expected).
+  const int margin = std::stoi(get("margin", "0"));
   std::vector<double> temperatures;
   for (absl::string_view t : absl::StrSplit(get("temperatures", "0.25,0.5,1,2"), ',')) {
     temperatures.push_back(std::stod(std::string(t)));
@@ -179,6 +193,17 @@ int main(int argc, char** argv) {
     const auto& all = positions[side];
     std::vector<double> legal, best_share, marked_share, marked_best;
     double search_seconds = 0;  // The teacher's Scores alone, once a position.
+    int64_t nodes = 0;          // Its nodes, which the machine's load does not change.
+    int window_violations = 0, window_bounds = 0;  // margin > 0: the promise's breaks; bounds.
+    // Added 2026-10-27, for the root window's margin: the root moves by their gap below the
+    // best score (0, 1, ..., kGaps - 1 or more points), and the policy's mass on them at the
+    // first temperature; per margin m, the share of the moves m or more below and the bound on
+    // what the window would change in the policy (their count times e^(-m/T), over the
+    // policy's normaliser: a fail-low move gets at most that weight), on average and at most.
+    constexpr int kGaps = 7, kMargins = 4;
+    std::vector<double> gap_moves(kGaps), gap_mass(kGaps);
+    double moves_seen = 0;
+    std::vector<double> cut_share(kMargins + 1), bound_mean(kMargins + 1), bound_max(kMargins + 1);
     int table_differs = 0;
     // Per temperature.
     std::vector<std::vector<double>> best_mass(temperatures.size()),
@@ -193,15 +218,51 @@ int main(int argc, char** argv) {
       const State& s = *all[i];
       const std::vector<Action> actions = s.LegalActions();
       const auto start = std::chrono::steady_clock::now();
-      const std::vector<double> scores = search.Scores(s, depth);  // Equal to teacher's.
+      search.ResetNodes();
+      const std::vector<double> timed = search.Scores(s, depth, margin);
       search_seconds +=
           std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+      nodes += search.nodes();
+      // Equal to the teacher's at margin 0.
+      const std::vector<double> scores =
+          margin == 0 ? timed
+                      : open_spiel::thud_az::MaterialSearch(
+                            open_spiel::thud_az::Evaluation::kMaterial)
+                            .Scores(s, depth);
+      if (margin > 0) {
+        const double top = *std::max_element(scores.begin(), scores.end());
+        for (size_t k = 0; k < scores.size(); ++k) {
+          const bool exact_expected = scores[k] > top - margin;
+          window_violations += exact_expected ? timed[k] != scores[k]
+                                              : timed[k] < scores[k] || timed[k] > top - margin;
+          window_bounds += !exact_expected && timed[k] != scores[k];
+        }
+      }
       if (check) {
         table_differs +=
             open_spiel::thud_az::MaterialSearch(open_spiel::thud_az::Evaluation::kMaterial)
                 .Scores(s, depth) != scores;
       }
       const double best = *std::max_element(scores.begin(), scores.end());
+      {
+        const double t0 = temperatures[0];
+        double z = 0;
+        for (double score : scores) z += std::exp((score - best) / t0);
+        for (double score : scores) {
+          const int gap = std::min<int>(std::lround(best - score), kGaps - 1);
+          gap_moves[gap] += 1;
+          gap_mass[gap] += std::exp((score - best) / t0) / z;
+        }
+        moves_seen += scores.size();
+        for (int m = 1; m <= kMargins; ++m) {
+          int cut = 0;
+          for (double score : scores) cut += best - score >= m - 1e-9;
+          const double bound = cut * std::exp(-m / t0) / z;
+          cut_share[m] += static_cast<double>(cut) / scores.size();
+          bound_mean[m] += bound;
+          bound_max[m] = std::max(bound_max[m], bound);
+        }
+      }
       std::map<Action, bool> is_best, marked;
       int n_best = 0, n_marked = 0, n_marked_best = 0;
       for (int k = 0; k < actions.size(); ++k) {
@@ -229,6 +290,26 @@ int main(int argc, char** argv) {
       }
     }
     const std::string what = side == thud::kTrollPlayer ? "captures" : "unsafe";
+    std::string gaps = "\"gap_moves\": [", masses = "\"gap_mass\": [", margins = "\"margins\": [";
+    for (int g = 0; g < kGaps; ++g) {
+      gaps += absl::StrFormat("%s%.4f", g ? ", " : "", gap_moves[g] / moves_seen);
+      masses += absl::StrFormat("%s%.6f", g ? ", " : "", gap_mass[g] / examined);
+    }
+    for (int m = 1; m <= kMargins; ++m) {
+      margins += absl::StrFormat(
+          "%s{\"margin\": %d, \"cut_share\": %.4f, \"bound_mean\": %.2e, \"bound_max\": %.2e}",
+          m > 1 ? ", " : "", m, cut_share[m] / examined, bound_mean[m] / examined, bound_max[m]);
+    }
+    std::cout << absl::StrFormat("{\"side\": \"%s\", \"depth\": %d, \"positions\": %d, "
+                                 "\"temperature\": %g, %s], %s], %s], \"nodes_a_position\": %.0f, "
+                                 "\"ms_a_position\": %.2f, \"margin\": %d, \"window_violations\": %d, "
+                                 "\"window_bounds\": %d, \"gaps\": true}",
+                                 side == thud::kTrollPlayer ? "trolls" : "dwarfs", depth, examined,
+                                 temperatures[0], gaps, masses, margins,
+                                 static_cast<double>(nodes) / examined,
+                                 1000 * search_seconds / examined, margin, window_violations,
+                                 window_bounds)
+              << std::endl;
     for (int t = 0; t < temperatures.size(); ++t) {
       std::cout << absl::StrFormat(
                        "{\"side\": \"%s\", \"depth\": %d, \"temperature\": %g, "

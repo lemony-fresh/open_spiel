@@ -55,6 +55,12 @@
 //      each searched with 40 random windows on one table, every result checked by the
 //      fail-soft rule against the exact value (the control: windows below, above and around
 //      it).
+//   7. The golden fingerprint: the scores at depths 3 and 4, recorded with the code before the
+//      game's speed-ups (2026-10-27).
+//   8. (2026-10-27) The root window (MaterialSearch::Scores' margin): at margins 1-3 every move
+//      less than the margin below the best exact and the others bounded as promised, the best
+//      moves the same; the controls: some bounds differ from the scores, and each margin breaks
+//      the next one's promise.
 //   The parts above call AlphaBetaPlayer::Scores, so its table (one a thread, kept from call
 //   to call) is under test there too. In these builds (assertions on) MaterialSearch also
 //   checks every 16th frontier node against a full search of it (material_search.h).
@@ -628,6 +634,57 @@ int main(int argc, char** argv) {
                           "value below the window %d times, above it %d, inside it %d, and %d nodes "
                           "ended by the table (more than 0 each required)",
                           wrong, searches, below, above, inside, shared.table_cutoffs()));
+  }
+
+  // 8. The root window (2026-10-27; material_search.h): margins 1, 2 and 3 at depths 2 and 3
+  // on the first 30 positions and at depth 4 on the first 8, on one shared table as the
+  // teacher's, against the exact scores — every move less than the margin below the best
+  // exact, every other a bound between its score and best - margin, so the moves tied for the
+  // best the same (the teacher's choice as a player, ChooseByScores at margin 1, depends on
+  // nothing else). The controls: some moves get a bound that is not their score (the window
+  // does something), and each margin's scores break the promise of the next margin up (the
+  // check can fail).
+  {
+    using open_spiel::thud_az::Evaluation;
+    using open_spiel::thud_az::MaterialSearch;
+    MaterialSearch windowed(Evaluation::kMaterial, true, true, 16);
+    // The promise of `margin`, for `got` against the exact scores `want`: the breaks.
+    auto breaks = [](const std::vector<double>& got, const std::vector<double>& want,
+                     int margin) {
+      const double best = *std::max_element(want.begin(), want.end());
+      int n = 0;
+      for (size_t k = 0; k < want.size(); ++k) {
+        n += want[k] > best - margin ? got[k] != want[k]
+                                     : got[k] < want[k] || got[k] > best - margin;
+      }
+      return n;
+    };
+    int moves = 0, wrong = 0, bounded = 0, best_differs = 0, control = 0;
+    for (int depth : {2, 3, 4}) {
+      const size_t n = std::min<size_t>(positions.size(), depth == 4 ? 8 : 30);
+      for (size_t i = 0; i < n; ++i) {
+        if (positions[i]->IsTerminal()) continue;
+        const std::vector<double> want = MaterialSearch(Evaluation::kMaterial).Scores(*positions[i], depth);
+        const double best = *std::max_element(want.begin(), want.end());
+        for (int margin : {1, 2, 3}) {
+          const std::vector<double> got = windowed.Scores(*positions[i], depth, margin);
+          moves += got.size();
+          wrong += breaks(got, want, margin);
+          control += breaks(got, want, margin + 1);
+          const double got_best = *std::max_element(got.begin(), got.end());
+          for (size_t k = 0; k < got.size(); ++k) {
+            bounded += got[k] != want[k];
+            best_differs += (got[k] == got_best) != (want[k] == best);
+          }
+        }
+      }
+    }
+    Check(wrong == 0 && best_differs == 0 && bounded > 0 && control > 0,
+          absl::StrFormat("8. the root window: %d of %d scores break its promise and %d differ in "
+                          "being among the best (0 each required); the controls, %d scores a "
+                          "bound and %d breaks of the next margin's promise (more than 0 each "
+                          "required)",
+                          wrong, moves, best_differs, bounded, control));
   }
 
   if (failures == 0) {

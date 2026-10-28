@@ -329,7 +329,10 @@ as `vs_alphabeta`), `--kickstart_weight`, `--kickstart_depth` and
 a softmax of alpha-beta's move scores, a teacher; actors log the settings),
 `--kickstart_ties=even|search` (2026-10-23: `search` shares each group of moves the teacher
 scores alike by the search's visits within it, the groups' totals unchanged; `even`, the
-default, as before), `--player_kickstart_depth` (2026-10-24: the teacher's depth per player to
+default, as before), `--kickstart_root_margin` (2026-10-27: the teacher's root window — moves
+that many points below the best get a bound; 0, the default, every score exact; measured too
+small a gain at 3 to use; the teacher as a player, the training opponent and `az_match
+b=teacher:N`, uses 1, which is exact for its choice: 1.3-1.5x at depth 5), `--player_kickstart_depth` (2026-10-24: the teacher's depth per player to
 move, "4,5"; empty: `--kickstart_depth` for both; the teacher's search keeps a transposition
 table a thread, 4 MB, the same scores — `thud/az/material_search.h`),
 `--player_kickstart_weight` and `--player_policy_alpha` / `--player_policy_epsilon`
@@ -341,7 +344,9 @@ default), `--playout_cap_full_share` and `--playout_cap_fast_simulations` (2026-
 KataGo's playout cap randomisation; off by default), `--learner_threads` (2026-10-20: the
 learner's own LibTorch thread count, the inference threads keeping OMP_NUM_THREADS's — LibTorch
 shares one value between threads not yet started, so each inference thread sets its own;
-`learner.jsonl`'s `threads` records them; 0, the default, as before); since 2026-10-15 crash-safe saving (the buffer and the checkpoints written under
+`learner.jsonl`'s `threads` records them; 0, the default, as before); since 2026-10-27 the games waiting at a run's last step carried into the buffer
+(`carried_games.txt`, so that the next start's first step collects that many fewer) and the
+games in play ended at a stop (the exit waited minutes for them); since 2026-10-15 crash-safe saving (the buffer and the checkpoints written under
 a temporary name and renamed, a truncated last record skipped on resume, a cut-off buffer
 refused; since 2026-10-19 the buffer compact, `thud/az/position_buffer.h`: ~7x fewer bytes,
 bit for bit the same training, older and smaller buffers' files load, `az_merge_buffers OUT
@@ -370,7 +375,9 @@ and the teacher in one network's prior, `teacher_mix_a=`), `az_forgetting`, `az_
 `az_capture_targets`, `az_teacher_vs_search` (2026-10-25: the trainer's search's visits at
 several budgets, the teacher's policy and the recorded target, each against the network's own
 long search, on a run's own games), `az_teacher_stats` (since 2026-10-24 the search's time a position,
-`ms_a_position`, and `check=1`: the table against none), `az_feature_probe`, `az_long_capture_probe`,
+`ms_a_position`, and `check=1`: the table against none; since 2026-10-27 a line a side with the
+root moves' score gaps, the root window's bound per margin and the nodes a position, and
+`margin=M`: the timed search with the window, its promise checked), `az_feature_probe`, `az_long_capture_probe`,
 `az_input_plane_trace`, `az_risk_probe`, `az_dwarf_value_probe` (since 2026-10-17 `each=`:
 every position's values, for `thud/experiments/dwarf_value_report.py`'s intervals, which
 resample whole games) and `teacher_mix_test`;
@@ -450,7 +457,9 @@ end-to-end tests run in `build-tests/` (`thud/tests.mk`: incremental, **without
 (~20 s), or with `--full` every test (~4 min: `thud_test`, the hexparrot cross-check,
 the playthrough diff — against a temporary file, never over the baseline — the
 sanitized tests, every test program, `thud/az/trainer_test.sh` and
-`thud/experiments/az_match_test.sh`); `--list` names them, `NAME ...` runs only those;
+`thud/experiments/az_match_test.sh`); `--list` names them, `NAME ...` runs only those; beside an experiment they run one at a
+time in the idle class, with `--nice` (2026-10-27) two at a time at nice 19 as it runs (much
+faster there, but it slows the experiment more);
 each test's output is in `build-tests/last/NAME.log`. None needs a run folder. **The
 git hooks run them**: `.githooks/pre-commit` the quick tests when a commit changes code
 (docs alone go through at once), `.githooks/pre-push` every test when the pushed commits

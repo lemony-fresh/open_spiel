@@ -165,7 +165,18 @@ std::vector<std::pair<Action, double>> PrunedRootVisits(const SearchNode& root,
                                                         double uct_c, double k) {
   std::vector<std::pair<Action, double>> visits;
   if (root.children.empty()) return visits;
-  const SearchNode& best = root.BestChild();
+  // Our change (2026-10-27): BestChild() prefers an unvisited child to children whose
+  // battles ended in a loss, so on a battle's last move — every move ending it, the side to
+  // move losing — it had no playouts (its mean 0/0, no PUCT bound) and every other child was
+  // pruned to 0: a target of 0/0, NaN. Then the most visited child is the best, as KataGo's
+  // c* (the child with the most playouts); otherwise BestChild(), as before.
+  const SearchNode* best_child = &root.BestChild();
+  if (best_child->explore_count == 0) {
+    for (const SearchNode& child : root.children) {
+      if (child.explore_count > best_child->explore_count) best_child = &child;
+    }
+  }
+  const SearchNode& best = *best_child;
   double playouts = 0;
   for (const SearchNode& child : root.children) playouts += child.explore_count;
   // PUCT with the mean value held at `mean` and `n` playouts, as PUCTValue.

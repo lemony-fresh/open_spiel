@@ -26,10 +26,14 @@
 #include <array>
 #include <cmath>
 #include <cstdint>
+#include <cstdio>
+#include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <iterator>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <random>
 #include <string>
 #include <unordered_set>
@@ -173,6 +177,12 @@ struct AlphaZeroConfig {
   // moves with the same score — "even" (the softmax's, as before) or "search" (the group's
   // total shared by the search's visits within it; TeacherTiesBySearch).
   std::string kickstart_ties = "even";
+  // Added (2026-10-27): the teacher's root window (AlphaBetaPlayer::SetRootMargin): the moves
+  // this many points or more below the best scored by a bound at most best - margin, which
+  // the softmax gives at most e^(-margin / kickstart_temperature) of a best move's weight; 0
+  // (the default): every score exact, as before. 3 (MaterialSearch::kTeacherRootMargin) saved
+  // only 1.4% of the dwarfs' nodes at depth 5 (material_search.h), so it is not used.
+  int kickstart_root_margin = 0;
   // Added (thud/DESIGN_dwarf_signal.md, approach D1; 2026-10-13): kickstart weights per
   // player, comma-separated values indexed by the player to move (PerPlayerValues;
   // "0.7,0.3": the dwarfs' positions 0.7, the trolls' 0.3); empty or a missing second
@@ -240,6 +250,7 @@ struct AlphaZeroConfig {
         {"player_kickstart_depth", player_kickstart_depth},
         {"kickstart_temperature", kickstart_temperature},
         {"kickstart_ties", kickstart_ties},
+        {"kickstart_root_margin", kickstart_root_margin},
         {"temperature", temperature},
         {"temperature_drop", temperature_drop},
         {"cutoff_probability", cutoff_probability},
@@ -368,6 +379,9 @@ struct AlphaZeroConfig {
     kickstart_ties = config_json.count("kickstart_ties")
                          ? config_json.at("kickstart_ties").GetString()
                          : "even";
+    kickstart_root_margin = config_json.count("kickstart_root_margin")
+                                ? config_json.at("kickstart_root_margin").GetInt()
+                                : 0;
     temperature = config_json.at("temperature").GetDouble();
     temperature_drop = config_json.at("temperature_drop").GetDouble();
     cutoff_probability = config_json.at("cutoff_probability").GetDouble();
@@ -434,6 +448,9 @@ struct Trajectory {
   // Our change (training against alpha-beta): the player alpha-beta played, whose
   // moves have no State here; kInvalidPlayer in self-play.
   open_spiel::Player opponent = open_spiel::kInvalidPlayer;
+  // Our change (2026-10-27): the game was left unfinished because a stop was requested
+  // (PlayGame's `stop`): no returns, nothing to learn from.
+  bool abandoned = false;
 };
 
 class VPNetEvaluator;
@@ -453,7 +470,8 @@ Trajectory PlayGame(open_spiel::Logger* logger, int game_num, const open_spiel::
                     double teacher_temperature = 1,
                     const std::vector<double>& teacher_weights = {},
                     std::vector<std::unique_ptr<MCTSBot>>* fast_bots = nullptr,
-                    double full_share = 1, bool teacher_ties_by_search = false);
+                    double full_share = 1, bool teacher_ties_by_search = false,
+                    const StopToken* stop = nullptr);
 
 // Added (playout cap randomisation): the fast searches' bots, one per player — the
 // trainer's search with playout_cap_fast_simulations, no root noise and no forced
@@ -486,6 +504,39 @@ std::unique_ptr<MCTSBot> InitAZBot(const AlphaZeroConfig& config,
                                    bool evaluation, int player = -1);
 
 bool AlphaZero(AlphaZeroConfig config, StopToken* stop, bool resuming);
+
+// Our change (2026-10-27; the user: the lighter carry-over): the games a run's learner put
+// into the buffer at its last step instead of clearing them (they waited in the queue while
+// that step learnt), so that the next start's first step collects that many fewer new
+// positions. A line "AFTER_STEP STATES GAMES" in RUN_DIR/carried_games.txt, written under a
+// temporary name and renamed; removed once the next start's first step is saved.
+struct CarriedGames {
+  int64_t after_step = 0, states = 0, games = 0;
+};
+inline std::string CarriedGamesPath(const std::string& dir) {
+  return dir + "/carried_games.txt";
+}
+inline void WriteCarriedGames(const std::string& dir, const CarriedGames& carried) {
+  const std::string path = CarriedGamesPath(dir), part = path + ".part";
+  {
+    std::ofstream out(part, std::ios::trunc);
+    out << carried.after_step << " " << carried.states << " " << carried.games << "\n";
+    out.flush();
+    if (!out) open_spiel::SpielFatalError("Could not write " + part);
+  }
+  std::filesystem::rename(part, path);
+}
+// The note, if there is one and it reads as three counts.
+inline std::optional<CarriedGames> ReadCarriedGames(const std::string& dir) {
+  std::ifstream in(CarriedGamesPath(dir));
+  CarriedGames carried;
+  if (!(in >> carried.after_step >> carried.states >> carried.games)) return std::nullopt;
+  if (carried.states < 0 || carried.games < 0) return std::nullopt;
+  return carried;
+}
+inline void RemoveCarriedGames(const std::string& dir) {
+  std::filesystem::remove(CarriedGamesPath(dir));
+}
 
 // Our change (2026-10-27; the user: actors that wait rather than drop their games): pushes
 // `item` onto `queue`, trying again every `per_try` while it is full, until it is taken or a

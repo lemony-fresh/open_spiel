@@ -4016,5 +4016,57 @@ the push's and the rename's tests ran (memory beside the trainer), to resume.
   started run R7 at 15:52 by hand (from R6_366: 200/100 simulations, the trolls' teacher at
   depth 4, the strong troll opponent, the new code) rather than leave the machine idle.
 
-**Next step:** as recorded in `## Current status` — R7's first segment (to 376; ~21:30); the rule (the user, 2026-10-26: after two segments without gain one more, then back to R5_331); the teacher as the opponent's dwarfs later; then more simulations
-(200/100), Gumbel, the finer evaluation's cheap form, the measurement's control.
+- **2026-10-27, 16:10-19:30: what self-play spends, a correction, shorter stops, the teacher's
+  root window, the carry-over.** The user asked whether the search's state copies can go and
+  what else in it could be faster: profiled, the tree search and the game cost 3-4 µs a
+  simulation on one core against the network's ~2,300 core-µs, the copies ~4% of the former
+  (~0.01% of self-play: dropped, the user); tree reuse ~7% more visits a search, its network
+  calls mostly spared by the cache (15% of value requests hit it) — tabled, with when it is
+  likely useful in the plan (actual play, many more simulations, a sharper network, a GPU).
+  **A correction (mistake, reported):** since 2026-10-24 Claude had said the learner sets the
+  pace and, this morning, that ~4.5% of run R6's games were dropped by a full queue; both
+  wrong — R4-R6 took ~120 games a step with 40-64 waiting, R6's learner waited 720-980 s of
+  each ~1,700 s step, and the queue (21,845 games) never fills: the dropped games were those
+  in play at the two segment stops. Self-play sets the pace, so the speed-ups shorten steps
+  directly; the docs fixed in place (commit 0bb31927). R7's step 368 took 1,563 s at the
+  CPU's limit 71% against R6's 1,543-1,782 at 70-73% (~0.93x; estimated 0.94 from the
+  idle-machine timings): the speed-ups and the trolls' teacher at depth 4 paid for 200/100.
+  **Decided (the user):** segments of 20 steps after R7's first (376, 396, 416, ...;
+  `r7_run_2026-10-27.sh` changed while it waited, twice, the running trainer kept: a copy
+  that waits for a trainer left by an earlier copy); for the stops, no R201 match, the
+  plasticity test every other stop, the fixed probe only on new networks (a network measured
+  again alone gives its rows bit for bit — `~/thud-runs/fixed_probe_cache.py`, which rebuilt
+  fixed_361 byte for byte), teacher:5 beside the R6_366 match, the programs built before every
+  segment; the teacher's exact speed-ups and the root window, the threshold Claude's from the
+  score distribution, the measurement at most 10 minutes; the lighter carry-over (the user
+  preferred not making the doomed games over keeping them; Claude said the two are not
+  equivalent — the waiting games are made beside the learner, on cores it cannot use — and
+  the user chose the lighter carry-over; their question whether carried games are one
+  network older: yes, as every step's first games are).
+  **Built (branch `speed2`):** the root window (`MaterialSearch::Scores`' margin; the root
+  moves' gaps at depth 5 for the dwarfs: 42% tie for the best, 38% one point below, 12.5% two,
+  6.6% three or more; a margin of 2 could move 10% of the policy in the worst position, 3 at
+  most 0.16%); on 60 positions a side of run R6 (the first timing used R7's live logs, whose
+  last games changed between runs — invalid, redone): margin 1, exact for the teacher's
+  choice as a player, 0.61 of the nodes for the trolls at depth 5 (1.5x), 0.57 for the
+  dwarfs — now the training opponent's and `az_match b=teacher:N`'s; margin 3 for
+  kickstarting saves only 1.4% of the dwarfs' nodes at depth 5, so `--kickstart_root_margin`
+  stays 0; principal-variation search no gain (+2.6%, −6.6%, +14% nodes), dropped; a history
+  table not tried. The carry-over: at a run's last step the waiting games into the buffer and
+  `carried_games.txt`, the next start's first step collecting that many fewer; the actors and
+  the evaluator end their games in play at a stop. Tests: `teacher_identity_test` part 8,
+  `trainer_test.sh` part 10 (first with the default game: 1 game carried in one run, none
+  in the next — a battle outlasted the last learning step; now with battles of 10 turns
+  without a capture: 14 games). **A latent bug found on the way:** `trainer_test.sh`'s part 4
+  failed in 2 of 4 runs — one position's policy target NaN (a scan of the run's buffer: the
+  last position of a game). Policy target pruning took `BestChild()` as the best, and on a
+  battle's last move — every move ending it, the side to move losing, the terminal children's
+  outcomes set — that is an unvisited child: every child with one playout was pruned to 0, a
+  target of 0/0. Fixed (the most visited child then, KataGo's c*; unchanged otherwise);
+  `pruning_test` 1b fails on the code before. No run in `~/thud-runs` prunes now
+  (`policy_target_pruning` false in all 23 configs); the pruning arm (armP, 2026-10-23) has no
+  NaN in any of its losses — one such target drawn into a learning batch would have turned
+  them NaN — so it was not hit (at 100 simulations a child with two playouts keeps the total
+  above 0).
+
+**Next step:** as recorded in `## Current status` — R7's stop at 376 (~20:30) with the shorter evaluation, then 20-step segments on the merged code (the carry-over's first at 396, its gain measured at 397); the rule (the user, 2026-10-26: after two segments without gain one more, then back to R5_331); the teacher as the opponent's dwarfs later; more simulations for the trolls (200/100), Gumbel, the finer evaluation's cheap form, the measurement's control.

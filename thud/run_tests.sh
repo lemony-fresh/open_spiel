@@ -23,6 +23,8 @@
 #   thud/run_tests.sh --full     # every test (~4 min): what the pre-push hook runs
 #   thud/run_tests.sh NAME ...   # only these (--list shows the names)
 #   [--jobs N]                    # tests at once (default 4; 1 beside an experiment)
+#   [--nice]                      # beside an experiment, at nice 19 like it, 2 at once
+#                                 # (an equal share: faster, but slows it more; 2026-10-27)
 #
 # Exits non-zero if a build or any test fails. The tests need no run folder: the ones
 # that read a network get small untrained ones from make_test_network.
@@ -35,13 +37,14 @@ export PATH="$repo/venv/bin:$PATH"
 export PYTHONPATH="$repo:$repo/build/python${PYTHONPATH:+:$PYTHONPATH}"
 export OMP_NUM_THREADS=2
 
-mode=quick jobs=4 list=0
+mode=quick jobs=4 list=0 nice_beside=0
 names=()
 while [ $# -gt 0 ]; do
   case $1 in
     --quick) mode=quick ;;
     --full) mode=full ;;
     --jobs) jobs=$2; shift ;;
+    --nice) nice_beside=1 ;;
     --list) list=1 ;;
     --playthrough | --sanitized) names+=("$1") ;;  # Run as tests, below.
     -*) echo "Unknown option $1" >&2; exit 2 ;;
@@ -203,7 +206,10 @@ fi
 # Environment: ~25-35% for idle-class matches).
 priority="nice -n 19"
 experiments=$(ps -eo args | grep -E '[t]hud-runs/|[b]uild-shared/' | grep -v shell-snapshots)
-if [ -n "$experiments" ]; then
+if [ -n "$experiments" ] && [ "$nice_beside" = 1 ]; then
+  jobs=2
+  echo "An experiment is running: the tests run two at a time at nice 19, as it does (--nice)."
+elif [ -n "$experiments" ]; then
   jobs=1
   priority="chrt --idle 0"
   echo "An experiment is running: the tests run one at a time, in the idle class."

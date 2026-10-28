@@ -86,6 +86,18 @@
 #      printing 7: their mean 7); the summary names one of them the
 #      fastest; each setting's buffer deleted, its logs kept; run again it reprints the same
 #      results without training (resumed from the results).
+#   9. az_teacher_vs_search (2026-10-25) on the run: its candidates' measures in range, the
+#      uniform spread's agreement and breadth as computed, the visits' gap to themselves 0.
+#  10. The carry-over and the stop between moves (2026-10-27): a fresh run of one step with a
+#      long last learning step (300 batches) and short battles (10 turns without a capture
+#      end one), so that games wait in the queue at its end:
+#      the learner puts them into the buffer and writes the note (carried_games.txt, "1 STATES
+#      GAMES", its log saying so; more than 0 games), and the actors' games in play end at the
+#      stop (logged as abandoned). Resumed to step 2: the note read, step 2's record carrying
+#      its counts, the buffer grown by exactly the carried states plus the collected ones, the
+#      collected ones at least the step's 512 less the carried, the games counted once; the
+#      note then the new end's (after step 2). The control: a stale note (for step 5) at the
+#      resume to step 3 is ignored and removed — step 3 carries nothing and collects its 512.
 #
 #   thud/az/trainer_test.sh [BIN_DIR]    # default build-tests/bin
 #
@@ -411,6 +423,78 @@ legal = {side: [d["legal"] for d in rows if d["side"] == side] for side in ("dwa
 ok &= all(abs(s["effective_moves"][0] - sum(legal[s["side"]]) / len(legal[s["side"]])) < 1e-3
           for s in summaries if s["candidate"] == "uniform")
 if not ok: print(lines[:3], summaries[:2])
+sys.exit(0 if ok else 1)
+EOF
+
+# 10. The carry-over and the stop between moves.
+carry=$tmp/carry
+"$bin/make_test_network" dir="$carry" nn_model=resnet_conv_policy input_planes=1 nn_width=8 \
+  nn_depth=1 checkpoints=1 > /dev/null 2>&1 || { echo "FAIL make_test_network (10)"; exit 1; }
+carry_run() {  # carry_run MAX_STEPS LOG: the run, fresh or resumed
+  if [ -f "$carry/config.json" ]; then
+    python3 - "$carry/config.json" "$1" <<'EOF'
+import json, sys
+c = json.load(open(sys.argv[1])); c["max_steps"] = int(sys.argv[2])
+json.dump(c, open(sys.argv[1], "w"), indent=2)
+EOF
+    "$bin/az_trainer" "$carry/config.json" > "$2" 2>&1
+  else
+    # Short battles (10 turns without a capture end one), so that the actors finish games
+    # while the last step learns (300 batches): with the default game a battle outlasted it.
+    "$bin/az_trainer" --flagfile="$repo/thud/experiments/az_thud.flags" --path="$carry" \
+      --game="thud(max_turns_without_capture=10)" \
+      --graph_def=vpnet.pb --nn_model=resnet_conv_policy --nn_width=8 --nn_depth=1 \
+      --actors=3 --evaluators=0 --inference_batch_size=2 --inference_threads=1 \
+      --max_simulations=8 --replay_buffer_size=2048 --replay_buffer_reuse=4 \
+      --train_batch_size=64 --learner_batches=300 --checkpoint_freq=1 --max_steps="$1" \
+      > "$2" 2>&1
+  fi
+}
+carry_run 1 "$tmp/carry1.log"
+check "10. a run of one step with a long learning step exits 0" [ $? -eq 0 ]
+note1=$(cat "$carry/carried_games.txt" 2>/dev/null)
+check "10. the learner carried the waiting games: the note ($note1) and its log line" \
+  python3 - "$carry" "$note1" <<'EOF'
+import re, sys
+after, states, games = map(int, sys.argv[2].split())
+log = open(sys.argv[1] + "/log-learner.txt").read()
+ok = after == 1 and games > 0 and states > 0
+ok &= f"Carried {games} games ({states} states) into the buffer after step 1" in log
+sys.exit(0 if ok else 1)
+EOF
+check "10. the actors' games in play ended at the stop (logged as abandoned)" \
+  bash -c "cat '$carry'/log-actor-*.txt | grep -q 'abandoned at a stop'"
+carry_run 2 "$tmp/carry2.log"
+check "10. resumed to step 2: exits 0" [ $? -eq 0 ]
+check "10. ... step 2 takes the carried games: its record, the buffer, the collection, the count" \
+  python3 - "$carry" "$note1" <<'EOF'
+import json, re, sys
+d = {r["step"]: r for r in map(json.loads, open(sys.argv[1] + "/learner.jsonl"))}
+after, states, games = map(int, sys.argv[2].split())
+log = open(sys.argv[1] + "/log-learner.txt").read()
+collected = [(int(s), int(g)) for s, g in re.findall(r"Collected +(\d+) states from +(\d+) games", log)]
+c_states, c_games = collected[1]  # Step 2's, the resumed run's first.
+ok = f"The last run carried {games} games ({states} states)" in log
+ok &= d[2]["carried_games"] == games and d[2]["carried_states"] == states
+ok &= d[1]["carried_games"] == 0 and d[1]["carried_states"] == 0
+ok &= d[2]["total_states"] - d[1]["total_states"] == states + c_states
+ok &= c_states + states >= 512 and collected[0][0] >= 512
+ok &= d[2]["total_trajectories"] - d[1]["total_trajectories"] == games + c_games
+if not ok: print(d[1]["total_states"], d[2]["total_states"], states, collected, games)
+sys.exit(0 if ok else 1)
+EOF
+check "10. ... and the note is the new end's (after step 2), if games waited" \
+  bash -c "[ ! -f '$carry/carried_games.txt' ] || [ \"\$(cut -d' ' -f1 '$carry/carried_games.txt')\" = 2 ]"
+echo "5 100 3" > "$carry/carried_games.txt"  # The control: a stale note.
+carry_run 3 "$tmp/carry3.log"
+check "10. the control: a stale note is ignored and removed, step 3 collects its 512" \
+  python3 - "$carry" <<'EOF'
+import json, re, sys
+d = {r["step"]: r for r in map(json.loads, open(sys.argv[1] + "/learner.jsonl"))}
+log = open(sys.argv[1] + "/log-learner.txt").read()
+collected = [int(s) for s in re.findall(r"Collected +(\d+) states", log)]
+ok = "is for step 5, not 2: ignored and removed" in log
+ok &= d[3]["carried_games"] == 0 and d[3]["carried_states"] == 0 and collected[2] >= 512
 sys.exit(0 if ok else 1)
 EOF
 

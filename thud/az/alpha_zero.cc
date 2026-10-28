@@ -185,13 +185,21 @@ Trajectory PlayGame(Logger* logger, int game_num, const open_spiel::Game& game,
                     double teacher_temperature,
                     const std::vector<double>& teacher_weights,
                     std::vector<std::unique_ptr<MCTSBot>>* fast_bots,
-                    double full_share, bool teacher_ties_by_search) {
+                    double full_share, bool teacher_ties_by_search,
+                    const StopToken* stop) {
   std::unique_ptr<open_spiel::State> state = game.NewInitialState();
   std::vector<std::string> history;
   Trajectory trajectory;
   if (opponent != nullptr) trajectory.opponent = opponent_player;
 
   while (true) {
+    // Our change (2026-10-27): a stop ends the game between moves — the trainer's shutdown
+    // waited minutes for games it then threw away.
+    if (stop != nullptr && stop->StopRequested()) {
+      trajectory.abandoned = true;
+      logger->Print("Game %d: abandoned at a stop after %d moves", game_num, history.size());
+      return trajectory;
+    }
     if (state->IsChanceNode()) {
       open_spiel::ActionsAndProbs outcomes = state->ChanceOutcomes();
       open_spiel::Action action =
@@ -570,11 +578,12 @@ void actor(const open_spiel::Game& game, const AlphaZeroConfig& config, int num,
   if (kickstart_weights[0] > 0 || kickstart_weights[1] > 0) {
     const std::array<int, 2> depths = KickstartDepths(config);
     teacher = std::make_unique<AlphaBetaPlayer>(game, depths);
+    teacher->SetRootMargin(config.kickstart_root_margin);  // Our change, 2026-10-27.
     logger->Print("Kickstarting: weight %g (per player %g, %g), depth %d (per player %d, %d), "
-                  "temperature %g, ties %s",
+                  "temperature %g, ties %s, root margin %d",
                   config.kickstart_weight, kickstart_weights[0], kickstart_weights[1],
                   config.kickstart_depth, depths[0], depths[1], config.kickstart_temperature,
-                  config.kickstart_ties.c_str());
+                  config.kickstart_ties.c_str(), config.kickstart_root_margin);
   }
   int waited_games = 0, total_games = 0;  // Our change: games that waited for the queue.
   for (int game_num = 1; !stop->StopRequested(); ++game_num) {
@@ -597,7 +606,8 @@ void actor(const open_spiel::Game& game, const AlphaZeroConfig& config, int num,
                                                         : alphabeta[opponent].get(),
                  opponent, teacher.get(), config.kickstart_weight,
                  config.kickstart_temperature, kickstart_weights, &fast_bots,
-                 config.playout_cap_full_share, config.kickstart_ties == "search");
+                 config.playout_cap_full_share, config.kickstart_ties == "search", stop);
+    if (trajectory.abandoned) break;  // Our change (2026-10-27): a stop, mid-game.
     positions += trajectory.states.size();
     if (opponent != open_spiel::kInvalidPlayer) {
       alphabeta_positions += trajectory.states.size();
@@ -689,7 +699,14 @@ void evaluator(const open_spiel::Game& game, const AlphaZeroConfig& config,
     logger.Print("Running MCTS with %d simulations", rand_max_simulations);
     Trajectory trajectory = PlayGame(
         &logger, game_num, game, &bots, &rng, /*temperature=*/1,
-        /*temperature_drop=*/0, /*cutoff_value=*/game.MaxUtility() + 1);
+        /*temperature_drop=*/0, /*cutoff_value=*/game.MaxUtility() + 1,
+        // Our change (2026-10-27): the defaults spelt out, up to the stop between moves.
+        /*verbose=*/false, /*prior_source=*/nullptr, /*pruning_k=*/0, /*uct_c=*/0,
+        /*opponent=*/nullptr, /*opponent_player=*/open_spiel::kInvalidPlayer,
+        /*teacher=*/nullptr, /*teacher_weight=*/0, /*teacher_temperature=*/1,
+        /*teacher_weights=*/{}, /*fast_bots=*/nullptr, /*full_share=*/1,
+        /*teacher_ties_by_search=*/false, stop);
+    if (trajectory.abandoned) break;
 
     results->Add(difficulty, trajectory.returns[az_player]);
     logger.Print("Game %d: AZ: %5.2f, MCTS: %5.2f, MCTS-sims: %d, length: %d",
@@ -903,6 +920,25 @@ void learner(const open_spiel::Game& game, const AlphaZeroConfig& config,
   }
   int learn_rate = config.replay_buffer_size / config.replay_buffer_reuse;
   int64_t total_trajectories = start_info.total_trajectories;
+  // Our change (2026-10-27; the lighter carry-over, CarriedGames): the games the last run's
+  // learner put into the buffer at its end, which the first step counts as collected.
+  CarriedGames carried;
+  if (start_info.start_step > 1) {
+    if (std::optional<CarriedGames> note = ReadCarriedGames(config.path)) {
+      if (note->after_step == start_info.start_step - 1) {
+        carried = *note;
+        total_trajectories += carried.games;
+        logger.Print("The last run carried %d games (%d states) into the buffer: step %d "
+                     "collects that many states fewer",
+                     carried.games, carried.states, start_info.start_step);
+      } else {
+        logger.Print("%s is for step %d, not %d: ignored and removed",
+                     CarriedGamesPath(config.path), note->after_step, start_info.start_step - 1);
+        RemoveCarriedGames(config.path);
+      }
+    }
+  }
+  int last_step = start_info.start_step - 1;  // Our change: the last step learnt.
 
   const int stage_count = 7;
   std::vector<open_spiel::BasicStats> value_accuracies(stage_count);
@@ -944,7 +980,10 @@ void learner(const open_spiel::Game& game, const AlphaZeroConfig& config,
     int queue_size = trajectory_queue->Size();
     int num_states = 0;
     int num_trajectories = 0;
-    while (!stop->StopRequested() && num_states < learn_rate) {
+    // Our change: the carried states count toward the first step's (CarriedGames).
+    const bool first_step = step == start_info.start_step;
+    const int64_t carried_states = first_step ? carried.states : 0;
+    while (!stop->StopRequested() && num_states + carried_states < learn_rate) {
       absl::optional<Trajectory> trajectory = trajectory_queue->Pop();
       if (trajectory) {
         num_trajectories += 1;
@@ -1140,6 +1179,8 @@ void learner(const open_spiel::Game& game, const AlphaZeroConfig& config,
         {"total_trajectories", total_trajectories},
         {"trajectories_per_s", num_trajectories / seconds},
         {"queue_size", queue_size},
+        {"carried_games", first_step ? carried.games : 0},  // Our change (CarriedGames).
+        {"carried_states", carried_states},
         {"game_length", game_lengths.ToJson()},
         {"game_length_hist", game_lengths_hist.ToJson()},
         {"outcomes", outcomes.ToJson()},
@@ -1250,6 +1291,34 @@ void learner(const open_spiel::Game& game, const AlphaZeroConfig& config,
 
     data_logger.Write(record);
     logger.Print("");
+    // Our change (CarriedGames): the note served its step, which is saved.
+    if (first_step && carried.games > 0) RemoveCarriedGames(config.path);
+    last_step = step;
+  }
+
+  // Our change (2026-10-27; the user: the lighter carry-over): at the run's last step — not
+  // at a stop request — the games waiting in the queue go into the buffer instead of being
+  // cleared: played while that step learnt, by the network before it, as in every step a
+  // run that went on would collect first. The buffer is saved again and the note written
+  // (CarriedGames), so that the next start's first step collects that many fewer new states.
+  if (!stop->StopRequested() && config.max_steps > 0 && last_step == config.max_steps) {
+    CarriedGames end{last_step, 0, 0};
+    while (absl::optional<Trajectory> trajectory =
+               trajectory_queue->Pop(absl::ZeroDuration())) {
+      ++end.games;
+      const double p1_outcome = trajectory->returns[0];
+      for (const Trajectory::State& state : trajectory->states) {
+        replay_buffer.Add(VPNetModel::TrainInputs{state.legal_actions, state.observation,
+                                                  state.policy, p1_outcome});
+        ++end.states;
+      }
+    }
+    if (end.games > 0) {
+      replay_buffer.SaveBuffer(config.path + "/replay_buffer.data");
+      WriteCarriedGames(config.path, end);
+    }
+    logger.Print("Carried %d games (%d states) into the buffer after step %d", end.games,
+                 end.states, last_step);
   }
 }
 

@@ -85,10 +85,12 @@ class AlphaBetaPlayer {
   }
 
   // Mode::kTeacher's move: one of the moves Scores rates best, drawn by the game's seed and
-  // the moves so far.
+  // the moves so far. Since 2026-10-27 the scores with a root window of 1 (material_search.h):
+  // only the best moves' scores are exact, the others' bounds stay below them, so the moves
+  // tied for the best — and the move drawn — are those of exact scores.
   Action ChooseByScores(const State& state) const {
     const std::vector<Action> legal = state.LegalActions();
-    const std::vector<double> scores = Scores(state);
+    const std::vector<double> scores = Scores(state, /*margin=*/1);
     const double best = *std::max_element(scores.begin(), scores.end());
     std::vector<Action> tied;
     for (size_t i = 0; i < legal.size(); ++i) {
@@ -105,16 +107,27 @@ class AlphaBetaPlayer {
   // replying as OpenSpiel's alpha-beta search to depth(to move) - 1 plies would (depth 1: the
   // material right after the move; depth 2: after the opponent's best reply). No
   // tie-break: a teacher's scores are the same every time. In LegalActions() order.
-  std::vector<double> Scores(const State& state) const {
+  //
+  // Our change (2026-10-27): with a root margin (SetRootMargin; 0, the default: every score
+  // exact) the moves that many points or more below the best get an upper bound instead, at
+  // most best - margin (MaterialSearch::Scores' root window). Kickstarting's teacher in the
+  // trainer uses MaterialSearch::kTeacherRootMargin.
+  std::vector<double> Scores(const State& state) const { return Scores(state, root_margin_); }
+  void SetRootMargin(int margin) {
+    SPIEL_CHECK_GE(margin, 0);
+    root_margin_ = margin;
+  }
+
+ private:
+  std::vector<double> Scores(const State& state, int margin) const {
     // Since 2026-10-23 MaterialSearch (material_search.h: the same values, its moves
     // ordered and its frontier counted without applying moves), with its transposition
     // table: one a thread, kept from call to call.
     thread_local MaterialSearch search(Evaluation::kMaterial, /*captures_first=*/true,
                                        /*killers=*/true, MaterialSearch::kTeacherTableBits);
-    return search.Scores(state, depths_[state.CurrentPlayer()]);
+    return search.Scores(state, depths_[state.CurrentPlayer()], margin);
   }
 
- private:
   static double Material(const State& state, Player me) {
     const auto& thud_state = down_cast<const thud::ThudState&>(state);
     const int margin = thud_state.NumDwarfs() * thud::kDwarfValue -
@@ -150,6 +163,7 @@ class AlphaBetaPlayer {
   const std::array<int, 2> depths_;  // By the player to move.
   uint64_t seed_ = 0;
   Mode mode_ = Mode::kSearch;
+  int root_margin_ = 0;  // Scores()'s root window (SetRootMargin): 0, every score exact.
 };
 
 }  // namespace thud_az

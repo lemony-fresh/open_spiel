@@ -21,6 +21,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <memory>
+#include <numeric>
 #include <utility>
 #include <vector>
 
@@ -60,24 +61,30 @@ enum class Evaluation { kMaterial };
 // Above the frontier, moves are tried captures first (the largest gain first) if
 // `captures_first`, then the killer moves of that depth (the last two quiet moves that cut
 // off there) if `killers`, then in the game's order — after the transposition table's move.
+// Tried and dropped (2026-10-27): principal-variation search — every move after a node's
+// first searched with a null window first — changed the nodes by +2.6% (dwarfs) and -6.6%
+// (trolls) at depth 5 and +14% for the dwarfs at depth 4 (60 positions a side of run R6).
 //
-// The transposition table (2026-10-23; the user: depth 5 needs it), if `table_bits` > 0:
-// 2^table_bits entries of 16 bytes, one a slot, the newest kept, for the nodes above the
-// frontier, kept from one Scores() to the next (a game's next position shares much of the
-// last one's tree). A node's entry holds its value — exact, or the bound a cut-off gave —
-// the depth it was searched to, and its best move. The value cuts the search off only when
-// the entry was searched to exactly the node's depth: the scores stay exactly those of a
-// search to `depth` (a deeper entry would make them deeper ones). Its move goes first at
-// any depth. The key is the board's hash (ThudState::BoardHash) and, only where a battle
-// limit can be reached inside the node's search — its turn counter plus the depth left at
-// the turn limit, or its no-capture counter plus that at the no-capture limit — the two
-// counters and the two limits too: elsewhere the counters cannot change the value (the user:
-// quantise them to "far" and "near"), so positions that differ only there share an entry.
-// A false match needs two positions with one 64-bit hash: ~2^-46 a probe at 2^18 entries.
+// The root window (2026-10-27; Scores' `margin`): with a margin m > 0, each root move after
+// the first is searched only far enough to show it is m or more points below the best so
+// far. Every move within m - 1 points of the best gets its exact score; the others get an
+// upper bound at most best - m (fail-soft: at least their true score). At m = 1 only the
+// best moves are exact and nothing else ranks with them: the teacher's choice as a player
+// (AlphaBetaPlayer::ChooseByScores) is that of exact scores, from 0.61 of the nodes at
+// depth 5 for the trolls, 0.57 for the dwarfs (60 positions a side of run R6). For
+// kickstarting's policy, a softmax over the scores at T = 0.25 that gives a bounded move at
+// most e^(-4m) of a best move's weight, m = 3 (kTeacherRootMargin) would change the policy
+// by at most 0.16% of its mass (the worst of 60 dwarf positions of run R7 at depth 5; 0.004%
+// on average) but saves little: 1.4% of the dwarfs' nodes at depth 5, 12% of the trolls'
+// at depth 4 — so the trainer's --kickstart_root_margin stays 0.
 class MaterialSearch {
  public:
   // The teacher's table (AlphaBetaPlayer::Scores, one a thread): 4 MB.
   static constexpr int kTeacherTableBits = 18;
+  // The smallest root window kickstarting's policy could take (above; az_teacher_stats' gap
+  // line, 2026-10-27: at 2 the bound reached 10% of the policy in one of 60 dwarf positions,
+  // at 3 0.16%).
+  static constexpr int kTeacherRootMargin = 3;
 
   explicit MaterialSearch(Evaluation evaluation = Evaluation::kMaterial,
                           bool captures_first = true, bool killers = true, int table_bits = 0)
@@ -92,10 +99,13 @@ class MaterialSearch {
 
   // Every legal action's value, in points for the side to move at `state`, searched
   // `depth` plies (the move itself the first): the material after the move at depth 1, after
-  // the best reply at depth 2, ... In LegalActions() order.
-  std::vector<double> Scores(const State& state, int depth) {
+  // the best reply at depth 2, ... In LegalActions() order. With `margin` > 0 (the root
+  // window, above) the moves m or more points below the best get an upper bound instead,
+  // at most best - m; 0: every score exact.
+  std::vector<double> Scores(const State& state, int depth, int margin = 0) {
     SPIEL_CHECK_GE(depth, 1);
     SPIEL_CHECK_LT(depth, kMaxDepth);
+    SPIEL_CHECK_GE(margin, 0);
     std::unique_ptr<State> copy = state.Clone();
     auto& s = down_cast<thud::ThudState&>(*copy);
     const Player me = s.CurrentPlayer();
@@ -103,14 +113,35 @@ class MaterialSearch {
     max_turns_ = game.max_turns();
     max_turns_without_capture_ = game.max_turns_without_capture();
     for (auto& k : killer_moves_) k = {kInvalidAction, kInvalidAction};
-    std::vector<double> scores;
-    for (Action action : s.LegalActions()) {
+    const std::vector<Action> legal = s.LegalActions();
+    std::vector<double> scores(legal.size());
+    // With a margin, the likely best moves first (the table's move for this position if it
+    // has one, then captures), so that the window rises early; the scores stay in legal order.
+    std::vector<Action> moves = legal;
+    if (margin > 0) {
+      Action table_move = kInvalidAction;
+      if (!table_.empty()) {
+        const uint64_t key = Key(s, depth);
+        const Entry& entry = table_[key & table_mask_];
+        if (entry.depth > 0 && entry.key == key) table_move = entry.move;
+      }
+      Order(s, depth, me, table_move, &moves);
+    }
+    if (root_index_.empty()) root_index_.resize(thud::kNumDistinctActions);
+    for (size_t i = 0; i < legal.size(); ++i) root_index_[legal[i]] = i;
+    int best = -kInfinity;
+    for (Action action : moves) {
       s.ApplyAction(action);
-      const int value = s.IsTerminal() || depth == 1
-                            ? Evaluate(s, me)
-                            : -Search(&s, depth - 1, -kInfinity, kInfinity, 1 - me);
+      int value;
+      if (s.IsTerminal() || depth == 1) {
+        value = Evaluate(s, me);
+      } else {
+        const int alpha = margin > 0 && best > -kInfinity ? best - margin : -kInfinity;
+        value = -Search(&s, depth - 1, -kInfinity, -alpha, 1 - me);
+      }
       s.UndoAction(me, action);
-      scores.push_back(value);
+      scores[root_index_[action]] = value;
+      best = std::max(best, value);
     }
     return scores;
   }
@@ -317,6 +348,7 @@ class MaterialSearch {
   std::array<std::array<Action, 2>, kMaxDepth> killer_moves_{};
   std::vector<std::pair<int, int>> ranked_;  // Order()'s, reused (no recursion inside it).
   std::vector<Action> unordered_;
+  std::vector<int> root_index_;  // Scores()': an action's index among the legal ones.
   std::vector<Entry> table_;
   uint64_t table_mask_ = 0;
   int max_turns_ = 0, max_turns_without_capture_ = 0;  // The game's, set by Scores().

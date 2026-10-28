@@ -22,6 +22,12 @@
 //      once keeps all; a child pruned within its n_forced down to one playout drops
 //      to 0; a child stopped by the PUCT bound before its n_forced is used up;
 //      unvisited children stay 0.
+//      1b. (2026-10-27) A battle's last move, every visited child a lost battle (their
+//      outcomes set, as a search sets a terminal child's) and an unvisited child the one
+//      BestChild() prefers (the control: it does), each visited child with one playout:
+//      the first most visited keeps it, so the target is not all 0 (it was: every child
+//      with one playout pruned to 0, a target of 0/0 — a NaN policy target in a
+//      trainer_test run; the test fails on the code before).
 //   2. Forced playouts in real searches (Thud positions, 100 simulations, root noise
 //      0.1 / 0.25, a network): with k 2, root children with playouts but fewer than
 //      sqrt(2 P N) are rare — at most about one a search, since a child's n_forced
@@ -105,6 +111,29 @@ int main(int argc, char** argv) {
   Expect(pruned[13] == 6,
          absl::StrCat("the PUCT bound stops pruning at 6, before n_forced: ", pruned[13]));
   Expect(pruned[14] == 0, absl::StrCat("an unvisited child stays 0: ", pruned[14]));
+
+  // 1b. Every visited child a lost battle, an unvisited one preferred by BestChild().
+  {
+    SearchNode last(open_spiel::kInvalidAction, 0, 1);
+    last.explore_count = 3;
+    last.children.push_back(Child(20, 0.3, 1, -1));
+    last.children.push_back(Child(21, 0.3, 1, -1));
+    last.children.push_back(Child(22, 0.4, 0, 0));
+    last.children[0].outcome = {-1, 1};
+    last.children[1].outcome = {-1, 1};
+    std::map<Action, double> kept;
+    double total = 0;
+    for (const auto& [a, n] : PrunedRootVisits(last, /*uct_c=*/2, /*k=*/2)) {
+      kept[a] = n;
+      total += n;
+    }
+    Expect(last.BestChild().action == 22,
+           absl::StrCat("1b. the control: BestChild() prefers the unvisited child: ",
+                        last.BestChild().action));
+    Expect(kept[20] == 1 && total > 0,
+           absl::StrCat("1b. the (first) most visited child keeps its playout, the total ",
+                        total, " above 0"));
+  }
 
   // 2. Real searches.
   std::shared_ptr<const open_spiel::Game> game = open_spiel::LoadGame("thud");
