@@ -4069,4 +4069,20 @@ the push's and the rename's tests ran (memory beside the trainer), to resume.
   them NaN — so it was not hit (at 100 simulations a child with two playouts keeps the total
   above 0).
 
+- **2026-10-27, 19:45-20:20: depth 6 and the root window; tree reuse before the GPU.** The user
+  asked whether the inexact optimisation's reasoning is written down (yes: the code,
+  `material_search.h`; the plan's speed levers and decision log; the commit, in short),
+  whether the teacher's own move choice uses the window (yes, always at margin 1: exact, no
+  flag — R7's training opponent and the teacher:N matches from the 376 stop on), whether
+  depth 6 gains more, and whether margin 3 has a downside. **Depth 6, measured**
+  (`az_teacher_stats quick=1`, new: the timed search alone; 24 positions a side of run R6):
+  no larger gain — the dwarfs' nodes 0.855 at margin 1, 0.952 at 2, 0.984 at 3; the trolls'
+  0.45, 0.62, 0.77, as at depth 5 (there, on these positions, the dwarfs 0.56, 0.87, 0.92)
+  — and depth 6 costs ~23x depth 5 for the dwarfs (2.8 s a position) and ~14x for the
+  trolls; the window's promise held at depth 6 (0 violations). Margin 3 for kickstarting:
+  trusted (0 violations in every test and measurement, the bound at most 0.16% of the
+  policy), its downside a target change far below the visits' noise, its gain ~0.3-1% of
+  self-play — off, the user's call. **Decided (the user):** tree reuse built, tested and
+  tried in a real run here before renting a GPU (the GPU checklist, item 8).
+
 **Next step:** as recorded in `## Current status` — R7's stop at 376 (~20:30) with the shorter evaluation, then 20-step segments on the merged code (the carry-over's first at 396, its gain measured at 397); the rule (the user, 2026-10-26: after two segments without gain one more, then back to R5_331); the teacher as the opponent's dwarfs later; more simulations for the trolls (200/100), Gumbel, the finer evaluation's cheap form, the measurement's control.

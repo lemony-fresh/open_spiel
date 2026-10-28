@@ -76,7 +76,9 @@ enum class Evaluation { kMaterial };
 // most e^(-4m) of a best move's weight, m = 3 (kTeacherRootMargin) would change the policy
 // by at most 0.16% of its mass (the worst of 60 dwarf positions of run R7 at depth 5; 0.004%
 // on average) but saves little: 1.4% of the dwarfs' nodes at depth 5, 12% of the trolls'
-// at depth 4 — so the trainer's --kickstart_root_margin stays 0.
+// at depth 4 — so the trainer's --kickstart_root_margin stays 0. At depth 6 the gain is no
+// larger (24 positions a side: the dwarfs' nodes 0.984 at m = 3, 0.855 at m = 1; the
+// trolls' 0.77 and 0.45).
 class MaterialSearch {
  public:
   // The teacher's table (AlphaBetaPlayer::Scores, one a thread): 4 MB.

@@ -43,6 +43,7 @@
 // the search's nodes a position (`nodes_a_position`, unchanged by the machine's load).
 // `margin=M`: the timed search with the root window M; `window_violations` counts the moves
 // where it breaks its promise (0 expected), `window_bounds` those it scored by a bound.
+// `quick=1`: only the timed search — a line a side with its nodes and time a position.
 //
 //   thud/az/build.sh thud/experiments/az_teacher_stats.cc
 //   build-shared/az_teacher_stats logs=RUN_DIR [depth=2 temperatures=0.25,0.5,1,2 \
@@ -144,6 +145,9 @@ int main(int argc, char** argv) {
   // against the window's promise — the moves less than M below the best exact, the others a
   // bound between their score and best - M (`window_violations`, 0 expected).
   const int margin = std::stoi(get("margin", "0"));
+  // quick=1: only the timed search, its nodes and time a position (one line a side, "quick":
+  // true) — for deep searches, where the statistics' own exact searches cost the most.
+  const bool quick = get("quick", "0") == "1";
   std::vector<double> temperatures;
   for (absl::string_view t : absl::StrSplit(get("temperatures", "0.25,0.5,1,2"), ',')) {
     temperatures.push_back(std::stod(std::string(t)));
@@ -223,6 +227,7 @@ int main(int argc, char** argv) {
       search_seconds +=
           std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
       nodes += search.nodes();
+      if (quick) continue;
       // Equal to the teacher's at margin 0.
       const std::vector<double> scores =
           margin == 0 ? timed
@@ -288,6 +293,15 @@ int main(int argc, char** argv) {
         best_mass[t].push_back(on_best);
         if (n_marked > 0) marked_mass[t].push_back(on_marked);
       }
+    }
+    if (quick) {
+      std::cout << absl::StrFormat(
+                       "{\"side\": \"%s\", \"depth\": %d, \"positions\": %d, \"margin\": %d, "
+                       "\"nodes_a_position\": %.0f, \"ms_a_position\": %.2f, \"quick\": true}",
+                       side == thud::kTrollPlayer ? "trolls" : "dwarfs", depth, examined, margin,
+                       static_cast<double>(nodes) / examined, 1000 * search_seconds / examined)
+                << std::endl;
+      continue;
     }
     const std::string what = side == thud::kTrollPlayer ? "captures" : "unsafe";
     std::string gaps = "\"gap_moves\": [", masses = "\"gap_mass\": [", margins = "\"margins\": [";

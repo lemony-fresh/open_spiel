@@ -377,7 +377,8 @@ several budgets, the teacher's policy and the recorded target, each against the 
 long search, on a run's own games), `az_teacher_stats` (since 2026-10-24 the search's time a position,
 `ms_a_position`, and `check=1`: the table against none; since 2026-10-27 a line a side with the
 root moves' score gaps, the root window's bound per margin and the nodes a position, and
-`margin=M`: the timed search with the window, its promise checked), `az_feature_probe`, `az_long_capture_probe`,
+`margin=M`: the timed search with the window, its promise checked; `quick=1`: the timed search
+alone, for deep searches), `az_feature_probe`, `az_long_capture_probe`,
 `az_input_plane_trace`, `az_risk_probe`, `az_dwarf_value_probe` (since 2026-10-17 `each=`:
 every position's values, for `thud/experiments/dwarf_value_report.py`'s intervals, which
 resample whole games) and `teacher_mix_test`;
