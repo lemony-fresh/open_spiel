@@ -4112,4 +4112,19 @@ the push's and the rename's tests ran (memory beside the trainer), to resume.
   runs beside it, the matches against hexparrot and the teacher with 2 inference threads
   meanwhile (the threads within the cores); the script changed while it waited.
 
+- **2026-10-28, 08:30-09:05: the diagnosis of R7_376's loss, set up for 396.** The user asked
+  why more dwarf simulations would play worse. Claude: R7 changed two things (the dwarfs'
+  200 simulations and the trolls' teacher back at depth 4; its speed-ups were exact, the
+  inexact root window not in it), and more simulations change the targets, not only their
+  accuracy — at the dwarfs' policy temperature 1.5 the visits of 200 simulations spread over
+  more moves: the dwarfs' targets' entropy 4.29-4.34 in R6's segments, 4.45 in R7's first;
+  the network's dwarf prior 133-145 effective moves against 105-139 — and the matches run
+  at 100 simulations, where a broader prior spreads the dwarfs' search thinner; the fit
+  looks as before (the KL above the targets 0.315 to 0.312, plasticity 1.01). **Decided
+  (the user): the checks at the 396 stop:** R7_396 against R6_366 at the trainer's budgets
+  (`az_match side_sims=200,100`, new: commit `fc8fb2e1`, `az_match_test` part 7) and the
+  noise probe at 100, 200 and 400 simulations on R6_366 and R7_396 (`r7_run_2026-10-27.sh`
+  changed while it waited). If the targets are too broad, the cheap fix is the dwarfs'
+  policy temperature (1.5 to 1.0), the larger one Gumbel targets.
+
 **Next step:** as recorded in `## Current status` — R7's stop at 376 (~20:30) with the shorter evaluation, then 20-step segments on the merged code (the carry-over's first at 396, its gain measured at 397); the rule (the user, 2026-10-26: after two segments without gain one more, then back to R5_331); the teacher as the opponent's dwarfs later; more simulations for the trolls (200/100), Gumbel, the finer evaluation's cheap form, the measurement's control.
