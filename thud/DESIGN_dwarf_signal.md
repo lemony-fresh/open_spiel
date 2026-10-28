@@ -1376,8 +1376,8 @@ worth. The network learns them: KL 0.483, 0.437, 0.419 at steps 261, 266, 271. *
 the teacher on the idle machine (D5's positions, with the table and the move order of
 2026-10-24) depth 4 45.5 ms a dwarf position and 11.0 a troll's, depth 5 143.2 and 177.9 (on
 DS's: 49.5, 12.9, 156.0, 227.5); D5's steps 1,557 s at the CPU's limit 73% on average, against
-D4's 1,098 at ~75% (2026-10-23) — ~40% longer, though 41-54 games waited at every step's end
-(the learner still sets the pace; the teacher's work takes CPU from it). Corrected: against
+D4's 1,098 at ~75% (2026-10-23) — ~40% longer: self-play sets the pace (~120 games taken a step,
+41-54 waiting at its start; first read here as the learner's pace, corrected 2026-10-27). Corrected: against
 depth 4 with the same code (run R4's steps 272-281, after the faster move order: 952 s at 76%)
 D5's steps are ~60% longer — the teacher's speed showed in depth 4's step time after all.
 **Why can blurrier targets teach better?** The user's explanation: depth 5 classifies which

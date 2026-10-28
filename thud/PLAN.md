@@ -598,7 +598,7 @@ dwarfs' searches 200 simulations):
 | **Search settings never tuned**: `uct_c`, root noise, the temperature and its drop, the policy temperature per side | not tuned | on the GPU, several runs a setting (*the settings to revisit*, group 3) |
 | **The trolls' teacher at depth 5 again** (or deeper) | back at 4 since run R7 (the user, 2026-10-27, to save compute: its depth 5 never showed a gain, arm DS, and cost ~180-230 ms a troll position against ~12) | if the trolls' policy targets look like the limit — their KL, their matches |
 | **Speed** (what makes deeper teachers and more simulations affordable) | the table below | — |
-| **Tree reuse** (3c) | postponed | — |
+| **Tree reuse** (3c) | not worth it now (2026-10-27: ≤ ~7% more visits a search, its network calls mostly spared by the cache already; the speed levers) | if the searches narrow (the reusable share past 30%, the trigger in *Changes to the search and trainer*) |
 | **Match-aware play; the end-of-battle limits re-measured** | later | a strong single-battle agent (*Deferred decisions*) |
 | *Tried and settled*: policy target pruning (no), the ties shared by the search (T: no; a gentler half-shared form untested), the teacher at 5/4 or 4/5 alone (no), lowering the teacher's weight early (RLT: no) | — | the design's §10 |
 
@@ -611,10 +611,15 @@ measured ones say so):
 | The teacher's move order without a full sort | on since 2026-10-24 | depth 4 ~40%, depth 5 ~30% of the teacher's time |
 | The trolls' teacher at depth 4 (5/4) | in run R7 (2026-10-27) | the teacher's most expensive part: ~15% of all compute, estimated |
 | The game's piece sets (no scan of all 165 squares in move generation, BestCapture and the end check), the move table (DecodeAction read from a table, inline inside the library), the dwarfs' capture check from the trolls' side (≤8 trolls, not ~30 dwarfs) | on since run R7 (2026-10-27) | **measured together** on the idle machine (`~/thud-runs/speedup_2026-10-27/`, run R6's positions, two rounds): the teacher at depth 5 1.58x for the dwarfs (158 to 100 ms a position), 1.62x for the trolls (226 to 139); at depth 4 1.36x for the dwarfs (51 to 37), 1.62x for the trolls (10.9 to 6.7); the tree search with a free network unchanged (0.98-1.02x: its own work, not the rules', sets its pace). With R7's teacher (5/4) ~53 ms a position on average, against R6's (5/5, old code) ~192 |
-| Actors waiting for room rather than dropping games | built 2026-10-27 | ~4.5% of self-play's games (run R6) no longer thrown away |
+| Actors waiting for room rather than dropping games | built 2026-10-27 | none: the queue (buffer size / reuse, 21,845 games) never fills; run R6's dropped games (60 of 1,513, ~4%) were the games still in play at its two segment stops, all within minutes of them, which a stop discards anyway (corrected 2026-10-27; first read as a full queue) |
+| Keeping the waiting games across a segment's stop (the carry-over) | not built | ~25 minutes a segment, ~6% of the wall time, estimated: at every stop for the matches upstream's shutdown clears the ~50 finished games waiting (the queue lives only in memory) and drops the ~64 the actors finish after the stop (they look for the stop only between games; the trainer waits ~5 minutes for them), so the next segment's first step makes all its ~125 games from scratch (run R6's step 362: 2,601 s against ~1,700). Saving them in the run folder at the exit and putting them back in the queue on resume (the file removed only once that step's checkpoint is saved) learns what an unstopped run would. Not making them instead (the actors stopped once the last step has its games) would save ~10 minutes and lose the games |
 | Compile flags (`-fno-semantic-interposition`, `-mcpu=native`, ThinLTO) | measured 2026-10-23 | none |
 | PGO, BOLT, an allocator, the game compiled into our programs, LibTorch's build | not tried | *the settings to revisit*, group 6 |
-| Tree reuse (3c) | postponed | the more simulations, the more it saves |
+| Tree reuse (3c) | not worth it now (measured 2026-10-27) | ≤ ~7% more visits a search, likely ~3-4%: the most visited move holds only 3.5% of the dwarfs' visits (median, run R6) and 14.5% of the trolls', and the move played is sampled from the visits, so at 200/100 the subtree carried over is at most ~7 visits of the trolls' 100 and ~15 of the dwarfs' 200. The network calls for it are mostly spared already: re-visited positions hit the evaluation cache (15% of the value requests, run R6's step 366; the cache holds ~the last 30 searches an actor), so reuse adds visits, not cheaper ones |
+| The search without state copies (`UndoAction` along the path) | dropped (the user, 2026-10-27) | ~0.01% of self-play: the tree search and the game cost 3-4 µs a simulation on one core (R6's positions, a free network), the network ~2,300 core-µs; the copies ~4% of the former (a short profile). Revisit only if a GPU's profile says so |
+| The teacher's search: principal-variation search, a history table for the quiet moves (exact: the same scores) | not built | unmeasured; the ceiling: the teacher is ~13% of R7's self-play (the dwarfs' depth 5 nearly all of it) and the opponent's depth-5 troll moves ~6%, so a 2x faster search saves ≤ ~9% |
+| The teacher's root window (each root move after the first searched only far enough to show it is 2+ points below the best; such a move's weight is ≤ e^-8 of a best move's at T 0.25) | not built | unmeasured: depends on the share of root moves 2+ points below (52% of the dwarfs' tie for the best at depth 5); changes the teacher's policy by a bounded, tiny amount — the user's call |
+| Fewer evaluations between segments | — | each stop costs ~1 h 40 min (R6's segment to 351: the trainer's exit 6 min, the probes 40 min — the plasticity test alone 28 — the matches 51): ~25% of the wall time; every 20 steps, or some probes every other segment, would save the most of any lever here — the user's call |
 | Gumbel (as good targets with fewer simulations) | not built | — |
 | Playout cap randomisation | built, off | deep targets on a share of the moves |
 | The GPU machine | — | the network is ~90% of a step here |
@@ -688,7 +693,7 @@ below):
 | Convolutional policy head (5) | Harness: 99% against 75-78%; self-play: run C' −8.5 against C — its dwarf policy barely learnt, but its trolls are much better (+18.4 against E44's dwarfs) | ~~Revisit as a troll-only head~~ — **superseded** (2026-10-15): the convolutional head for both sides since runs L and M (L102 beat K102 by +10.72 a pair, its dwarfs included) |
 | Convolutional policy head on a trained trunk (2026-10-10) | The long-capture probe: K83's linear head ignores multi-square hurls; the same frozen trunk with a convolutional head trained on run K's buffer (convK83) makes 2-square hurls its top move 81% of the time and shoves visible at every distance; convK83 beat K83 by +16.8 a pair (39 of 40) | **Testing** in training (run L against run K continued) |
 | Playout caps (3b) | Not built; 7x fewer training positions an hour for moderately better targets | **Revisit** on the GPU |
-| Tree reuse (3c) | Not built; ~15-30% more simulations a search, weakens root noise | **Revisit** after 3b, or if the reusable share passes 30% |
+| Tree reuse (3c) | Not built; ~15-30% more simulations a search in run C (2026-09-28), ≤ ~7% in run R6 (2026-10-27: the dwarfs' searches far broader; the speed levers), weakens root noise | **Revisit** after 3b, or if the reusable share passes 30% |
 | Resignation | Fits margins badly | **Drop** |
 | Policy target pruning with forced playouts (KataGo; 2026-10-04) | Built behind a switch; the diagnostic: at 100 simulations there are almost no forced playouts to prune — G'44's dwarf targets hold 65% of their mass on noise-boosted moves raw and 65% pruned | **Drop** here (`--policy_target_pruning` stays, off); revisit with more simulations |
 | A replay buffer that moves positions into their slots and compacts itself after loading (2026-10-05) | Upstream's kept every slot at the largest position it had held and loaded with 45% to spare | **Keep**; the fix sent upstream (PR #1637) |
@@ -845,6 +850,8 @@ the search and trainer*, run C'.
 | 2026-10-25 | D54's result: D54_281 against R4_281 +0.26 (−1.59 to +2.11) over 120 pairs — not shown; by the rule fixed beforehand **run R5 from R4_281 at 5/5** (since 2026-10-25 04:01, after a crash in its setup and the measurements of the gap). DS, D54 and D5 together: neither side's depth 5 alone shows, both together did once (D5, from D4_261) — an interaction, a teacher whose lead shrinks as the network improves (R4_281 sat as close to D54's depth-5 targets as D54's own network: KL 0.36 against 0.35), or D5's +2.43 partly chance among four arms | Claude, by the rule; the user's to revisit | the design's §10 |
 | 2026-10-24 | **Arm D54 (depth 5 for the dwarfs, 4 for the trolls; the user: test it, then train with it for the time being, 5/5 perhaps later)** from R4_271 against R4_281 (120 pairs); the rule fixed before: the interval above 0 → run R5 from D54_281 at 5/4; else run R5 from R4_281 at 5/5 (D5's regime). Run R4 stopped after R4_281 (against R201 +28.93, R261 +18.68) | user | `~/thud-runs/d54_arm_2026-10-24.sh`, `r5_run_2026-10-24.sh` |
 | 2026-10-18 | **The reset network is the main line, run R** (R181: the reset at the run's step 181), continued in self-play from N′'s run's state at step 181, run N's recipe unchanged; started after 02:00 once the laptop has been idle 20 minutes; each segment adds the plasticity test, to see whether R keeps learning | user | status block, `~/thud-runs/r_run_2026-10-19.sh` |
+| 2026-10-27 | **Segments of 20 steps** from run R7's second segment on (376, 396, 416, ...; the first stays at 376): each stop costs ~1 h 40 min of evaluation plus the trainer's restart; `r7_run_2026-10-27.sh` changed while it waited, the running trainer kept | user | the speed levers |
+| 2026-10-27 | **The search without state copies dropped**: ~0.01% of self-play here | user | the speed levers |
 
 **Considered and set aside** (with the reason): the Python AlphaZero (a layout bug, and
 slow; fallback note below); a 32 x 2 network (its convolutions see 11 x 11 squares);
@@ -1835,8 +1842,9 @@ first session, with no patch at all.**
      limit 100%) depth 4 89 ms a dwarf position and 15 ms a troll's, depth 5 239 and 282 ms
      (~5x depth 4, not the ~18x of depth 3 to 4: depth 5 adds a troll ply to the dwarfs'
      searches and a dwarf ply to the trolls'). Arm D4's steps took no longer than the
-     depth-2 arms' (1,098 s; P's 1,094): the learner sets the pace (40-50 games waiting at
-     every step's end), so the actors absorbed the teacher. At depth 3 the ordering gains
+     depth-2 arms' (1,098 s; P's 1,094): the reason given then, that the learner set the pace (40-50
+     games waiting at every step's end), was wrong: ~120 games were taken a step, so the learner
+     waited for most of them — self-play sets the pace (corrected 2026-10-27). At depth 3 the ordering gains
      little (the teacher scores every root move with a full window, so only the frontier's
      cut-off profits): captures first 2.3 against 4.1 ms a troll position, killers none.
      **Then** (2026-10-24, merged 05:00; the user: a transposition table, its key's

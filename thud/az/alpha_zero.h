@@ -490,8 +490,8 @@ bool AlphaZero(AlphaZeroConfig config, StopToken* stop, bool resuming);
 // Our change (2026-10-27; the user: actors that wait rather than drop their games): pushes
 // `item` onto `queue`, trying again every `per_try` while it is full, until it is taken or a
 // stop is requested; returns whether it was taken, and counts the tries in `tries`. Upstream's
-// actor tried once for 10 seconds and dropped the game (run R6's ~4.5% of its games, their
-// work lost) — while it waits, its CPU goes to the learner.
+// actor tried once for 10 seconds and dropped the game; the queue (buffer size / reuse games)
+// never filled in our runs, so this changes nothing there — a safeguard.
 template <typename T>
 bool PushPatiently(ThreadedQueue<T>* queue, const T& item, const StopToken& stop,
                    absl::Duration per_try, int* tries) {
