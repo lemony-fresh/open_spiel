@@ -34,6 +34,9 @@
 #      b=hexparrot:1 too if hexparrot is set up (thud/experiments/perft_reference.py) —
 #      skipped, and said so, if not. The control for the teacher's tie-break: another seed
 #      plays other battles.
+#   7. Simulations by side (side_sims=D,T, 2026-10-27): 4,4 plays the battles of sims=4, in
+#      both paths (plain, and self-play's conditions with noise=1,1); the control: 6,2
+#      plays other battles, and the summary records it.
 #
 #   thud/experiments/az_match_test.sh [BIN_DIR]    # default build-tests/bin
 #
@@ -143,6 +146,16 @@ done
 match teacher_seed2 b=teacher:2 seed=2 &&
   check "6. control: b=teacher:2 with seed 2 plays other battles (its ties drawn by the seed)" \
     differ teacher_1 teacher_seed2
+
+match side44 side_sims=4,4 && check "7. side_sims=4,4 plays the battles of sims=4" same side44 base
+match side44_noise side_sims=4,4 noise=1,1 &&
+  check "7. ... and with noise=1,1 (self-play's conditions) those of noise=1,1" \
+    same side44_noise noise_1
+match side62 side_sims=6,2 && {
+  check "7. control: side_sims=6,2 plays other battles" differ side62 base
+  check "7. control: the summary records side_sims [6, 2]" \
+    grep -q '"side_sims": \[6, 2\]' "$tmp/side62.jsonl"
+}
 
 if [ "$failures" -eq 0 ]; then echo "ALL PASSED"; else echo "$failures FAILED"; fi
 [ "$failures" -eq 0 ]
