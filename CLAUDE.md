@@ -356,7 +356,9 @@ from the legal moves' logits alone, equal to upstream's mask-and-softmax over al
 actions to ~1e-7; `SetLegalPolicy(false)` is upstream's, bit for bit); since 2026-10-05 a replay buffer that moves
 positions into their slots and compacts itself after loading (`thud/az/replay_buffer.h`)
 and actor and evaluator logs that append; and since 2026-10-03
-logging per-side losses, self-play margins and endings and search statistics —
+logging per-side losses, self-play margins and endings and search statistics (since
+2026-10-27 also the network prior's distance from the teacher, `mean_kl_teacher_prior` and
+`mean_prior_on_teacher_best`, beside the visits' `mean_kl_visits_prior`) —
 `identity_test` (built with upstream's `model`, `vpnet` and `vpevaluator` sources as
 extra arguments, as its header says), `untried_move_test`, `conv_policy_test`,
 `augmentation_test`, `instrumentation_test`, `pruning_test`, `growing_buffer_test`,

@@ -263,6 +263,7 @@ Trajectory PlayGame(Logger* logger, int game_num, const open_spiel::Game& game,
         const double weight = player >= 0 && player < teacher_weights.size()
                                   ? teacher_weights[player]
                                   : teacher_weight;
+        open_spiel::ActionsAndProbs taught_policy;  // Our change: for the instrumentation.
         if (teacher != nullptr && weight > 0) {
           std::unordered_map<open_spiel::Action, double> taught;
           open_spiel::ActionsAndProbs teacher_policy =
@@ -270,6 +271,7 @@ Trajectory PlayGame(Logger* logger, int game_num, const open_spiel::Game& game,
           if (teacher_ties_by_search) {  // Our change: kickstart_ties=search.
             teacher_policy = TeacherTiesBySearch(teacher_policy, target);
           }
+          taught_policy = teacher_policy;
           for (const auto& [a, p] : teacher_policy) taught[a] = p;
           for (auto& [a, p] : target) {
             p = (1 - weight) * p + weight * taught[a];
@@ -303,6 +305,21 @@ Trajectory PlayGame(Logger* logger, int game_num, const open_spiel::Game& game,
           recorded.prior_entropy = entropy;
           recorded.prior_kl = kl;
           recorded.prior_top_agrees = prior_top == root->BestChild().action;
+          // Our change (2026-10-27; the user: when to taper the teacher): how far the prior
+          // is from the teacher's policy, beside the visits' KL above — the KL of the
+          // teacher's policy from it, and its mass on the teacher's best moves.
+          if (!taught_policy.empty()) {
+            double teacher_kl = 0, best = 0, on_best = 0;
+            for (const auto& [a, t] : taught_policy) best = std::max(best, t);
+            for (const auto& [a, t] : taught_policy) {
+              const auto it = prior.find(a);
+              const double p = it == prior.end() ? 0 : it->second;
+              if (t > 0) teacher_kl += t * std::log(t / std::max(p, 1e-30));
+              if (t >= best * (1 - 1e-9)) on_best += p;
+            }
+            recorded.teacher_kl = teacher_kl;
+            recorded.teacher_best_mass = on_best;
+          }
         }
       }
       std::string action_str = state->ActionToString(player, action);
@@ -767,6 +784,10 @@ class StepStats {
         side.prior_kl.push_back(state.prior_kl);
         side.prior_top_agrees += state.prior_top_agrees;
       }
+      if (!std::isnan(state.teacher_kl)) {  // Our change (2026-10-27).
+        side.teacher_kl.push_back(state.teacher_kl);
+        side.teacher_best_mass.push_back(state.teacher_best_mass);
+      }
     }
     for (int p = 0; p < 2; ++p) {
       if (turns[p].empty()) continue;
@@ -812,6 +833,10 @@ class StepStats {
         o.emplace("prior_top_is_most_visited",
                   static_cast<double>(side.prior_top_agrees) / side.prior_kl.size());
       }
+      if (!side.teacher_kl.empty()) {  // Our change (2026-10-27): when to taper the teacher.
+        o.emplace("mean_kl_teacher_prior", Mean(side.teacher_kl));
+        o.emplace("mean_prior_on_teacher_best", Mean(side.teacher_best_mass));
+      }
       result.emplace(sides_[p], std::move(o));
     }
     return result;
@@ -826,7 +851,7 @@ class StepStats {
       "no_legal_move", "cutoff", "terminal", "other"};
   struct Side {
     std::vector<double> legal, visited, top_share, effective_moves,
-        prior_effective_moves, prior_kl;
+        prior_effective_moves, prior_kl, teacher_kl, teacher_best_mass;
     int prior_top_agrees = 0;
     std::vector<open_spiel::BasicStats> value_accuracy =
         std::vector<open_spiel::BasicStats>(kStages);

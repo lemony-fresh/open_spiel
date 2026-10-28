@@ -569,7 +569,17 @@ main teacher.
   An arm against the 5/x main line, before the teacher is tapered.
 - **Then taper the teacher**, gated (*Tapers by results*, the design's conditions; arm RLT,
   the dwarfs' weight 0.35, lost −3.98 on 2026-10-20, when the network still needed it), with
-  the search's own targets taking over:
+  the search's own targets taking over. **When, and how** (the user, 2026-10-27): two
+  signals per side, the taper starting when both agree — (1) the teacher absorbed: the
+  network prior's distance from the teacher's policy (`mean_kl_teacher_prior`, logged every
+  step since 2026-10-27, with `mean_prior_on_teacher_best`) falls to a floor and stays there
+  while the visits' (`mean_kl_visits_prior`) does not — the trend counts, not the two levels,
+  since the targets pull the network 70% towards the teacher; (2) the teacher no better than
+  the search: `az_teacher_vs_search` (at the stops 396, 436, 476), the trainer's own visits as
+  close to the network's long search as the teacher's policy. Then slowly, each step gated by
+  the plateau rule's numbers (no loss against the previous segment's network): the dwarfs'
+  weight 0.7, 0.6, 0.5, ..., the trolls' 0.3, 0.25, 0.2, ... (the user: finer for the trolls),
+  one step a 20-step segment:
   - **Gumbel targets** (Danihelka et al., ICLR 2022): the policy target from the moves'
     search values (completed Q) instead of their visits — at 100 simulations over ~250
     dwarf moves most moves get 0-1 visits, so visit counts are a noisy target; the notes of

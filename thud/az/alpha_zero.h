@@ -440,6 +440,11 @@ struct Trajectory {
     double prior_entropy = std::numeric_limits<double>::quiet_NaN();
     double prior_kl = std::numeric_limits<double>::quiet_NaN();
     int prior_top_agrees = -1;  // 1 or 0; -1 if not measured.
+    // Our change (2026-10-27; the user: when to taper the teacher): with kickstarting, how
+    // far that prior is from the teacher's policy — the KL of the teacher's policy from it,
+    // and its mass on the teacher's best moves. NaN if not measured.
+    double teacher_kl = std::numeric_limits<double>::quiet_NaN();
+    double teacher_best_mass = std::numeric_limits<double>::quiet_NaN();
   };
 
   std::vector<State> states;

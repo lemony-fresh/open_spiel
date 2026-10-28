@@ -30,7 +30,8 @@
 #      learner.jsonl with steps 1 and 2 (losses finite, per side); config.json records
 #      the settings; the actors log them; every batch norm counted each learning batch in
 #      training mode (learner.jsonl's batch_norms; the race's fix, thud/az/vpnet.h); each
-#      step's thread counts are the learner's 3 and the inference thread's 2.
+#      step's thread counts are the learner's 3 and the inference thread's 2; per side the
+#      prior's distance from the teacher (2026-10-27: a finite KL, a mass in [0, 1]).
 #   2. Resuming (the trainer given the run's config.json, max_steps 3): step 3 follows
 #      step 2 (not 1 again), the total games only grow, games against alpha-beta (half of
 #      them) were played and counted, each step's learning rate is the schedule's (the
@@ -98,6 +99,7 @@
 #      collected ones at least the step's 512 less the carried, the games counted once; the
 #      note then the new end's (after step 2). The control: a stale note (for step 5) at the
 #      resume to step 3 is ignored and removed — step 3 carries nothing and collects its 512.
+#      Without a teacher, no distance from it is logged (the control for part 1's, below).
 #
 #   thud/az/trainer_test.sh [BIN_DIR]    # default build-tests/bin
 #
@@ -209,6 +211,17 @@ EOF
 }
 check "1. the learner's thread count 3, the inference thread's OMP_NUM_THREADS 2" \
   thread_counts "$run/learner.jsonl" 1 3 2
+check "1. the prior's distance from the teacher logged per side (2026-10-27): a finite KL, a mass in [0, 1]" \
+  python3 - "$run/learner.jsonl" <<'EOF'
+import json, math, sys
+ok = True
+for d in map(json.loads, open(sys.argv[1])):
+  for side in ("dwarfs", "trolls"):
+    s = d["by_side"][side]
+    kl, mass = s.get("mean_kl_teacher_prior"), s.get("mean_prior_on_teacher_best")
+    ok &= kl is not None and math.isfinite(kl) and kl >= 0 and mass is not None and 0 <= mass <= 1
+sys.exit(0 if ok else 1)
+EOF
 check "1. the actors log the kickstarting settings" \
   grep -q "Kickstarting: weight 0.3 (per player 0.7, 0.3), depth 1 (per player 1, 2), temperature 1, ties search" "$run/log-actor-0.txt"
 check "1. the actors log the training opponent per side, the teacher as the trolls" \
@@ -487,6 +500,13 @@ check "10. ... and the note is the new end's (after step 2), if games waited" \
   bash -c "[ ! -f '$carry/carried_games.txt' ] || [ \"\$(cut -d' ' -f1 '$carry/carried_games.txt')\" = 2 ]"
 echo "5 100 3" > "$carry/carried_games.txt"  # The control: a stale note.
 carry_run 3 "$tmp/carry3.log"
+check "10. ... without a teacher, no teacher distance logged (the control for part 1's)" \
+  python3 - "$carry/learner.jsonl" <<'EOF'
+import json, sys
+rows = [json.loads(l) for l in open(sys.argv[1])]
+sys.exit(0 if all("mean_kl_teacher_prior" not in d["by_side"][s] for d in rows
+                  for s in ("dwarfs", "trolls")) and "mean_kl_visits_prior" in rows[0]["by_side"]["dwarfs"] else 1)
+EOF
 check "10. the control: a stale note is ignored and removed, step 3 collects its 512" \
   python3 - "$carry" <<'EOF'
 import json, re, sys
