@@ -4127,4 +4127,14 @@ the push's and the rename's tests ran (memory beside the trainer), to resume.
   changed while it waited). If the targets are too broad, the cheap fix is the dwarfs'
   policy temperature (1.5 to 1.0), the larger one Gumbel targets.
 
+- **2026-10-28, 11:00-11:35: a shorter plasticity test.** The user asked how to speed it up.
+  Over 21 past runs (reports every 100 batches) the fresh control ends at 0.17-0.27 (the
+  trained networks 0.46-1.38) and the loss at 700 batches tracks the one at 1,000
+  (correlation 0.93; 500: 0.81, 300: 0.52). **Decided (the user):** 700 batches, the control
+  every 4th time, never forgotten: `~/thud-runs/plasticity_control.py` decides from the
+  results (tested: at 416, then every 4th), the regression gates take the control only at
+  the candidate's batches and name its file (`regression_gates_test` 5b, with the control
+  at other batches not taken). ~28 → ~10 minutes, from the stop at 416;
+  `r7_run_2026-10-27.sh` changed while it waited.
+
 **Next step:** as recorded in `## Current status` — R7's stop at 376 (~20:30) with the shorter evaluation, then 20-step segments on the merged code (the carry-over's first at 396, its gain measured at 397); the rule (the user, 2026-10-26: after two segments without gain one more, then back to R5_331); the teacher as the opponent's dwarfs later; more simulations for the trolls (200/100), Gumbel, the finer evaluation's cheap form, the measurement's control.

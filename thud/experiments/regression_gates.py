@@ -84,6 +84,7 @@ unchanged network (section 7).
 import argparse
 import json
 import math
+import os
 import random
 import re
 import sys
@@ -368,7 +369,11 @@ def main():
     fit = lambda n: n["last_policy"] + n["last_value"]
     # Files written before az_plasticity marked its fresh networks: named f<width>.
     is_fresh = lambda n: n.get("fresh", n["net"] == f"f{n['width']}")
-    fresh = sorted((n for n in plastic.values() if is_fresh(n) and n["width"] == c["width"]),
+    # The fresh network of the candidate's width and batches (2026-10-28: the control is
+    # trained only every 4th time, so it may come from an earlier stop's file — named then;
+    # one learnt for another number of batches is no control).
+    fresh = sorted((n for n in plastic.values() if is_fresh(n) and n["width"] == c["width"]
+                    and n["batches"] == c["batches"]),
                    key=lambda n: n["file"] != c["file"])
     text = (f"{args.candidate} {fit(c):.3f} after {c['batches']} batches (weights' norm "
             f"{c['weight_norm']:.1f})")
@@ -377,10 +382,15 @@ def main():
       text += f"; {args.anchor} {fit(a):.3f} (norm {a['weight_norm']:.1f})"
     if fresh:
       text += f"; a fresh network of width {c['width']} {fit(fresh[0]):.3f}"
+      if fresh[0]["file"] != c["file"]:
+        text += f" (from {os.path.basename(args.plasticity[fresh[0]['file']])})"
+    else:
+      text += f"; no fresh network at {c['batches']} batches"
     results.append({"gate": gate, "monitored": True, "fails": False, "text": text,
                     "candidate": fit(c), "candidate_norm": c["weight_norm"],
                     "anchor": fit(plastic[args.anchor]) if args.anchor in plastic else None,
-                    "fresh": fit(fresh[0]) if fresh else None, "batches": c["batches"]})
+                    "fresh": fit(fresh[0]) if fresh else None, "batches": c["batches"],
+                    "fresh_file": args.plasticity[fresh[0]["file"]] if fresh else None})
   else:
     results.append({"gate": gate, "skipped": f"no az_plasticity file with {args.candidate}"})
 

@@ -35,7 +35,9 @@ az_capture_targets files.
      dormant ones at the largest τ, and the random targets' fit, each beside the anchor's
      and a fresh network's, as written; the control: a candidate with every channel dead
      and no fit at all is reported, never failed (exit 0); without the files both rows
-     are skipped.
+     are skipped. 5b (2026-10-28): the fresh network from another file (the control,
+     trained every 4th time) is taken at the candidate's batches and its file named; the
+     control: one at other batches is not taken.
   6. The trunk's gradients (2026-10-19), monitored: from az_restructure reports made here,
      the weighted ratio and the cosine of the report before the first batch (not a later
      one), the candidate's and the anchor's; the control: opposed gradients (cosine -1)
@@ -277,6 +279,24 @@ def main():
   check(status == 0 and results["dead channels (trunk, heads)"]["candidate"]["dead"] == 256 and
         not any(r.get("fails") for r in results.values()),
         "5. control: every channel dead and no fit — reported, never failed (exit 0)")
+  # 5b. The control from an earlier stop's file (2026-10-28: trained every 4th time): taken
+  # when its batches are the candidate's, its file named; the control, one at other batches.
+  write(f"{tmp}/plastic_now.jsonl", plastic("C", False, 0.3, 0.05))
+  write(f"{tmp}/plastic_then.jsonl", plastic("B", False, 0.4, 0.05) + plastic("f64", True, 0.1, 0.02))
+  later = plastic("f64", True, 0.1, 0.02)
+  later.insert(2, {"net": "f64", "batches": 300, "policy": 0.1, "value": 0.02})
+  write(f"{tmp}/plastic_other.jsonl", later)
+  results, status = gates(tmp, "--candidate", "C", "--anchor", "A", "--plasticity",
+                          f"{tmp}/plastic_now.jsonl", "--plasticity", f"{tmp}/plastic_then.jsonl")
+  fit = results["plasticity (random targets: policy + value loss at the end)"]
+  check(status == 0 and abs(fit["fresh"] - 0.12) < 1e-9 and "plastic_then.jsonl" in fit["text"]
+        and fit["fresh_file"].endswith("plastic_then.jsonl"),
+        f"5b. the control from an earlier file, at the candidate's batches, named: {fit['text']}")
+  results, status = gates(tmp, "--candidate", "C", "--anchor", "A", "--plasticity",
+                          f"{tmp}/plastic_now.jsonl", "--plasticity", f"{tmp}/plastic_other.jsonl")
+  fit = results["plasticity (random targets: policy + value loss at the end)"]
+  check(status == 0 and fit["fresh"] is None and "no fresh network at 200 batches" in fit["text"],
+        f"5b. control: a fresh network at other batches (300) is not taken: {fit['text']}")
   results, status = gates(tmp, "--candidate", "C", "--anchor", "A")
   check(status == 0 and "skipped" in results["dead channels (trunk, heads)"] and
         "skipped" in results["plasticity (random targets: policy + value loss at the end)"],
