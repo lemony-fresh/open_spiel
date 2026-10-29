@@ -88,7 +88,9 @@
 #      fastest; each setting's buffer deleted, its logs kept; run again it reprints the same
 #      results without training (resumed from the results).
 #   9. az_teacher_vs_search (2026-10-25) on the run: its candidates' measures in range, the
-#      uniform spread's agreement and breadth as computed, the visits' gap to themselves 0.
+#      uniform spread's agreement and breadth as computed, the visits' gap to themselves 0;
+#      mixes= (2026-10-29): at the run's own weights a mix is the target exactly (the control:
+#      the dwarfs' mix at 0.3 is not).
 #  10. The carry-over and the stop between moves (2026-10-27): a fresh run of one step with a
 #      long last learning step (300 batches) and short battles (10 turns without a capture
 #      end one), so that games wait in the queue at its end:
@@ -218,13 +220,18 @@ check "1. the learner's thread count 3, the inference thread's OMP_NUM_THREADS 2
 check "1. the prior's distance from the teacher logged per side (2026-10-27): a finite KL, a mass in [0, 1]" \
   python3 - "$run/learner.jsonl" <<'EOF'
 import json, math, sys
-ok = True
+# A side with no self-play positions in a step (all its games against alpha-beta, possible in
+# these short steps) has no statistics there: every side present must carry them, and some
+# step must have both sides (2026-10-29: the check failed once on a step without one).
+ok, both = True, False
 for d in map(json.loads, open(sys.argv[1])):
-  for side in ("dwarfs", "trolls"):
+  present = [side for side in ("dwarfs", "trolls") if side in d["by_side"]]
+  both |= len(present) == 2
+  for side in present:
     s = d["by_side"][side]
     kl, mass = s.get("mean_kl_teacher_prior"), s.get("mean_prior_on_teacher_best")
     ok &= kl is not None and math.isfinite(kl) and kl >= 0 and mass is not None and 0 <= mass <= 1
-sys.exit(0 if ok else 1)
+sys.exit(0 if ok and both else 1)
 EOF
 check "1. the actors log the kickstarting settings" \
   grep -q "Kickstarting: weight 0.3 (per player 0.7, 0.3), depth 1 (per player 1, 2), temperature 1, ties search" "$run/log-actor-0.txt"
@@ -415,7 +422,7 @@ check "8. ... run again, the same results, nothing trained" bash -c \
 # 9. The teacher against the search (az_teacher_vs_search, 2026-10-24): on the run's own
 # games, with its settings (the teacher at depths 1 and 2, weights 0.7 and 0.3), the
 # trainer's own budget and 24 simulations against references of 16 and 32.
-"$bin/az_teacher_vs_search" run="$run" step=-1 sims=24 refs=16,32 last=2 max=3 threads=2 batch=2 \
+"$bin/az_teacher_vs_search" run="$run" step=-1 sims=24 refs=16,32 last=2 max=3 threads=2 batch=2 mixes=0.3,0.7 \
   inference_threads=1 > "$tmp/teacher_vs_search.jsonl" 2> "$tmp/teacher_vs_search.err"
 check "9. az_teacher_vs_search exits 0 (its self-test passed), with the run's teacher" \
   bash -c "[ $? -eq 0 ] && grep -q \"the teacher's depths 1, 2, weights 0.7, 0.3\" '$tmp/teacher_vs_search.err'"
@@ -433,7 +440,15 @@ for d in rows:
       x = d[f"{c}_ref{r}"]
       ok &= all(0 <= x[k] <= 1 + 1e-9 for k in ("agrees", "mass_on_best", "distance"))
     ok &= abs(d[f"uniform_ref16"]["agrees"] - 1 / d["legal"]) < 1e-3
-ok &= len(summaries) == 2 * 7 * 2 and len(stability) == 2
+ok &= len(summaries) == 2 * 9 * 2 and len(stability) == 2
+# mixes= (2026-10-29): at the run's own weights (0.7 for the dwarfs, 0.3 for the trolls) a mix
+# is the target exactly; at the other side's weight it is not.
+def row(side, c, r):
+  return [s for s in summaries if s["side"] == side and s["candidate"] == c and s["ref"] == r][0]
+for r in (16, 32):
+  ok &= row("dwarfs", "mix0.70", r)["distance"] == row("dwarfs", "target", r)["distance"]
+  ok &= row("trolls", "mix0.30", r)["distance"] == row("trolls", "target", r)["distance"]
+ok &= row("dwarfs", "mix0.30", 16)["distance"] != row("dwarfs", "target", 16)["distance"]
 ok &= all(s["minus_visits"]["distance"][0] == 0 for s in summaries if s["candidate"] == "visits")
 ok &= all(s["effective_moves"][0] >= 1 - 1e-9 for s in summaries)
 legal = {side: [d["legal"] for d in rows if d["side"] == side] for side in ("dwarfs", "trolls")}

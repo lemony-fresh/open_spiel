@@ -32,6 +32,7 @@
 //   target   what the trainer records: (1 - w) x the first visits + w x teacher, w per side;
 //   cq_target  (2026-10-29) what it would record with --policy_target=completed_q:
 //            (1 - w) x completed_q + w x teacher;
+//   mixW     (2026-10-29, `mixes=W,...`) the target at the teacher's weight W, both sides;
 //   uniform  every legal move alike — the floor: a candidate no closer than it says nothing;
 // each compared with the references — the same network's search without root noise at each
 // budget in `refs`, the run's settings otherwise (the first the reference proper; each deeper
@@ -220,6 +221,13 @@ int main(int argc, char** argv) {
   const std::string run = get("run", "");
   const int step = std::stoi(get("step", "-1"));
   const std::string sims_arg = get("sims", "");
+  // mixes=W,... (2026-10-29: how far to taper the teacher?): for each weight W a candidate
+  // mixW, (1 - W) x the first visits + W x teacher, for both sides (the trainer's weights
+  // are per side: `target`); empty, the default, none.
+  std::vector<double> mixes;
+  for (absl::string_view w : absl::StrSplit(get("mixes", ""), ',', absl::SkipEmpty())) {
+    mixes.push_back(std::stod(std::string(w)));
+  }
   const std::string depths_arg = get("depths", "");  // The teacher's depths per side instead.
   std::vector<int> refs;
   for (absl::string_view s : absl::StrSplit(get("refs", "2000,4000"), ',')) {
@@ -270,6 +278,7 @@ int main(int argc, char** argv) {
   for (const char* c : {"completed_q", "teacher", "target", "cq_target", "uniform"}) {
     candidates.push_back(c);
   }
+  for (double w : mixes) candidates.push_back(absl::StrFormat("mix%.2f", w));
   std::cerr << absl::StrFormat("az_teacher_vs_search: %s step %d, game %s, the teacher's depths %d, %d, "
                                "weights %g, %g, temperature %g; precision %s",
                                run, step, config.game, teacher.depth(0), teacher.depth(1),
@@ -410,6 +419,15 @@ int main(int argc, char** argv) {
           for (const Policy& v : visits) policies.push_back(&v);
           for (const Policy* q : {&completed_q, &teacher_policy, &target, &cq_target, &uniform}) {
             policies.push_back(q);
+          }
+          std::vector<Policy> mixed(mixes.size());
+          for (size_t m = 0; m < mixes.size(); ++m) {
+            for (Action a : legal) {
+              auto it = visits[0].find(a);
+              mixed[m][a] = (1 - mixes[m]) * (it == visits[0].end() ? 0 : it->second) +
+                            mixes[m] * teacher_policy[a];
+            }
+            policies.push_back(&mixed[m]);
           }
           for (const Policy* q : policies) spread[i].push_back(EffectiveMoves(*q));
           std::string line = absl::StrFormat("{\"position\": %d, \"side\": \"%s\", \"legal\": %d", i,

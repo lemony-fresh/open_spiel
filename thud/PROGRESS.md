@@ -4199,4 +4199,19 @@ the push's and the rename's tests ran (memory beside the trainer), to resume.
   the trolls' teacher still the closer (−0.034, −0.070 to +0.002). The prior's distance from
   the teacher: dwarfs 0.504 to 0.483, trolls 0.237 to 0.244 — not yet at a floor.
 
+- **2026-10-29, 11:10-16:50: Gumbel part one, the teacher's weight swept, the taper and the
+  buffer test set up.** The user: not growing the network (nothing shows it is the limit: the
+  KL above the targets falling, plasticity better, dead channels unchanged); the taper's
+  signals read — the prior's distance from the teacher flat for 70 steps (dwarfs 0.467, 0.471,
+  0.478 by segment; trolls 0.226, 0.231, 0.229), the dwarfs' visits as close to the long search
+  as the teacher — so the dwarfs' weight **0.7 → 0.5 from step 457** (the user: a step large
+  enough to show; gated), R7 extended to 536; **the buffer's forward test at the 456 stop**
+  (R7_436 on today's buffer and on twice it, two seeds, scored on steps 437-456; ~2.7 hours);
+  **Gumbel part one built** (tests first: `completed_q_test` against mctx 0.0.71, ~1e-16;
+  `trainer_test.sh` 11; all 39 tests; commit `9357e818`), measured offline: no better on our
+  PUCT trees (the plan's Gumbel row), so not switched on at 477 (the user's condition: if
+  clearly closer); part two next. The weight sweep (`mixes=`): the dwarfs' best between 0.5 and
+  0.7, the trolls' target closer at 0.5 than at 0.3 — for the user. A test-side fix: trainer_test
+  part 1's new check failed once (likely a step without one side's self-play positions).
+
 **Next step:** as recorded in `## Current status` — R7's stop at 376 (~20:30) with the shorter evaluation, then 20-step segments on the merged code (the carry-over's first at 396, its gain measured at 397); the rule (the user, 2026-10-26: after two segments without gain one more, then back to R5_331); the teacher as the opponent's dwarfs later; more simulations for the trolls (200/100), Gumbel, the finer evaluation's cheap form, the measurement's control.
