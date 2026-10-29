@@ -4184,4 +4184,19 @@ the push's and the rename's tests ran (memory beside the trainer), to resume.
   dwarfs' broad prior, and the answer is already in: steps 417-436 at the dwarfs' policy
   temperature 1 (from 22:16), the tripwire watching (its pattern finds the trainer).
 
+- **2026-10-29, 08:08-09:10: R7_436 — the first segment at the dwarfs' policy temperature 1.**
+  Steps 417-436: 1,735 s a step (the CPU's limit lower, 54-66% this morning), the dwarfs'
+  self-play margin −0.3 (+2.8 before), their prior 143-161 effective moves (152-169 before),
+  their targets' entropy 4.42 (4.49 before) — sharper, as meant; the tripwire quiet (steps
+  420, 430: the prior at 99% and 93% of its baseline, the margin −0.7 and +0.2 against +3.0).
+  R7_436 against R7_416 −0.85 (−4.58 to +2.88: a third segment without a head-to-head gain);
+  against R6_366 −0.55 (R7_416 −2.58); **its dwarfs against teacher:5 −6.53** (R7_416 −9.35;
+  back to R6's level); hexparrot:3 +46.85; **blunders 2.5%, the lowest yet**; the KL above
+  the targets 0.298; bfloat16's agreement 87.3% (from 89.5%). Teacher against search (the
+  reference now the network's long search at temperature 1): the dwarfs' visits agree 0.51
+  (0.40 at 396), distance 0.43 against the teacher's 0.41 — the difference no longer
+  significant (−0.020, −0.067 to +0.028), the teacher's mass on the best move lower (−0.065);
+  the trolls' teacher still the closer (−0.034, −0.070 to +0.002). The prior's distance from
+  the teacher: dwarfs 0.504 to 0.483, trolls 0.237 to 0.244 — not yet at a floor.
+
 **Next step:** as recorded in `## Current status` — R7's stop at 376 (~20:30) with the shorter evaluation, then 20-step segments on the merged code (the carry-over's first at 396, its gain measured at 397); the rule (the user, 2026-10-26: after two segments without gain one more, then back to R5_331); the teacher as the opponent's dwarfs later; more simulations for the trolls (200/100), Gumbel, the finer evaluation's cheap form, the measurement's control.
