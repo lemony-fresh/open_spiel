@@ -4171,4 +4171,17 @@ the push's and the rename's tests ran (memory beside the trainer), to resume.
   R5's ordinary −5.2 and run K's era; run K's continuation alerts on a real 10-point drop,
   no stop.
 
+- **2026-10-28, 21:07-22:20: R7_416 — the plateau confirmed.** Steps 397-416: 1,375 s a step,
+  the dwarfs' self-play margin +2.8, their prior 152-169 effective moves (144-162 before, still
+  broadening), their targets' entropy 4.49 (4.45, 4.46 before). R7_416 against R7_396 −0.47
+  (−3.90 to +2.95): **the second 20-step segment without a gain — a plateau by the rule**;
+  against R6_366 −2.58 (−6.28 to +1.13; as dwarfs −9.07); its dwarfs against teacher:5
+  −9.35 (R6_361 −6.92, R7_376 −7.83, R7_396 −8.07: drifting down at the matches' 100
+  simulations); hexparrot:3 +45.62; blunders 4.4%; plasticity 3.83 after 700 batches (the
+  first at 700, with the control: 0.337; R7_376 had 4.02 at 700, R6_361 4.21); the KL above
+  the targets 0.304; the prior's distance from the teacher now falling for both sides
+  (dwarfs 0.490 to 0.437, trolls 0.238 to 0.207). The cause the rule asks for points at the
+  dwarfs' broad prior, and the answer is already in: steps 417-436 at the dwarfs' policy
+  temperature 1 (from 22:16), the tripwire watching (its pattern finds the trainer).
+
 **Next step:** as recorded in `## Current status` — R7's stop at 376 (~20:30) with the shorter evaluation, then 20-step segments on the merged code (the carry-over's first at 396, its gain measured at 397); the rule (the user, 2026-10-26: after two segments without gain one more, then back to R5_331); the teacher as the opponent's dwarfs later; more simulations for the trolls (200/100), Gumbel, the finer evaluation's cheap form, the measurement's control.
