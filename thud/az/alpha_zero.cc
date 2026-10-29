@@ -186,7 +186,7 @@ Trajectory PlayGame(Logger* logger, int game_num, const open_spiel::Game& game,
                     const std::vector<double>& teacher_weights,
                     std::vector<std::unique_ptr<MCTSBot>>* fast_bots,
                     double full_share, bool teacher_ties_by_search,
-                    const StopToken* stop) {
+                    bool completed_q_target, const StopToken* stop) {
   std::unique_ptr<open_spiel::State> state = game.NewInitialState();
   std::vector<std::string> history;
   Trajectory trajectory;
@@ -249,14 +249,16 @@ Trajectory PlayGame(Logger* logger, int game_num, const open_spiel::Game& game,
         // the visit counts with KataGo's pruning, if on; the move above was still
         // chosen from the unpruned counts, as before.
         open_spiel::ActionsAndProbs target;
-        if (pruning_k > 0) {
+        if (completed_q_target && prior_source != nullptr) {  // Our change (2026-10-29).
+          target = CompletedQTarget(*root, *state, prior_source);
+        } else if (pruning_k > 0) {
           for (const auto& [a, n] : PrunedRootVisits(*root, uct_c, pruning_k)) {
             target.emplace_back(a, std::pow(n, 1.0 / temperature));
           }
           NormalizePolicy(&target);
         }
 
-        if (pruning_k <= 0) target = std::move(policy);
+        if (target.empty()) target = std::move(policy);
         // Our change (kickstarting): the teacher's share of the target; the move above
         // was chosen from the search's visits alone. Per player to move, if
         // teacher_weights has an entry for it (approach D1).
@@ -602,6 +604,9 @@ void actor(const open_spiel::Game& game, const AlphaZeroConfig& config, int num,
                   config.kickstart_depth, depths[0], depths[1], config.kickstart_temperature,
                   config.kickstart_ties.c_str(), config.kickstart_root_margin);
   }
+  if (config.policy_target != "visits") {  // Our change (2026-10-29).
+    logger->Print("Policy target: %s", config.policy_target);
+  }
   int waited_games = 0, total_games = 0;  // Our change: games that waited for the queue.
   for (int game_num = 1; !stop->StopRequested(); ++game_num) {
     ++total_games;
@@ -623,7 +628,8 @@ void actor(const open_spiel::Game& game, const AlphaZeroConfig& config, int num,
                                                         : alphabeta[opponent].get(),
                  opponent, teacher.get(), config.kickstart_weight,
                  config.kickstart_temperature, kickstart_weights, &fast_bots,
-                 config.playout_cap_full_share, config.kickstart_ties == "search", stop);
+                 config.playout_cap_full_share, config.kickstart_ties == "search",
+                 config.policy_target == "completed_q", stop);
     if (trajectory.abandoned) break;  // Our change (2026-10-27): a stop, mid-game.
     positions += trajectory.states.size();
     if (opponent != open_spiel::kInvalidPlayer) {
@@ -684,6 +690,13 @@ class EvalResults {
   absl::Mutex m_;
 };
 
+open_spiel::ActionsAndProbs CompletedQTarget(const SearchNode& root,
+                                             const open_spiel::State& state,
+                                             VPNetEvaluator* evaluator) {
+  return CompletedQPolicy(root, evaluator->Prior(state),
+                          evaluator->Evaluate(state)[state.CurrentPlayer()]);
+}
+
 // A thread that plays vs standard MCTS.
 void evaluator(const open_spiel::Game& game, const AlphaZeroConfig& config,
                int num, EvalResults* results,
@@ -722,7 +735,7 @@ void evaluator(const open_spiel::Game& game, const AlphaZeroConfig& config,
         /*opponent=*/nullptr, /*opponent_player=*/open_spiel::kInvalidPlayer,
         /*teacher=*/nullptr, /*teacher_weight=*/0, /*teacher_temperature=*/1,
         /*teacher_weights=*/{}, /*fast_bots=*/nullptr, /*full_share=*/1,
-        /*teacher_ties_by_search=*/false, stop);
+        /*teacher_ties_by_search=*/false, /*completed_q_target=*/false, stop);
     if (trajectory.abandoned) break;
 
     results->Add(difficulty, trajectory.returns[az_player]);
@@ -1348,6 +1361,9 @@ void learner(const open_spiel::Game& game, const AlphaZeroConfig& config,
 }
 
 bool AlphaZero(AlphaZeroConfig config, StopToken* stop, bool resuming) {
+  // Our change (2026-10-29): the policy target is one of these, whether from flags or a
+  // resumed config.json.
+  SPIEL_CHECK_TRUE(config.policy_target == "visits" || config.policy_target == "completed_q");
   std::shared_ptr<const open_spiel::Game> game =
       open_spiel::LoadGame(config.game);
 

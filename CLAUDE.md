@@ -332,7 +332,10 @@ scores alike by the search's visits within it, the groups' totals unchanged; `ev
 default, as before), `--kickstart_root_margin` (2026-10-27: the teacher's root window — moves
 that many points below the best get a bound; 0, the default, every score exact; measured too
 small a gain at 3 to use; the teacher as a player, the training opponent and `az_match
-b=teacher:N`, uses 1, which is exact for its choice: 1.3-1.5x at depth 5), `--player_kickstart_depth` (2026-10-24: the teacher's depth per player to
+b=teacher:N`, uses 1, which is exact for its choice: 1.3-1.5x at depth 5), `--policy_target=visits|completed_q`
+(2026-10-29: Gumbel AlphaZero's completed-Q target from the root's values, `CompletedQPolicy` in
+`thud/az/mcts.h`, matching DeepMind's mctx to ~1e-16 — `completed_q_test`; visits, the default, as
+before), `--player_kickstart_depth` (2026-10-24: the teacher's depth per player to
 move, "4,5"; empty: `--kickstart_depth` for both; the teacher's search keeps a transposition
 table a thread, 4 MB, the same scores — `thud/az/material_search.h`),
 `--player_kickstart_weight` and `--player_policy_alpha` / `--player_policy_epsilon`
@@ -365,6 +368,7 @@ extra arguments, as its header says), `untried_move_test`, `conv_policy_test`,
 `search_settings_test`, `alphabeta_training_test`, `kickstart_test`, `input_planes_test`
 (the 50 input planes inside the network; `features_test` tests the planes themselves),
 `grow_test` (Net2Net, on small networks), `thread_count_test` (the thread counts per thread),
+`completed_q_test` (2026-10-29: the completed-Q target against mctx and its wiring in the trainer),
 `teacher_identity_test` (2026-10-23: the faster teacher computes exactly what it did, since 2026-10-24 with its transposition table; `ThudState::UndoAction` and `BoardHash` are tested in `thud_test`),
 `make_test_network` (small untrained networks for the tests), and from
 `thud/experiments/`

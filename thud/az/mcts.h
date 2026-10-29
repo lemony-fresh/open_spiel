@@ -188,6 +188,26 @@ struct SearchNode {
 std::vector<std::pair<Action, double>> PrunedRootVisits(const SearchNode& root,
                                                         double uct_c, double k);
 
+// Our change (2026-10-29; the user: Gumbel targets, part one): the policy target from the
+// root's search values instead of its visit counts — Gumbel AlphaZero's "completed Q"
+// (Danihelka, Guez, Schrittwieser and Silver, "Policy improvement by planning with Gumbel",
+// ICLR 2022, appendix D; mctx's qtransform_completed_by_mix_value with its defaults, and
+// gumbel_muzero_policy's action_weights): softmax(log prior + sigma(completed Q)), where a
+// visited child's Q is its mean value for the player to move at the root, an unvisited
+// child's the mixed value — (raw_value + N x the prior-weighted mean Q of the visited
+// children) / (N + 1), N the root's children's playouts — the completed Qs rescaled to
+// [0, 1] over the children (max - min at least epsilon), and sigma(q) = (maxvisit_init +
+// the most playouts of a child) x value_scale x q. `prior` is the network's, before root
+// noise and any policy temperature (a missing action gets the smallest positive double);
+// `raw_value` the network's value of the root for its player to move. In the order of the
+// root's children; matches mctx to ~1e-12 (completed_q_test).
+struct CompletedQSettings {
+  double value_scale = 0.1, maxvisit_init = 50, epsilon = 1e-8;  // mctx's defaults.
+};
+std::vector<std::pair<Action, double>> CompletedQPolicy(
+    const SearchNode& root, const std::vector<std::pair<Action, double>>& prior,
+    double raw_value, const CompletedQSettings& settings = {});
+
 class MCTSBot : public Bot {
  public:
   // The evaluator is passed as a shared pointer to make it explicit that

@@ -100,6 +100,10 @@
 #      note then the new end's (after step 2). The control: a stale note (for step 5) at the
 #      resume to step 3 is ignored and removed — step 3 carries nothing and collects its 512.
 #      Without a teacher, no distance from it is logged (the control for part 1's, below).
+#  11. The completed-Q policy target (2026-10-29, --policy_target=completed_q; its arithmetic and
+#      wiring: completed_q_test): a fresh run of one step with it exits 0 with finite losses,
+#      config.json records it and the actors log it; the control, part 1's run (visits, the
+#      default) logs no policy target.
 #
 #   thud/az/trainer_test.sh [BIN_DIR]    # default build-tests/bin
 #
@@ -424,12 +428,12 @@ summaries = [d for d in lines if d.get("summary") and not d.get("stability")]
 stability = [d for d in lines if d.get("stability")]
 ok = len(rows) >= 4 and {d["side"] for d in rows} == {"dwarfs", "trolls"}
 for d in rows:
-  for c in ("visits", "visits24", "teacher", "target", "uniform"):
+  for c in ("visits", "visits24", "completed_q", "teacher", "target", "cq_target", "uniform"):
     for r in (16, 32):
       x = d[f"{c}_ref{r}"]
       ok &= all(0 <= x[k] <= 1 + 1e-9 for k in ("agrees", "mass_on_best", "distance"))
     ok &= abs(d[f"uniform_ref16"]["agrees"] - 1 / d["legal"]) < 1e-3
-ok &= len(summaries) == 2 * 5 * 2 and len(stability) == 2
+ok &= len(summaries) == 2 * 7 * 2 and len(stability) == 2
 ok &= all(s["minus_visits"]["distance"][0] == 0 for s in summaries if s["candidate"] == "visits")
 ok &= all(s["effective_moves"][0] >= 1 - 1e-9 for s in summaries)
 legal = {side: [d["legal"] for d in rows if d["side"] == side] for side in ("dwarfs", "trolls")}
@@ -517,5 +521,28 @@ ok = "is for step 5, not 2: ignored and removed" in log
 ok &= d[3]["carried_games"] == 0 and d[3]["carried_states"] == 0 and collected[2] >= 512
 sys.exit(0 if ok else 1)
 EOF
+
+# 11. The completed-Q policy target.
+cq=$tmp/completed_q
+"$bin/make_test_network" dir="$cq" nn_model=resnet_conv_policy input_planes=1 nn_width=8 \
+  nn_depth=1 checkpoints=1 > /dev/null 2>&1 || { echo "FAIL make_test_network (11)"; exit 1; }
+"$bin/az_trainer" --flagfile="$repo/thud/experiments/az_thud.flags" --path="$cq" \
+  --game="thud(max_turns_without_capture=10)" \
+  --graph_def=vpnet.pb --nn_model=resnet_conv_policy --nn_width=8 --nn_depth=1 \
+  --actors=2 --evaluators=0 --inference_batch_size=2 --inference_threads=1 \
+  --max_simulations=8 --replay_buffer_size=2048 --replay_buffer_reuse=4 \
+  --train_batch_size=64 --learner_batches=2 --checkpoint_freq=1 --max_steps=1 \
+  --policy_target=completed_q > "$tmp/completed_q.log" 2>&1
+check "11. a run with --policy_target=completed_q exits 0" [ $? -eq 0 ]
+check "11. ... finite losses, config.json records it, the actors log it" python3 - "$cq" <<'EOF'
+import glob, json, math, sys
+d = [json.loads(l) for l in open(sys.argv[1] + "/learner.jsonl")]
+ok = len(d) == 1 and all(math.isfinite(d[0]["loss"][k]) for k in ("policy", "value"))
+ok &= json.load(open(sys.argv[1] + "/config.json"))["policy_target"] == "completed_q"
+ok &= all("Policy target: completed_q" in open(f).read() for f in glob.glob(sys.argv[1] + "/log-actor-*.txt"))
+sys.exit(0 if ok else 1)
+EOF
+check "11. control: part 1's run (visits, the default) logs no policy target" \
+  bash -c "! grep -q 'Policy target' '$run'/log-actor-*.txt"
 
 finish

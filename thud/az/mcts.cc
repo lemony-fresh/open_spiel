@@ -29,6 +29,7 @@
 #include <vector>
 
 #include "open_spiel/abseil-cpp/absl/algorithm/container.h"
+#include "open_spiel/abseil-cpp/absl/container/flat_hash_map.h"
 #include "open_spiel/abseil-cpp/absl/random/distributions.h"
 #include "open_spiel/abseil-cpp/absl/strings/str_cat.h"
 #include "open_spiel/abseil-cpp/absl/strings/str_format.h"
@@ -199,6 +200,59 @@ std::vector<std::pair<Action, double>> PrunedRootVisits(const SearchNode& root,
     visits.push_back({child.action, n});
   }
   return visits;
+}
+
+std::vector<std::pair<Action, double>> CompletedQPolicy(
+    const SearchNode& root, const std::vector<std::pair<Action, double>>& prior,
+    double raw_value, const CompletedQSettings& settings) {
+  const size_t n = root.children.size();
+  std::vector<std::pair<Action, double>> policy;
+  if (n == 0) return policy;
+  absl::flat_hash_map<Action, double> prior_of(prior.begin(), prior.end());
+  const double tiny = std::numeric_limits<double>::min();
+  std::vector<double> p(n), q(n, 0), visits(n);
+  double playouts = 0, most = 0, visited_prior = 0;
+  for (size_t i = 0; i < n; ++i) {
+    const SearchNode& child = root.children[i];
+    const auto it = prior_of.find(child.action);
+    p[i] = std::max(tiny, it == prior_of.end() ? 0.0 : it->second);
+    visits[i] = child.explore_count;
+    playouts += visits[i];
+    most = std::max(most, visits[i]);
+    if (visits[i] > 0) {
+      q[i] = child.total_reward / child.explore_count;
+      visited_prior += p[i];
+    }
+  }
+  // The mixed value (mctx's _compute_mixed_value): the raw value and the visited children's
+  // prior-weighted mean Q, weighted 1 : playouts.
+  double weighted_q = 0;
+  for (size_t i = 0; i < n; ++i) {
+    if (visits[i] > 0) weighted_q += p[i] * q[i] / visited_prior;
+  }
+  const double mixed = (raw_value + playouts * weighted_q) / (playouts + 1);
+  double low = std::numeric_limits<double>::infinity(), high = -low;
+  for (size_t i = 0; i < n; ++i) {
+    if (visits[i] == 0) q[i] = mixed;  // Completed.
+    low = std::min(low, q[i]);
+    high = std::max(high, q[i]);
+  }
+  const double scale = (settings.maxvisit_init + most) * settings.value_scale /
+                       std::max(high - low, settings.epsilon);
+  // softmax(log p + scale x (q - low)), stably.
+  std::vector<double> logits(n);
+  double top = -std::numeric_limits<double>::infinity();
+  for (size_t i = 0; i < n; ++i) {
+    logits[i] = std::log(p[i]) + scale * (q[i] - low);
+    top = std::max(top, logits[i]);
+  }
+  double sum = 0;
+  for (size_t i = 0; i < n; ++i) sum += std::exp(logits[i] - top);
+  policy.reserve(n);
+  for (size_t i = 0; i < n; ++i) {
+    policy.emplace_back(root.children[i].action, std::exp(logits[i] - top) / sum);
+  }
+  return policy;
 }
 
 bool SearchNode::CompareFinal(const SearchNode& b) const {

@@ -111,6 +111,9 @@ ABSL_FLAG(std::string, kickstart_ties, "even",
 ABSL_FLAG(int, kickstart_root_margin, 0,
           "The teacher's root window: moves this many points or more below the best get a "
           "bound (at most best - margin) instead of their score; 0: every score exact.");
+ABSL_FLAG(std::string, policy_target, "visits",
+          "Each recorded position's policy target: visits (the root's visit counts) or "
+          "completed_q (Gumbel AlphaZero's completed Q, from the root's values).");
 ABSL_FLAG(int, learner_batches, 0,
           "Batches each learning step trains on; 0: one pass over the replay buffer "
           "(its size / train_batch_size), as upstream.");
@@ -269,6 +272,7 @@ int main(int argc, char** argv) {
     config.kickstart_ties = absl::GetFlag(FLAGS_kickstart_ties);
     SPIEL_CHECK_TRUE(config.kickstart_ties == "even" || config.kickstart_ties == "search");
     config.kickstart_root_margin = absl::GetFlag(FLAGS_kickstart_root_margin);
+    config.policy_target = absl::GetFlag(FLAGS_policy_target);
     SPIEL_CHECK_GE(config.kickstart_root_margin, 0);
     for (int p = 0; p < 2; ++p) {  // Stops here, not in an actor, on a malformed list.
       open_spiel::thud_az::torch_az::AlphaBetaDepth(config, p);

@@ -183,6 +183,11 @@ struct AlphaZeroConfig {
   // (the default): every score exact, as before. 3 (MaterialSearch::kTeacherRootMargin) saved
   // only 1.4% of the dwarfs' nodes at depth 5 (material_search.h), so it is not used.
   int kickstart_root_margin = 0;
+  // Added (2026-10-29; Gumbel targets, part one): the policy target of each recorded position
+  // — "visits" (the default: the root's visit counts, upstream's, KataGo's pruning on top if
+  // policy_target_pruning) or "completed_q" (CompletedQTarget: Gumbel AlphaZero's completed
+  // Q, from the root's values; the move is still chosen from the visits).
+  std::string policy_target = "visits";
   // Added (thud/DESIGN_dwarf_signal.md, approach D1; 2026-10-13): kickstart weights per
   // player, comma-separated values indexed by the player to move (PerPlayerValues;
   // "0.7,0.3": the dwarfs' positions 0.7, the trolls' 0.3); empty or a missing second
@@ -251,6 +256,7 @@ struct AlphaZeroConfig {
         {"kickstart_temperature", kickstart_temperature},
         {"kickstart_ties", kickstart_ties},
         {"kickstart_root_margin", kickstart_root_margin},
+        {"policy_target", policy_target},
         {"temperature", temperature},
         {"temperature_drop", temperature_drop},
         {"cutoff_probability", cutoff_probability},
@@ -382,6 +388,9 @@ struct AlphaZeroConfig {
     kickstart_root_margin = config_json.count("kickstart_root_margin")
                                 ? config_json.at("kickstart_root_margin").GetInt()
                                 : 0;
+    policy_target = config_json.count("policy_target")
+                        ? config_json.at("policy_target").GetString()
+                        : "visits";
     temperature = config_json.at("temperature").GetDouble();
     temperature_drop = config_json.at("temperature_drop").GetDouble();
     cutoff_probability = config_json.at("cutoff_probability").GetDouble();
@@ -476,7 +485,17 @@ Trajectory PlayGame(open_spiel::Logger* logger, int game_num, const open_spiel::
                     const std::vector<double>& teacher_weights = {},
                     std::vector<std::unique_ptr<MCTSBot>>* fast_bots = nullptr,
                     double full_share = 1, bool teacher_ties_by_search = false,
-                    const StopToken* stop = nullptr);
+                    bool completed_q_target = false, const StopToken* stop = nullptr);
+
+// Added (2026-10-29; Gumbel targets, part one): the completed-Q policy target of a root
+// searched from `state` (CompletedQPolicy, thud/az/mcts.h) — with the network's own prior,
+// before root noise and any policy temperature (the search applies both to its children's
+// priors, not the evaluator), and its value for the player to move, both from `evaluator`
+// (cached since the search's first evaluation of the root). PlayGame's target with
+// completed_q_target (the trainer's --policy_target=completed_q).
+open_spiel::ActionsAndProbs CompletedQTarget(const SearchNode& root,
+                                             const open_spiel::State& state,
+                                             VPNetEvaluator* evaluator);
 
 // Added (playout cap randomisation): the fast searches' bots, one per player — the
 // trainer's search with playout_cap_fast_simulations, no root noise and no forced

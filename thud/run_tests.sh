@@ -82,6 +82,7 @@ tests=(
   "position_buffer_test|quick|2|$bin/position_buffer_test $logs"
   "az_buffer_truncate|quick|0|$bin/az_buffer_truncate self_test"
   "pruning_test|quick|13|$bin/pruning_test $nets/peaked 0"
+  "completed_q_test|quick|3|$bin/completed_q_test $nets/peaked 0"
   "trainer_test|quick|26|thud/az/trainer_test.sh $bin"
   "playthrough|full|3.5|thud/run_tests.sh --playthrough"
   "sanitized|full|10|thud/run_tests.sh --sanitized"

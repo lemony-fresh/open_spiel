@@ -26,8 +26,12 @@
 //            to the reference or only spread them (the recheck of 2026-10-04's az_noise_probe,
 //            whose question — two root-noise seeds disagreeing — no longer applies to the
 //            dwarfs, who search without root noise since run N's recipe);
+//   completed_q  (2026-10-29) the completed-Q target of the trainer's own search (Gumbel
+//            AlphaZero's, CompletedQTarget: from the root's values, not its visit counts);
 //   teacher  the teacher's policy (TeacherPolicy at the run's depths per side);
 //   target   what the trainer records: (1 - w) x the first visits + w x teacher, w per side;
+//   cq_target  (2026-10-29) what it would record with --policy_target=completed_q:
+//            (1 - w) x completed_q + w x teacher;
 //   uniform  every legal move alike — the floor: a candidate no closer than it says nothing;
 // each compared with the references — the same network's search without root noise at each
 // budget in `refs`, the run's settings otherwise (the first the reference proper; each deeper
@@ -259,7 +263,13 @@ int main(int argc, char** argv) {
   }
   std::vector<std::string> candidates;
   for (int b : sims) candidates.push_back(b == 0 ? "visits" : absl::StrCat("visits", b));
-  for (const char* c : {"teacher", "target", "uniform"}) candidates.push_back(c);
+  // Since 2026-10-29 (Gumbel targets, part one): completed_q, the completed-Q target of the
+  // run's own search (CompletedQTarget), and cq_target, the target the trainer would record
+  // with it (--policy_target=completed_q: it mixed with the teacher as `target` mixes the
+  // visits).
+  for (const char* c : {"completed_q", "teacher", "target", "cq_target", "uniform"}) {
+    candidates.push_back(c);
+  }
   std::cerr << absl::StrFormat("az_teacher_vs_search: %s step %d, game %s, the teacher's depths %d, %d, "
                                "weights %g, %g, temperature %g; precision %s",
                                run, step, config.game, teacher.depth(0), teacher.depth(1),
@@ -374,7 +384,16 @@ int main(int argc, char** argv) {
           std::vector<Policy> ref;
           for (int r = 0; r < nr; ++r) ref.push_back(Visits(*references[p][r]->MCTSearch(state)));
           std::vector<Policy> visits;
-          for (int b = 0; b < nb; ++b) visits.push_back(Visits(*searches[p][b]->MCTSearch(state)));
+          Policy completed_q, cq_target;
+          for (int b = 0; b < nb; ++b) {
+            std::unique_ptr<SearchNode> root = searches[p][b]->MCTSearch(state);
+            visits.push_back(Visits(*root));
+            if (b == 0) {
+              for (const auto& [a, q] : az::CompletedQTarget(*root, state, eval.get())) {
+                completed_q[a] = q;
+              }
+            }
+          }
           Policy teacher_policy, target, uniform;
           for (const auto& [a, q] : az::TeacherPolicy(state, teacher, config.kickstart_temperature)) {
             teacher_policy[a] = q;
@@ -384,11 +403,14 @@ int main(int argc, char** argv) {
             auto it = visits[0].find(a);
             target[a] = (1 - weights[p]) * (it == visits[0].end() ? 0 : it->second) +
                         weights[p] * teacher_policy[a];
+            cq_target[a] = (1 - weights[p]) * completed_q[a] + weights[p] * teacher_policy[a];
             uniform[a] = 1.0 / legal.size();
           }
           std::vector<const Policy*> policies;
           for (const Policy& v : visits) policies.push_back(&v);
-          for (const Policy* q : {&teacher_policy, &target, &uniform}) policies.push_back(q);
+          for (const Policy* q : {&completed_q, &teacher_policy, &target, &cq_target, &uniform}) {
+            policies.push_back(q);
+          }
           for (const Policy* q : policies) spread[i].push_back(EffectiveMoves(*q));
           std::string line = absl::StrFormat("{\"position\": %d, \"side\": \"%s\", \"legal\": %d", i,
                                              p == 0 ? "dwarfs" : "trolls", legal.size());
