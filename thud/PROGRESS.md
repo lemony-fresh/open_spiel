@@ -4137,4 +4137,25 @@ the push's and the rename's tests ran (memory beside the trainer), to resume.
   at other batches not taken). ~28 → ~10 minutes, from the stop at 416;
   `r7_run_2026-10-27.sh` changed while it waited.
 
+- **2026-10-28, 13:20-18:10: R7_396, the carry-over at work, the policy temperature.** The 396
+  stop: R7_396 against R6_366 −1.00 at 100/100 but **+2.00 (−0.79 to +4.79) at the trainer's
+  200/100** — its dwarfs −7.12 and −3.10: ~4 points better at the budget they trained at;
+  against R7_376 −1.75 (no gain: the plateau rule's first segment without, 416 to confirm);
+  teacher:5 +19.88 (its dwarfs −8.07); hexparrot:3 +46.95, hexparrot:9 +47.15 (hexparrot's
+  time a move, measured: its dwarfs 45 ms on average at lookahead 3, 123 at 9, its trolls
+  ~7 — rules, not a search; our network ~250-500 ms of CPU at 100 simulations); blunders
+  3.3% (the lowest yet); the noise probe: the dwarfs' targets ~13, ~18, ~23 effective moves
+  at 100, 200, 400 simulations, R6_366 and R7_396 alike; teacher against search: the dwarfs'
+  visits agree with the long search 40% (the teacher 8%) but the teacher's policy is the
+  closer distribution (0.29 against 0.55; the mix 0.23); the prior's distance from the
+  teacher flat for the dwarfs (0.468 to 0.467), falling for the trolls (0.255 to 0.213).
+  **The carry-over:** 34 games (7,252 positions) carried; step 397 took 1,847 s against
+  2,464 for the first step after the 376 stop; steps since ~1,420 s. **Decided (the user):
+  the dwarfs' policy temperature 1.5 → 1 from step 417** (R7's config.json, by hand; the
+  matches search each network at its own, `temperature_of`). **A correction (mistake,
+  reported):** Claude had described the 1.5 as flattening the targets (visits to the power
+  1/1.5); it flattens the network's prior inside the dwarfs' searches, which spreads their
+  visits and so the targets — and it was run H's fix for run G''s dwarf collapse
+  (2026-10-07), the risk now watched (the prior's breadth, the dwarfs' margin).
+
 **Next step:** as recorded in `## Current status` — R7's stop at 376 (~20:30) with the shorter evaluation, then 20-step segments on the merged code (the carry-over's first at 396, its gain measured at 397); the rule (the user, 2026-10-26: after two segments without gain one more, then back to R5_331); the teacher as the opponent's dwarfs later; more simulations for the trolls (200/100), Gumbel, the finer evaluation's cheap form, the measurement's control.
