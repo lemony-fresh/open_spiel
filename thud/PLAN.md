@@ -538,7 +538,13 @@ main teacher.
 - **Run R7** (2026-10-27, from R6_366: the dwarfs' searches 200 simulations, the trolls'
   100, the trolls' teacher at depth 4; segments of 20 steps after the first, to 376): it
   runs until a safeguard fails — the blunder gate, a broken run (the trainer stops itself on
-  a NaN loss or a batch norm that did not count its batches), memory — or it plateaus.
+  a NaN loss or a batch norm that did not count its batches), memory, **the collapse
+  tripwire** (2026-10-28, the user; `~/thud-runs/collapse_tripwire.py`, detached: every new
+  step against the 20 before it started — the dwarfs' prior breadth, their self-play margin,
+  game lengths, two-step means; alert at 60% of the breadth, a drop of 5 points in the
+  margin or games 1.5x longer; it interrupts the trainer at 35% of the breadth with the
+  margin's drop, or at 15% alone: run G''s collapse would have alerted at step 58 and
+  stopped at 67, R4-R7's own 127 steps stay quiet) — or it plateaus.
   **The plateau rule** (the user, 2026-10-27): watched are the dwarfs against teacher:5
   (R6_361: −6.92), the match against R6_366, hexparrot:3, the blunders, the dwarfs' KL above
   their targets, and from the stop at 396 a match against the previous segment's network

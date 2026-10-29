@@ -4158,4 +4158,17 @@ the push's and the rename's tests ran (memory beside the trainer), to resume.
   visits and so the targets — and it was run H's fix for run G''s dwarf collapse
   (2026-10-07), the risk now watched (the prior's breadth, the dwarfs' margin).
 
+- **2026-10-28, 18:10-21:35: the collapse tripwire.** The user asked how run G''s collapse was
+  recognised (the per-step search statistics: the dwarfs' prior down to ~5% of the legal moves,
+  the search visiting a median 7, the margin +0.6 to −9.3, games 238 to 540 plies over steps
+  54-72; then fixed opponents) and whether we would see one now (the signals are still logged
+  every step but read only at the stops, 20 steps apart, and G''s took 12-18). **Built (the
+  user): `~/thud-runs/collapse_tripwire.py`**, detached, watching R7 from step 417 against
+  steps 397-416 (the dwarfs' prior 161 effective moves, margin +3.0, games 241): alerts in the
+  progress log, and a clean stop of the trainer (one SIGINT) at a severe narrowing.
+  Replayed: G' (stage5b_Gaug_7x) alerts at 58 and stops at 67; R4, R5, R6, R7 quiet (127
+  steps); the margin's threshold made relative to the baseline after a fixed −5 alerted on
+  R5's ordinary −5.2 and run K's era; run K's continuation alerts on a real 10-point drop,
+  no stop.
+
 **Next step:** as recorded in `## Current status` — R7's stop at 376 (~20:30) with the shorter evaluation, then 20-step segments on the merged code (the carry-over's first at 396, its gain measured at 397); the rule (the user, 2026-10-26: after two segments without gain one more, then back to R5_331); the teacher as the opponent's dwarfs later; more simulations for the trolls (200/100), Gumbel, the finer evaluation's cheap form, the measurement's control.
