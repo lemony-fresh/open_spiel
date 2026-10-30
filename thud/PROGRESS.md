@@ -4281,4 +4281,10 @@ the push's and the rename's tests ran (memory beside the trainer), to resume.
   with the stop fix). The offline distance understates what depth buys: 800 simulations play
   +17.7 points a pair stronger than 200 though their target is only −0.028 closer.
 
+- **2026-10-30, 14:45: the root-noise match queued.** The user: test whether Gumbel or the
+  missing root noise made Gumbel's trolls better; then playout caps. `gumbel_noise_2026-10-30.sh`
+  (set `r7_run.stop`): after R7_476's evaluation (~21:30), Gumbel 16 against today's search and
+  today's against itself at 200/100 without root noise for either side (~30 min), each side
+  against its baseline; then R7 relaunched. The playout-cap test's design goes to the user.
+
 **Next step:** as recorded in `## Current status` — R7's stop at 376 (~20:30) with the shorter evaluation, then 20-step segments on the merged code (the carry-over's first at 396, its gain measured at 397); the rule (the user, 2026-10-26: after two segments without gain one more, then back to R5_331); the teacher as the opponent's dwarfs later; more simulations for the trolls (200/100), Gumbel, the finer evaluation's cheap form, the measurement's control.
