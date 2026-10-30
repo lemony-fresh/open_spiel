@@ -4214,4 +4214,16 @@ the push's and the rename's tests ran (memory beside the trainer), to resume.
   0.7, the trolls' target closer at 0.5 than at 0.3 — for the user. A test-side fix: trainer_test
   part 1's new check failed once (likely a step without one side's self-play positions).
 
+- **2026-10-29, 16:50-19:25: Gumbel part two landed and measured; the trolls' weight later.**
+  The user: implement part two; the trolls' teacher weight 0.3 → 0.5 not now but soon, after
+  Gumbel is landed, tested and on. Built (tests first): `--gumbel_search` (sequential halving at
+  the root over 16 Gumbel-sampled actions, the deterministic rule below it, the halving's winner
+  played, the completed-Q target); `gumbel_search_test` (the schedule for eight budgets and both
+  rules as mctx's; on Thud searches the root's counts exactly the schedule's in 24 of 24, PUCT's
+  in none); `trainer_test.sh` 12; commit `f2b19d00`, merged. The full suite: 39 of 40 — the
+  trainer test's part 1 teacher-distance check failed a second time under load, not reproduced
+  in five runs; it now prints its values when it fails. Offline (`az_teacher_vs_search gumbel=1`,
+  R7_436): Gumbel's target farther from the long search than today's for both sides (the plan's
+  Gumbel row) — not switched on; next, more sampled actions for the dwarfs, or an arm.
+
 **Next step:** as recorded in `## Current status` — R7's stop at 376 (~20:30) with the shorter evaluation, then 20-step segments on the merged code (the carry-over's first at 396, its gain measured at 397); the rule (the user, 2026-10-26: after two segments without gain one more, then back to R5_331); the teacher as the opponent's dwarfs later; more simulations for the trolls (200/100), Gumbel, the finer evaluation's cheap form, the measurement's control.
