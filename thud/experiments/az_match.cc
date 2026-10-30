@@ -20,7 +20,8 @@
 // opening gives one side. Both networks search with our copy of OpenSpiel's MCTSBot
 // (PUCT; thud/az/), the same number of simulations (`sims`; `sims_a` and `sims_b` give
 // each network its own, e.g. to measure what more simulations gain on each side;
-// `side_sims=D,T` each side its own, for both networks, as the trainer's player_simulations) and the
+// `side_sims=D,T` each side its own, for both networks, as the trainer's player_simulations;
+// `side_sims_a=D,T`, `side_sims_b=D,T` that network's own by side, over side_sims) and the
 // same rule for untried moves (`untried`, default upstream's — with it our copy searches
 // exactly as upstream's does, thud/az/identity_test.cc; `untried_a` and `untried_b` give
 // each network its own, e.g. the rule it was trained with), no root noise, and always play
@@ -77,7 +78,8 @@
 //
 //   thud/az/build.sh thud/experiments/az_match.cc
 //   OMP_NUM_THREADS=4 build-shared/az_match a=RUN_DIR:STEP b=RUN_DIR:STEP sims=100 \
-//     pairs=50 [sims_a=SIMS sims_b=SIMS side_sims=D,T opening=4 threads=16 batch=16 seed=1 \
+//     pairs=50 [sims_a=SIMS sims_b=SIMS side_sims=D,T side_sims_a=D,T side_sims_b=D,T \
+//     opening=4 threads=16 batch=16 seed=1 \
 //     untried=upstream untried_a=UNTRIED untried_b=UNTRIED temperature_a=LIST \
 //     temperature_b=LIST progress=0 cache=262144 share=0 mcts_memory=1000 \
 //     hexparrot_player=PATH games=PATH capture_floor_a=LIST noise=LIST noise_alpha=0.1 \
@@ -461,13 +463,24 @@ int main(int argc, char** argv) {
   // every search by the side it plays — D simulations as the dwarfs, T as the trolls, for
   // both networks, as the trainer's player_simulations; overrides sims, sims_a and sims_b.
   // Empty (the default): as before.
-  std::vector<int> side_sims;
-  for (absl::string_view s : absl::StrSplit(args.Get("side_sims", ""), ',', absl::SkipEmpty())) {
-    side_sims.push_back(std::stoi(std::string(s)));
-  }
-  SPIEL_CHECK_TRUE(side_sims.empty() || side_sims.size() == 2);
-  auto sims_for = [&side_sims](int network_sims, open_spiel::Player player) {
-    return side_sims.empty() ? network_sims : side_sims[player];
+  // side_sims_a=D,T, side_sims_b=D,T (2026-10-30; the user: Gumbel and PUCT at 200, 400 and
+  // 800 simulations): that network's own budgets by side, over side_sims for it — so that
+  // one match compares budgets, each network at its own as the trainer would set it.
+  auto side_list = [&args](const std::string& key) {
+    std::vector<int> list;
+    for (absl::string_view s : absl::StrSplit(args.Get(key, ""), ',', absl::SkipEmpty())) {
+      list.push_back(std::stoi(std::string(s)));
+    }
+    SPIEL_CHECK_TRUE(list.empty() || list.size() == 2);
+    return list;
+  };
+  const std::vector<int> side_sims = side_list("side_sims");
+  const std::vector<int> side_sims_a = side_list("side_sims_a");
+  const std::vector<int> side_sims_b = side_list("side_sims_b");
+  auto sims_for = [&](bool network_a, open_spiel::Player player) {
+    const std::vector<int>& own = network_a ? side_sims_a : side_sims_b;
+    if (!own.empty()) return own[player];
+    return side_sims.empty() ? (network_a ? sims_a : sims_b) : side_sims[player];
   };
   const int pairs = args.GetInt("pairs", 50);
   const int opening_moves = args.GetInt("opening", 4);
@@ -691,11 +704,11 @@ int main(int argc, char** argv) {
         if (!self_play_conditions) {
           const int base = 8 * BattleSeed(seed, i, a_player);
           std::unique_ptr<MCTSBot> a =
-              make_bot(search_eval_a, sims_for(sims_a, a_player), rule_a, temperatures_a,
+              make_bot(search_eval_a, sims_for(true, a_player), rule_a, temperatures_a,
                        capture_floors_a, base, 0, 0, gumbel_a, gumbel_scale_a);
           std::unique_ptr<MCTSBot> b;
           if (!outside) {
-            b = make_bot(eval_b, sims_for(sims_b, 1 - a_player), rule_b, temperatures_b, {},
+            b = make_bot(eval_b, sims_for(false, 1 - a_player), rule_b, temperatures_b, {},
                          base + 2, 0, 0, gumbel_b, gumbel_scale_b);
           }
           return Play(*game, openings[i], NetworkChooser(a.get()),
@@ -706,11 +719,11 @@ int main(int argc, char** argv) {
         for (int p : {0, 1}) {
           const bool noisy = p < noise.size() && noise[p] != 0;
           const double alpha = noisy ? noise_alpha : 0, epsilon = noisy ? noise_epsilon : 0;
-          bots_a[p] = make_bot(search_eval_a, sims_for(sims_a, p), rule_a, temperatures_a,
+          bots_a[p] = make_bot(search_eval_a, sims_for(true, p), rule_a, temperatures_a,
                                capture_floors_a, base + p, alpha, epsilon, gumbel_a,
                                gumbel_scale_a);
           if (!outside) {
-            bots_b[p] = make_bot(eval_b, sims_for(sims_b, p), rule_b, temperatures_b, {},
+            bots_b[p] = make_bot(eval_b, sims_for(false, p), rule_b, temperatures_b, {},
                                  base + 2 + p, alpha, epsilon, gumbel_b, gumbel_scale_b);
           }
         }
@@ -810,6 +823,12 @@ int main(int argc, char** argv) {
             << (side_sims.empty()
                     ? ""
                     : absl::StrFormat(", \"side_sims\": [%d, %d]", side_sims[0], side_sims[1]))
+            << (side_sims_a.empty() ? ""
+                                    : absl::StrFormat(", \"side_sims_a\": [%d, %d]",
+                                                      side_sims_a[0], side_sims_a[1]))
+            << (side_sims_b.empty() ? ""
+                                    : absl::StrFormat(", \"side_sims_b\": [%d, %d]",
+                                                      side_sims_b[0], side_sims_b[1]))
             << (capture_floor_a.empty()
                     ? ""
                     : absl::StrFormat(", \"capture_floor_a\": \"%s\"", capture_floor_a))

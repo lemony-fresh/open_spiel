@@ -92,7 +92,9 @@
 #      mixes= (2026-10-29): at the run's own weights a mix is the target exactly (the control:
 #      the dwarfs' mix at 0.3 is not); gumbel=1: its three candidates in range, its move all
 #      on one move; considered=1,4 gumbel_scale=0: the candidates named by the count, each
-#      move one-hot (the control: the two counts' measures differ).
+#      move one-hot (the control: the two counts' measures differ); since 2026-10-30
+#      gumbel_sims=0,12 (the names with the budget; the control, the budgets' measures differ)
+#      and targetN (the trainer's target at each extra budget of sims) in range.
 #  10. The carry-over and the stop between moves (2026-10-27): a fresh run of one step with a
 #      long last learning step (300 batches) and short battles (10 turns without a capture
 #      end one), so that games wait in the queue at its end:
@@ -456,9 +458,10 @@ for d in rows:
   for r in (16, 32):  # The move: all its probability on one move.
     x = d[f"gumbel_move_ref{r}"]
     ok &= x["agrees"] in (0, 1) and x["mass_on_best"] == x["agrees"]
-ok &= len(summaries) == 2 * 12 * 2 and len(stability) == 2
+ok &= len(summaries) == 2 * 13 * 2 and len(stability) == 2
 ok &= all(abs(s["effective_moves"][0] - 1) < 1e-9 for s in summaries
           if s["candidate"] == "gumbel_move")
+ok &= all(0 <= d[f"target24_ref{r}"]["distance"] <= 1 + 1e-9 for d in rows for r in (16, 32))
 # mixes= (2026-10-29): at the run's own weights (0.7 for the dwarfs, 0.3 for the trolls) a mix
 # is the target exactly; at the other side's weight it is not.
 def row(side, c, r):
@@ -476,22 +479,25 @@ if not ok: print(lines[:3], summaries[:2])
 sys.exit(0 if ok else 1)
 EOF
 "$bin/az_teacher_vs_search" run="$run" step=-1 refs=16 last=2 max=3 threads=2 batch=2 gumbel=1 \
-  considered=1,4 gumbel_scale=0 inference_threads=1 > "$tmp/considered.jsonl" 2> "$tmp/considered.err"
-check "9. considered=1,4 gumbel_scale=0: exits 0, the candidates named by the count, each move one-hot; the control: the counts' measures differ" \
+  considered=1,4 gumbel_scale=0 gumbel_sims=0,12 inference_threads=1 > "$tmp/considered.jsonl" \
+  2> "$tmp/considered.err"
+check "9. considered=1,4 gumbel_scale=0 gumbel_sims=0,12: exits 0, the candidates named by the count and the budget, each move one-hot; the controls: the counts' measures differ, and the budgets'" \
   python3 - "$tmp/considered.jsonl" $? <<'EOF'
 import json, sys
 lines = [json.loads(l) for l in open(sys.argv[1])]
 rows = [d for d in lines if "position" in d]
 summaries = [d for d in lines if d.get("summary") and not d.get("stability")]
 names = {s["candidate"] for s in summaries}
-ok = sys.argv[2] == "0" and len(rows) >= 4 and len(summaries) == 2 * 12
-ok &= {"gumbel1", "gumbel1_target", "gumbel1_move", "gumbel4", "gumbel4_target",
-       "gumbel4_move"} <= names and "gumbel" not in names
+ok = sys.argv[2] == "0" and len(rows) >= 4 and len(summaries) == 2 * 18
+gumbels = [f"gumbel{m}{n}" for m in (1, 4) for n in ("", "_s12")]
+ok &= {g + s for g in gumbels for s in ("", "_target", "_move")} <= names
+ok &= "gumbel" not in names
 for d in rows:
-  for m in (1, 4):
-    x = d[f"gumbel{m}_move_ref16"]
+  for g in gumbels:
+    x = d[f"{g}_move_ref16"]
     ok &= x["agrees"] in (0, 1) and x["mass_on_best"] == x["agrees"]
 ok &= any(d["gumbel1_ref16"] != d["gumbel4_ref16"] for d in rows)
+ok &= any(d["gumbel4_ref16"] != d["gumbel4_s12_ref16"] for d in rows)
 if not ok: print(sorted(names), rows[:1])
 sys.exit(0 if ok else 1)
 EOF

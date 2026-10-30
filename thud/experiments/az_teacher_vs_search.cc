@@ -38,6 +38,10 @@
 //            gumbel_move (2026-10-29), the move that search plays (GumbelAction), all its
 //            probability on it; with `considered=M,...` one search of each M sampled actions,
 //            the names gumbelM, gumbelM_target and gumbelM_move, and `gumbel_scale` its noise;
+//            with `gumbel_sims=N,...` (2026-10-30) at each budget N too (0: the run's own), the
+//            names then ending _sN (gumbel16_s400_target);
+//   targetN  (2026-10-30) for each budget N in `sims` but the first, what the trainer would
+//            record at N: (1 - w) x visitsN + w x teacher;
 //   uniform  every legal move alike — the floor: a candidate no closer than it says nothing;
 // each compared with the references — the same network's search without root noise at each
 // budget in `refs`, the run's settings otherwise (the first the reference proper; each deeper
@@ -60,7 +64,7 @@
 //   OMP_NUM_THREADS=4 build-shared/az_teacher_vs_search run=RUN_DIR step=STEP \
 //     [sims=(the run's) refs=2000,4000 last=2 max=100 threads=32 batch=32
 //      inference_threads=2 seed=1 precision=(the run's) depths=(the run's teacher's)
-//      mixes=W,... gumbel=0 considered=16 gumbel_scale=1]
+//      mixes=W,... gumbel=0 considered=16 gumbel_scale=1 gumbel_sims=0]
 //
 // `depths` ("5,5"): the teacher's depths per side instead of the run's.
 //
@@ -244,6 +248,15 @@ int main(int argc, char** argv) {
     considered.push_back(v);
   }
   const double gumbel_scale = std::stod(get("gumbel_scale", "1"));
+  // gumbel_sims=N,... (2026-10-30; the user: much better targets at a reasonable cost — how
+  // does Gumbel do with 400 and 800 simulations?): the Gumbel searches at each budget N, 0 the
+  // run's own per side (the default, alone); N both sides', as `sims`.
+  std::vector<int> gumbel_sims;
+  for (absl::string_view n : absl::StrSplit(get("gumbel_sims", "0"), ',', absl::SkipEmpty())) {
+    int v;
+    if (!absl::SimpleAtoi(n, &v) || v < 0) open_spiel::SpielFatalError("gumbel_sims=N,N,...");
+    gumbel_sims.push_back(v);
+  }
   std::vector<double> mixes;
   for (absl::string_view w : absl::StrSplit(get("mixes", ""), ',', absl::SkipEmpty())) {
     mixes.push_back(std::stod(std::string(w)));
@@ -299,10 +312,19 @@ int main(int argc, char** argv) {
     candidates.push_back(c);
   }
   for (double w : mixes) candidates.push_back(absl::StrFormat("mix%.2f", w));
-  // The Gumbel candidates' names: plain for the default single search of 16, else with M.
+  for (int b = 1; b < sims.size(); ++b) candidates.push_back(absl::StrCat("target", sims[b]));
+  // The Gumbel searches, budget by budget, then by count; their candidates' names plain for
+  // the default single search of 16, else with M, and with _sN for a budget N but the run's own.
+  std::vector<std::pair<int, int>> gumbel_settings;  // (budget, considered).
+  for (int n : gumbel_sims) {
+    for (int m : considered) {
+      if (with_gumbel) gumbel_settings.emplace_back(n, m);
+    }
+  }
   const bool plain_gumbel = considered == std::vector<int>{16};
-  for (int m = 0; m < considered.size() && with_gumbel; ++m) {
-    const std::string name = plain_gumbel ? "gumbel" : absl::StrCat("gumbel", considered[m]);
+  for (const auto& [n, m] : gumbel_settings) {
+    const std::string name = absl::StrCat(plain_gumbel ? "gumbel" : absl::StrCat("gumbel", m),
+                                          n == 0 ? "" : absl::StrCat("_s", n));
     for (const char* suffix : {"", "_target", "_move"}) candidates.push_back(name + suffix);
   }
   std::cerr << absl::StrFormat("az_teacher_vs_search: %s step %d, game %s, the teacher's depths %d, %d, "
@@ -408,13 +430,13 @@ int main(int argc, char** argv) {
             searches[p].push_back(make_bot(p, false, sims[b], seed * 1000 + 64 * t + 8 * b + p));
           }
         }
-        // By side, then considered count, if with_gumbel (the first's seeds as before).
+        // By side, then setting (gumbel_settings), each its own seeds, apart from the others'.
         std::vector<std::unique_ptr<MCTSBot>> gumbel_searches[2];
-        for (int p = 0; p < 2 && with_gumbel; ++p) {
-          for (int m = 0; m < considered.size(); ++m) {
-            gumbel_searches[p].push_back(
-                make_bot(p, false, 0, seed * 1000 + 64 * t + 40 + 2 * m + p));
-            gumbel_searches[p].back()->SetGumbel(considered[m], gumbel_scale);
+        for (int p = 0; p < 2; ++p) {
+          for (int k = 0; k < gumbel_settings.size(); ++k) {
+            gumbel_searches[p].push_back(make_bot(p, false, gumbel_settings[k].first,
+                                                  1000000 * (k + 1) + seed * 1000 + 64 * t + 40 + p));
+            gumbel_searches[p].back()->SetGumbel(gumbel_settings[k].second, gumbel_scale);
           }
         }
         std::vector<std::unique_ptr<MCTSBot>> references[2];
@@ -464,6 +486,15 @@ int main(int argc, char** argv) {
             }
             policies.push_back(&mixed[m]);
           }
+          std::vector<Policy> budget_targets(nb);  // targetN for the budgets but the first.
+          for (int b = 1; b < nb; ++b) {
+            for (Action a : legal) {
+              auto it = visits[b].find(a);
+              budget_targets[b][a] = (1 - weights[p]) * (it == visits[b].end() ? 0 : it->second) +
+                                     weights[p] * teacher_policy[a];
+            }
+            policies.push_back(&budget_targets[b]);
+          }
           // Per considered count: the target, it mixed with the teacher, and the move.
           std::vector<Policy> gumbel(3 * gumbel_searches[p].size());
           for (int m = 0; m < gumbel_searches[p].size(); ++m) {
@@ -481,6 +512,7 @@ int main(int argc, char** argv) {
             gumbel_move[gumbel_searches[p][m]->GumbelAction(*groot)] = 1;
             for (const Policy* q : {&gumbel_policy, &gumbel_target, &gumbel_move}) policies.push_back(q);
           }
+          SPIEL_CHECK_EQ(policies.size(), nc);  // In the order of `candidates`.
           for (const Policy* q : policies) spread[i].push_back(EffectiveMoves(*q));
           std::string line = absl::StrFormat("{\"position\": %d, \"side\": \"%s\", \"legal\": %d", i,
                                              p == 0 ? "dwarfs" : "trolls", legal.size());

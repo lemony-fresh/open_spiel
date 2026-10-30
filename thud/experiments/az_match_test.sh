@@ -36,7 +36,10 @@
 #      plays other battles.
 #   7. Simulations by side (side_sims=D,T, 2026-10-27): 4,4 plays the battles of sims=4, in
 #      both paths (plain, and self-play's conditions with noise=1,1); the control: 6,2
-#      plays other battles, and the summary records it.
+#      plays other battles, and the summary records it. Per network (side_sims_a=D,T,
+#      side_sims_b=D,T, 2026-10-30): 4,4 for both plays the battles of sims=4; the controls:
+#      A alone at 6,2 plays other battles than sims=4 and than both at 6,2 (side_sims=6,2),
+#      and the summary records it.
 #   8. Gumbel searches (gumbel_a=M, gumbel_b=M, 2026-10-29): gumbel_a=4 plays the same battles
 #      with 1 and 2 threads, in both paths (plain, and with noise=1,1); the controls: it
 #      differs from the match without it, the summary records it, gumbel_scale_a=0 plays
@@ -165,6 +168,14 @@ match side62 side_sims=6,2 && {
   check "7. control: side_sims=6,2 plays other battles" differ side62 base
   check "7. control: the summary records side_sims [6, 2]" \
     grep -q '"side_sims": \[6, 2\]' "$tmp/side62.jsonl"
+}
+match side44_ab side_sims_a=4,4 side_sims_b=4,4 &&
+  check "7. side_sims_a=4,4 side_sims_b=4,4 plays the battles of sims=4" same side44_ab base
+match side62_a side_sims_a=6,2 && {
+  check "7. control: A alone at side_sims_a=6,2 plays other battles than sims=4" differ side62_a base
+  check "7. control: ... and than both networks at side_sims=6,2" differ side62_a side62
+  check "7. control: the summary records side_sims_a [6, 2]" \
+    grep -q '"side_sims_a": \[6, 2\]' "$tmp/side62_a.jsonl"
 }
 
 match gumbel_1 gumbel_a=4 && match gumbel_2 gumbel_a=4 threads=2 && {
