@@ -4275,4 +4275,10 @@ the push's and the rename's tests ran (memory beside the trainer), to resume.
   of the signals, surprise predicts the gain (its top quarter 49% / 40% of it). The matches
   from 01:20, ~11.5 hours; then R7 resumes by itself (steps 462-476).
 
+- **2026-10-30, 01:20-13:39: the budget experiment's matches.** All 12 played (results in the
+  plan's Gumbel row and decision log); the control, today's search against itself, −1.12
+  (−6.09 to +3.84). R7 relaunched by the queue at 13:39 (steps 462-476; its trainer rebuilt
+  with the stop fix). The offline distance understates what depth buys: 800 simulations play
+  +17.7 points a pair stronger than 200 though their target is only −0.028 closer.
+
 **Next step:** as recorded in `## Current status` — R7's stop at 376 (~20:30) with the shorter evaluation, then 20-step segments on the merged code (the carry-over's first at 396, its gain measured at 397); the rule (the user, 2026-10-26: after two segments without gain one more, then back to R5_331); the teacher as the opponent's dwarfs later; more simulations for the trolls (200/100), Gumbel, the finer evaluation's cheap form, the measurement's control.
