@@ -4256,4 +4256,23 @@ the push's and the rename's tests ran (memory beside the trainer), to resume.
   relaunches R7. The offline targets use the dwarfs' weight 0.5 now (config.json after the
   taper), the earlier ones 0.7.
 
+- **2026-10-30, 00:15-01:40: R7 interrupted at step 461 for the budget experiment; a stop bug
+  fixed; the targets offline.** The user: interrupt the training, test Gumbel and playout caps
+  first; and could playout caps choose their deep searches (e.g. where the top moves are
+  close) — or does correctness need the random draw? R7's trainer got an interrupt at 00:57,
+  just after step 461 was saved, and **hung**: its actors abandon their games at a stop and
+  push none (2026-10-27), and the learner waited for ever on the empty queue (a second
+  interrupt ended it at 01:02; step 461's checkpoint and buffer intact). Fixed test-first:
+  the learner waits a second at most (`trainer_test.sh` 13 — the old code hung there). The
+  collapse tripwire's stop uses the same interrupt, so it would have hung too until now. Also
+  found from its log: the flaky part 1 check counted a step's side entries with 0 positions
+  as present (test-side, fixed). `az_teacher_vs_search` gained the search's signals per
+  position (`a3f729e4`). The experiment (`gumbel_budgets_2026-10-30.sh`) from 01:03: the
+  targets offline took 17 minutes (the plan's playout cap and Gumbel rows): PUCT at 800 only
+  a little closer to the long search than today's 200 (dwarfs −0.028); Gumbel's targets
+  farther at every budget and count, farther with more simulations (sharper: 36 effective
+  moves at 800 with 16 actions) — the yardstick, a long PUCT search, favours broad targets;
+  of the signals, surprise predicts the gain (its top quarter 49% / 40% of it). The matches
+  from 01:20, ~11.5 hours; then R7 resumes by itself (steps 462-476).
+
 **Next step:** as recorded in `## Current status` — R7's stop at 376 (~20:30) with the shorter evaluation, then 20-step segments on the merged code (the carry-over's first at 396, its gain measured at 397); the rule (the user, 2026-10-26: after two segments without gain one more, then back to R5_331); the teacher as the opponent's dwarfs later; more simulations for the trolls (200/100), Gumbel, the finer evaluation's cheap form, the measurement's control.

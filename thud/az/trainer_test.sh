@@ -115,6 +115,12 @@
 #      a fresh run of one step with it (4 considered actions, 16 simulations, an evaluator
 #      playing on PUCT) exits 0 with finite losses, config.json records it and the actors log
 #      it; the control, part 1's run logs none.
+#  13. An interrupt while the learner collects (2026-10-30: R7's trainer, interrupted at step
+#      462's collection, hung — its actors abandon their games at a stop and push none, and the
+#      learner waited on the empty queue for ever): a fresh run whose first step collects for
+#      long (long battles, 16,384 positions) is interrupted once the actors have played a
+#      game; it must exit by itself within 60 s, with status 0 and "Exiting cleanly". The
+#      code before the fix hung here (the test's positive control, run 2026-10-30).
 #
 #   thud/az/trainer_test.sh [BIN_DIR]    # default build-tests/bin
 #
@@ -233,8 +239,11 @@ import json, math, sys
 # these short steps) has no statistics there: every side present must carry them, and some
 # step must have both sides (2026-10-29: the check failed once on a step without one).
 ok, both = True, False
+# 2026-10-30: it failed a third time, its log then showing why — a step whose side entries both
+# held 0 positions (all its games against alpha-beta): "present" means positions to measure.
 for d in map(json.loads, open(sys.argv[1])):
-  present = [side for side in ("dwarfs", "trolls") if side in d["by_side"]]
+  present = [side for side in ("dwarfs", "trolls")
+             if d["by_side"].get(side, {}).get("positions", 0) > 0]
   both |= len(present) == 2
   for side in present:
     s = d["by_side"][side]
@@ -639,5 +648,36 @@ sys.exit(0 if ok else 1)
 EOF
 check "12. control: part 1's run (PUCT, the default) logs no Gumbel search" \
   bash -c "! grep -q 'Gumbel search' '$run'/log-actor-*.txt"
+
+# 13. An interrupt while the learner collects.
+sig=$tmp/sigint
+"$bin/make_test_network" dir="$sig" nn_model=resnet_conv_policy input_planes=1 nn_width=8 \
+  nn_depth=1 checkpoints=1 > /dev/null 2>&1 || { echo "FAIL make_test_network (13)"; exit 1; }
+"$bin/az_trainer" --flagfile="$repo/thud/experiments/az_thud.flags" --path="$sig" \
+  --graph_def=vpnet.pb --nn_model=resnet_conv_policy --nn_width=8 --nn_depth=1 \
+  --actors=3 --evaluators=0 --inference_batch_size=2 --inference_threads=1 \
+  --max_simulations=8 --replay_buffer_size=65536 --replay_buffer_reuse=4 \
+  --train_batch_size=64 --checkpoint_freq=1 --max_steps=5 > "$tmp/sigint.log" 2>&1 &
+sig_pid=$!
+for _ in $(seq 120); do  # Until an actor has played a game (at most 60 s).
+  grep -qs 'Actions: ' "$sig"/log-actor-*.txt && break
+  sleep 0.5
+done
+kill -INT "$sig_pid"
+sig_ended=0
+for _ in $(seq 120); do
+  kill -0 "$sig_pid" 2> /dev/null || { sig_ended=1; break; }
+  sleep 0.5
+done
+if [ "$sig_ended" = 1 ]; then
+  wait "$sig_pid"
+  sig_status=$?
+else
+  kill -9 "$sig_pid" 2> /dev/null
+  wait "$sig_pid" 2> /dev/null
+  sig_status=hung
+fi
+check "13. interrupted while collecting, it exits by itself within 60 s, status 0 (it: $sig_status)" \
+  bash -c "[ '$sig_status' = 0 ] && grep -q 'Exiting cleanly' '$tmp/sigint.log'"
 
 finish

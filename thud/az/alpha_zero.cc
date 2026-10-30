@@ -1032,7 +1032,10 @@ void learner(const open_spiel::Game& game, const AlphaZeroConfig& config,
     const bool first_step = step == start_info.start_step;
     const int64_t carried_states = first_step ? carried.states : 0;
     while (!stop->StopRequested() && num_states + carried_states < learn_rate) {
-      absl::optional<Trajectory> trajectory = trajectory_queue->Pop();
+      // Our change (2026-10-30): a second at most, so that a stop is seen — the actors end
+      // their games at a stop and push none (2026-10-27), and an endless wait on the empty
+      // queue hung R7's interrupted trainer (trainer_test.sh 13).
+      absl::optional<Trajectory> trajectory = trajectory_queue->Pop(absl::Seconds(1));
       if (trajectory) {
         num_trajectories += 1;
         total_trajectories += 1;
