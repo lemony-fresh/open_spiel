@@ -114,6 +114,12 @@ ABSL_FLAG(int, kickstart_root_margin, 0,
 ABSL_FLAG(std::string, policy_target, "visits",
           "Each recorded position's policy target: visits (the root's visit counts) or "
           "completed_q (Gumbel AlphaZero's completed Q, from the root's values).");
+ABSL_FLAG(bool, gumbel_search, false,
+          "Self-play's searches as Gumbel AlphaZero's: sequential halving at the root over "
+          "--gumbel_considered sampled actions, the move the halving's winner, the completed-Q "
+          "policy target.");
+ABSL_FLAG(int, gumbel_considered, 16, "Gumbel search: the actions sampled at the root.");
+ABSL_FLAG(double, gumbel_scale, 1, "Gumbel search: the Gumbel noise's scale (0: none).");
 ABSL_FLAG(int, learner_batches, 0,
           "Batches each learning step trains on; 0: one pass over the replay buffer "
           "(its size / train_batch_size), as upstream.");
@@ -273,6 +279,9 @@ int main(int argc, char** argv) {
     SPIEL_CHECK_TRUE(config.kickstart_ties == "even" || config.kickstart_ties == "search");
     config.kickstart_root_margin = absl::GetFlag(FLAGS_kickstart_root_margin);
     config.policy_target = absl::GetFlag(FLAGS_policy_target);
+    config.gumbel_search = absl::GetFlag(FLAGS_gumbel_search);
+    config.gumbel_considered = absl::GetFlag(FLAGS_gumbel_considered);
+    config.gumbel_scale = absl::GetFlag(FLAGS_gumbel_scale);
     SPIEL_CHECK_GE(config.kickstart_root_margin, 0);
     for (int p = 0; p < 2; ++p) {  // Stops here, not in an actor, on a malformed list.
       open_spiel::thud_az::torch_az::AlphaBetaDepth(config, p);

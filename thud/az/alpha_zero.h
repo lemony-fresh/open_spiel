@@ -188,6 +188,14 @@ struct AlphaZeroConfig {
   // policy_target_pruning) or "completed_q" (CompletedQTarget: Gumbel AlphaZero's completed
   // Q, from the root's values; the move is still chosen from the visits).
   std::string policy_target = "visits";
+  // Added (2026-10-29; Gumbel, part two): self-play's searches as Gumbel AlphaZero's
+  // (MCTSBot::SetGumbel: sequential halving over gumbel_considered actions sampled with Gumbel
+  // noise at gumbel_scale, the deterministic rule below the root, no root noise), the move the
+  // halving's winner and the policy target the completed Q (as policy_target=completed_q).
+  // Evaluation games keep PUCT. false (the default): as before.
+  bool gumbel_search = false;
+  int gumbel_considered = 16;
+  double gumbel_scale = 1;
   // Added (thud/DESIGN_dwarf_signal.md, approach D1; 2026-10-13): kickstart weights per
   // player, comma-separated values indexed by the player to move (PerPlayerValues;
   // "0.7,0.3": the dwarfs' positions 0.7, the trolls' 0.3); empty or a missing second
@@ -257,6 +265,9 @@ struct AlphaZeroConfig {
         {"kickstart_ties", kickstart_ties},
         {"kickstart_root_margin", kickstart_root_margin},
         {"policy_target", policy_target},
+        {"gumbel_search", gumbel_search},
+        {"gumbel_considered", gumbel_considered},
+        {"gumbel_scale", gumbel_scale},
         {"temperature", temperature},
         {"temperature_drop", temperature_drop},
         {"cutoff_probability", cutoff_probability},
@@ -391,6 +402,13 @@ struct AlphaZeroConfig {
     policy_target = config_json.count("policy_target")
                         ? config_json.at("policy_target").GetString()
                         : "visits";
+    gumbel_search = config_json.count("gumbel_search") ? config_json.at("gumbel_search").GetBool()
+                                                       : false;
+    gumbel_considered = config_json.count("gumbel_considered")
+                            ? config_json.at("gumbel_considered").GetInt()
+                            : 16;
+    gumbel_scale = config_json.count("gumbel_scale") ? config_json.at("gumbel_scale").GetDouble()
+                                                     : 1;
     temperature = config_json.at("temperature").GetDouble();
     temperature_drop = config_json.at("temperature_drop").GetDouble();
     cutoff_probability = config_json.at("cutoff_probability").GetDouble();

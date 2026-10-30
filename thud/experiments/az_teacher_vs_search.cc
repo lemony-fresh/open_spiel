@@ -33,6 +33,8 @@
 //   cq_target  (2026-10-29) what it would record with --policy_target=completed_q:
 //            (1 - w) x completed_q + w x teacher;
 //   mixW     (2026-10-29, `mixes=W,...`) the target at the teacher's weight W, both sides;
+//   gumbel   (2026-10-29, `gumbel=1`) the completed-Q target of a Gumbel search (16 actions,
+//            scale 1) at the run's own simulations; gumbel_target, it mixed with the teacher;
 //   uniform  every legal move alike — the floor: a candidate no closer than it says nothing;
 // each compared with the references — the same network's search without root noise at each
 // budget in `refs`, the run's settings otherwise (the first the reference proper; each deeper
@@ -224,6 +226,10 @@ int main(int argc, char** argv) {
   // mixes=W,... (2026-10-29: how far to taper the teacher?): for each weight W a candidate
   // mixW, (1 - W) x the first visits + W x teacher, for both sides (the trainer's weights
   // are per side: `target`); empty, the default, none.
+  // gumbel=1 (2026-10-29; Gumbel, part two): the candidates gumbel, the completed-Q target of
+  // a Gumbel search (MCTSBot::SetGumbel: 16 actions, Gumbel scale 1) at the run's own
+  // simulations, and gumbel_target, it mixed with the teacher as `target` mixes the visits.
+  const bool with_gumbel = get("gumbel", "0") == "1";
   std::vector<double> mixes;
   for (absl::string_view w : absl::StrSplit(get("mixes", ""), ',', absl::SkipEmpty())) {
     mixes.push_back(std::stod(std::string(w)));
@@ -279,6 +285,10 @@ int main(int argc, char** argv) {
     candidates.push_back(c);
   }
   for (double w : mixes) candidates.push_back(absl::StrFormat("mix%.2f", w));
+  if (with_gumbel) {
+    candidates.push_back("gumbel");
+    candidates.push_back("gumbel_target");
+  }
   std::cerr << absl::StrFormat("az_teacher_vs_search: %s step %d, game %s, the teacher's depths %d, %d, "
                                "weights %g, %g, temperature %g; precision %s",
                                run, step, config.game, teacher.depth(0), teacher.depth(1),
@@ -382,6 +392,11 @@ int main(int argc, char** argv) {
             searches[p].push_back(make_bot(p, false, sims[b], seed * 1000 + 64 * t + 8 * b + p));
           }
         }
+        std::vector<std::unique_ptr<MCTSBot>> gumbel_searches(2);  // By side, if with_gumbel.
+        for (int p = 0; p < 2 && with_gumbel; ++p) {
+          gumbel_searches[p] = make_bot(p, false, 0, seed * 1000 + 64 * t + 40 + p);
+          gumbel_searches[p]->SetGumbel(16, 1.0);
+        }
         std::vector<std::unique_ptr<MCTSBot>> references[2];
         for (int p = 0; p < 2; ++p) {
           for (int r = 0; r < nr; ++r) references[p].push_back(make_bot(p, true, refs[r], seed));
@@ -428,6 +443,18 @@ int main(int argc, char** argv) {
                             mixes[m] * teacher_policy[a];
             }
             policies.push_back(&mixed[m]);
+          }
+          Policy gumbel_policy, gumbel_target;
+          if (with_gumbel) {
+            std::unique_ptr<SearchNode> groot = gumbel_searches[p]->MCTSearch(state);
+            for (const auto& [a, q] : az::CompletedQTarget(*groot, state, eval.get())) {
+              gumbel_policy[a] = q;
+            }
+            for (Action a : legal) {
+              gumbel_target[a] = (1 - weights[p]) * gumbel_policy[a] + weights[p] * teacher_policy[a];
+            }
+            policies.push_back(&gumbel_policy);
+            policies.push_back(&gumbel_target);
           }
           for (const Policy* q : policies) spread[i].push_back(EffectiveMoves(*q));
           std::string line = absl::StrFormat("{\"position\": %d, \"side\": \"%s\", \"legal\": %d", i,

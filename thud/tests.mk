@@ -56,7 +56,7 @@ TORCH_TESTS := alphabeta_training_test augmentation_test conv_policy_test grow_t
   learning_settings_test legal_policy_test playout_cap_test precision_test \
   growing_buffer_test input_planes_test instrumentation_test kickstart_test \
   pruning_test search_settings_test untried_move_test make_test_network thread_count_test \
-  completed_q_test
+  completed_q_test gumbel_search_test
 TORCH_PROGRAMS := az_trainer az_grow az_restructure az_fresh_optimizer az_batch_norm_convert
 EXPERIMENT_PROGRAMS := az_match teacher_mix_test az_search_cost az_dwarf_value_probe az_unsafe_targets \
   az_dormant_probe az_plasticity az_teacher_vs_search

@@ -25,6 +25,7 @@
 #include <stdint.h>
 
 #include <functional>
+#include <limits>
 #include <memory>
 #include <random>
 #include <string>
@@ -147,6 +148,9 @@ struct SearchNode {
   double total_reward = 0;      // Total reward passing through this node.
   std::vector<double> outcome;  // The reward if each players plays perfectly.
   std::vector<SearchNode> children;  // The successors to this state.
+  // Our change (2026-10-29; Gumbel search, MCTSBot::SetGumbel): the evaluator's value of this
+  // node for the player to move at it, from its first visit; NaN until then, or if terminal.
+  double raw_value = std::numeric_limits<double>::quiet_NaN();
 
   SearchNode() {}
 
@@ -204,6 +208,32 @@ std::vector<std::pair<Action, double>> PrunedRootVisits(const SearchNode& root,
 struct CompletedQSettings {
   double value_scale = 0.1, maxvisit_init = 50, epsilon = 1e-8;  // mctx's defaults.
 };
+// The completed Qs of `node`'s children, transformed as above — sigma(completed Q), mctx's
+// qtransform_completed_by_mix_value — with `child_priors` in the order of the children (for
+// the mixed value) and `raw_value` the node's own value for the player to move at it.
+std::vector<double> TransformedCompletedQ(const SearchNode& node,
+                                          const std::vector<double>& child_priors,
+                                          double raw_value,
+                                          const CompletedQSettings& settings = {});
+
+// Our change (2026-10-29; the user: Gumbel, part two — Danihelka et al., ICLR 2022; mctx's
+// gumbel_muzero_policy): the search's rules, free so that they can be tested against mctx.
+// The visit counts sequential halving considers at each of `num_simulations` root
+// simulations, for `max_considered` sampled actions (mctx's
+// get_sequence_of_considered_visits).
+std::vector<int> GumbelConsideredVisits(int max_considered, int num_simulations);
+// The root child to simulate next (mctx's gumbel_muzero_root_action_selection): among the
+// children with `considered_visit` playouts, the highest gumbel + log prior (less its
+// maximum) + sigma(completed Q); `gumbel` in the order of the children; their priors as the
+// search's (child.prior). Its index; -1 if no child has that count.
+int GumbelRootSelect(const SearchNode& root, const std::vector<double>& gumbel,
+                     int considered_visit, double raw_value,
+                     const CompletedQSettings& settings = {});
+// A child below the root (mctx's gumbel_muzero_interior_action_selection): the highest
+// softmax(log prior + sigma(completed Q)) - playouts / (1 + the children's playouts), the
+// deterministic rule whose visits follow the improved policy. Its index.
+int GumbelInteriorSelect(const SearchNode& node, double raw_value,
+                         const CompletedQSettings& settings = {});
 std::vector<std::pair<Action, double>> CompletedQPolicy(
     const SearchNode& root, const std::vector<std::pair<Action, double>>& prior,
     double raw_value, const CompletedQSettings& settings = {});
@@ -262,6 +292,21 @@ class MCTSBot : public Bot {
   // it (before root noise): above 1 it flattens the prior, keeping its order, so the
   // search spreads over more moves. Empty, or 1 for a player, leaves the prior as it
   // is (upstream's behaviour).
+  // Our change (2026-10-29; Gumbel, part two): searches the root by sequential halving over
+  // `max_considered` actions sampled by Gumbel-top-k (gumbel noise at `scale`: 1 in self-play,
+  // 0 deterministic) and every other node by GumbelInteriorSelect, instead of PUCT; no root
+  // noise (the Gumbel draws explore); max_simulations below the root, after the root's own
+  // evaluation (mctx's num_simulations). GumbelAction picks the move: the halving's winner.
+  void SetGumbel(int max_considered, double scale) {
+    gumbel_ = true;
+    gumbel_considered_ = max_considered;
+    gumbel_scale_ = scale;
+  }
+  bool gumbel() const { return gumbel_; }
+  // The move after a Gumbel search of `root` (the root of the last MCTSearch): among the
+  // children with the most playouts, the highest gumbel + log prior + sigma(completed Q).
+  Action GumbelAction(const SearchNode& root) const;
+
   void SetPolicyTemperatures(std::vector<double> temperatures) {
     policy_temperatures_ = std::move(temperatures);
   }
@@ -310,6 +355,12 @@ class MCTSBot : public Bot {
   double untried_move_reduction_;
   double forced_playouts_k_;
   std::vector<double> policy_temperatures_;  // Our change: SetPolicyTemperatures.
+  // Our change (SetGumbel): its settings, and the last search's draws and schedule.
+  bool gumbel_ = false;
+  int gumbel_considered_ = 16;
+  double gumbel_scale_ = 1;
+  std::vector<double> root_gumbel_;
+  std::vector<int> gumbel_schedule_;
   std::vector<double> prior_floors_;         // Our change: SetPriorFloors.
   std::function<bool(const State&, Action)> prior_floor_marked_;
   double dirichlet_alpha_;

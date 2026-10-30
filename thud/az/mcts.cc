@@ -202,6 +202,45 @@ std::vector<std::pair<Action, double>> PrunedRootVisits(const SearchNode& root,
   return visits;
 }
 
+std::vector<double> TransformedCompletedQ(const SearchNode& node,
+                                          const std::vector<double>& child_priors,
+                                          double raw_value,
+                                          const CompletedQSettings& settings) {
+  const size_t n = node.children.size();
+  SPIEL_CHECK_EQ(child_priors.size(), n);
+  const double tiny = std::numeric_limits<double>::min();
+  std::vector<double> q(n, 0);
+  double playouts = 0, most = 0, visited_prior = 0;
+  for (size_t i = 0; i < n; ++i) {
+    const SearchNode& child = node.children[i];
+    playouts += child.explore_count;
+    most = std::max(most, static_cast<double>(child.explore_count));
+    if (child.explore_count > 0) {
+      q[i] = child.total_reward / child.explore_count;
+      visited_prior += std::max(tiny, child_priors[i]);
+    }
+  }
+  // The mixed value (mctx's _compute_mixed_value): the raw value and the visited children's
+  // prior-weighted mean Q, weighted 1 : playouts.
+  double weighted_q = 0;
+  for (size_t i = 0; i < n; ++i) {
+    if (node.children[i].explore_count > 0) {
+      weighted_q += std::max(tiny, child_priors[i]) * q[i] / visited_prior;
+    }
+  }
+  const double mixed = (raw_value + playouts * weighted_q) / (playouts + 1);
+  double low = std::numeric_limits<double>::infinity(), high = -low;
+  for (size_t i = 0; i < n; ++i) {
+    if (node.children[i].explore_count == 0) q[i] = mixed;  // Completed.
+    low = std::min(low, q[i]);
+    high = std::max(high, q[i]);
+  }
+  const double scale = (settings.maxvisit_init + most) * settings.value_scale /
+                       std::max(high - low, settings.epsilon);
+  for (double& v : q) v = scale * (v - low);
+  return q;
+}
+
 std::vector<std::pair<Action, double>> CompletedQPolicy(
     const SearchNode& root, const std::vector<std::pair<Action, double>>& prior,
     double raw_value, const CompletedQSettings& settings) {
@@ -210,40 +249,17 @@ std::vector<std::pair<Action, double>> CompletedQPolicy(
   if (n == 0) return policy;
   absl::flat_hash_map<Action, double> prior_of(prior.begin(), prior.end());
   const double tiny = std::numeric_limits<double>::min();
-  std::vector<double> p(n), q(n, 0), visits(n);
-  double playouts = 0, most = 0, visited_prior = 0;
+  std::vector<double> p(n);
   for (size_t i = 0; i < n; ++i) {
-    const SearchNode& child = root.children[i];
-    const auto it = prior_of.find(child.action);
+    const auto it = prior_of.find(root.children[i].action);
     p[i] = std::max(tiny, it == prior_of.end() ? 0.0 : it->second);
-    visits[i] = child.explore_count;
-    playouts += visits[i];
-    most = std::max(most, visits[i]);
-    if (visits[i] > 0) {
-      q[i] = child.total_reward / child.explore_count;
-      visited_prior += p[i];
-    }
   }
-  // The mixed value (mctx's _compute_mixed_value): the raw value and the visited children's
-  // prior-weighted mean Q, weighted 1 : playouts.
-  double weighted_q = 0;
-  for (size_t i = 0; i < n; ++i) {
-    if (visits[i] > 0) weighted_q += p[i] * q[i] / visited_prior;
-  }
-  const double mixed = (raw_value + playouts * weighted_q) / (playouts + 1);
-  double low = std::numeric_limits<double>::infinity(), high = -low;
-  for (size_t i = 0; i < n; ++i) {
-    if (visits[i] == 0) q[i] = mixed;  // Completed.
-    low = std::min(low, q[i]);
-    high = std::max(high, q[i]);
-  }
-  const double scale = (settings.maxvisit_init + most) * settings.value_scale /
-                       std::max(high - low, settings.epsilon);
-  // softmax(log p + scale x (q - low)), stably.
+  const std::vector<double> sigma = TransformedCompletedQ(root, p, raw_value, settings);
+  // softmax(log p + sigma), stably.
   std::vector<double> logits(n);
   double top = -std::numeric_limits<double>::infinity();
   for (size_t i = 0; i < n; ++i) {
-    logits[i] = std::log(p[i]) + scale * (q[i] - low);
+    logits[i] = std::log(p[i]) + sigma[i];
     top = std::max(top, logits[i]);
   }
   double sum = 0;
@@ -253,6 +269,105 @@ std::vector<std::pair<Action, double>> CompletedQPolicy(
     policy.emplace_back(root.children[i].action, std::exp(logits[i] - top) / sum);
   }
   return policy;
+}
+
+std::vector<int> GumbelConsideredVisits(int max_considered, int num_simulations) {
+  std::vector<int> sequence;
+  if (max_considered <= 1) {
+    for (int i = 0; i < num_simulations; ++i) sequence.push_back(i);
+    return sequence;
+  }
+  const int log2max = static_cast<int>(std::ceil(std::log2(max_considered)));
+  std::vector<int> visits(max_considered, 0);
+  int considered = max_considered;
+  while (sequence.size() < num_simulations) {
+    const int extra = std::max(
+        1, static_cast<int>(static_cast<double>(num_simulations) / (log2max * considered)));
+    for (int e = 0; e < extra; ++e) {
+      sequence.insert(sequence.end(), visits.begin(), visits.begin() + considered);
+      for (int i = 0; i < considered; ++i) ++visits[i];
+    }
+    considered = std::max(2, considered / 2);
+  }
+  sequence.resize(num_simulations);
+  return sequence;
+}
+
+namespace {
+// The children's priors as the search uses them, in their order.
+std::vector<double> ChildPriors(const SearchNode& node) {
+  std::vector<double> p;
+  p.reserve(node.children.size());
+  for (const SearchNode& c : node.children) p.push_back(c.prior);
+  return p;
+}
+// mctx's score_considered: gumbel + log prior less its maximum + sigma, at least -1e9, for
+// the children with `considered_visit` playouts; the best one's index, -1 if none.
+int BestConsidered(const SearchNode& node, const std::vector<double>& gumbel,
+                   int considered_visit, double raw_value, const CompletedQSettings& settings) {
+  const std::vector<double> p = ChildPriors(node);
+  const std::vector<double> sigma = TransformedCompletedQ(node, p, raw_value, settings);
+  const double tiny = std::numeric_limits<double>::min();
+  double top_logit = -std::numeric_limits<double>::infinity();
+  for (double x : p) top_logit = std::max(top_logit, std::log(std::max(tiny, x)));
+  int best = -1;
+  double best_score = -std::numeric_limits<double>::infinity();
+  for (size_t i = 0; i < node.children.size(); ++i) {
+    if (node.children[i].explore_count != considered_visit) continue;
+    const double score =
+        std::max(-1e9, gumbel[i] + std::log(std::max(tiny, p[i])) - top_logit + sigma[i]);
+    if (best < 0 || score > best_score) {  // The first of equal scores, as jnp.argmax.
+      best = i;
+      best_score = score;
+    }
+  }
+  return best;
+}
+}  // namespace
+
+int GumbelRootSelect(const SearchNode& root, const std::vector<double>& gumbel,
+                     int considered_visit, double raw_value, const CompletedQSettings& settings) {
+  SPIEL_CHECK_EQ(gumbel.size(), root.children.size());
+  return BestConsidered(root, gumbel, considered_visit, raw_value, settings);
+}
+
+int GumbelInteriorSelect(const SearchNode& node, double raw_value,
+                         const CompletedQSettings& settings) {
+  const size_t n = node.children.size();
+  SPIEL_CHECK_GT(n, 0);
+  const std::vector<double> p = ChildPriors(node);
+  const std::vector<double> sigma = TransformedCompletedQ(node, p, raw_value, settings);
+  const double tiny = std::numeric_limits<double>::min();
+  std::vector<double> logits(n);
+  double top = -std::numeric_limits<double>::infinity(), playouts = 0;
+  for (size_t i = 0; i < n; ++i) {
+    logits[i] = std::log(std::max(tiny, p[i])) + sigma[i];
+    top = std::max(top, logits[i]);
+    playouts += node.children[i].explore_count;
+  }
+  double sum = 0;
+  for (size_t i = 0; i < n; ++i) sum += std::exp(logits[i] - top);
+  int best = 0;
+  double best_score = -std::numeric_limits<double>::infinity();
+  for (size_t i = 0; i < n; ++i) {
+    const double score =
+        std::exp(logits[i] - top) / sum - node.children[i].explore_count / (1 + playouts);
+    if (score > best_score) {
+      best = i;
+      best_score = score;
+    }
+  }
+  return best;
+}
+
+Action MCTSBot::GumbelAction(const SearchNode& root) const {
+  SPIEL_CHECK_TRUE(gumbel_);
+  SPIEL_CHECK_EQ(root_gumbel_.size(), root.children.size());
+  int most = 0;
+  for (const SearchNode& c : root.children) most = std::max(most, c.explore_count);
+  const int best = BestConsidered(root, root_gumbel_, most, root.raw_value, {});
+  SPIEL_CHECK_GE(best, 0);
+  return root.children[best].action;
 }
 
 bool SearchNode::CompareFinal(const SearchNode& b) const {
@@ -479,7 +594,7 @@ std::unique_ptr<State> MCTSBot::ApplyTreePolicy(
         }
         ApplyPriorFloor(prior_floors_[to_move], marked, &legal_actions);
       }
-      if (current_node == root && dirichlet_alpha_ > 0) {
+      if (current_node == root && dirichlet_alpha_ > 0 && !gumbel_) {
         std::vector<double> noise =
             dirichlet_noise(legal_actions.size(), dirichlet_alpha_, &rng_);
         for (int i = 0; i < legal_actions.size(); i++) {
@@ -496,6 +611,17 @@ std::unique_ptr<State> MCTSBot::ApplyTreePolicy(
         current_node->children.emplace_back(action, player, prior);
       }
       nodes_ += current_node->children.capacity();
+      // Our change (SetGumbel): the root's Gumbel draws and its halving schedule.
+      if (gumbel_ && current_node == root) {
+        root_gumbel_.clear();
+        for (size_t i = 0; i < current_node->children.size(); ++i) {
+          const double u = std::uniform_real_distribution<double>(
+              std::numeric_limits<double>::min(), 1.0)(rng_);
+          root_gumbel_.push_back(gumbel_scale_ * -std::log(-std::log(u)));
+        }
+        gumbel_schedule_ = GumbelConsideredVisits(
+            std::min<int>(gumbel_considered_, current_node->children.size()), max_simulations_);
+      }
     }
 
     Action selected_action;
@@ -518,6 +644,19 @@ std::unique_ptr<State> MCTSBot::ApplyTreePolicy(
             break;
           }
         }
+      } else if (gumbel_) {  // Our change (SetGumbel): the Gumbel rules.
+        int chosen;
+        if (current_node == root) {
+          int simulation = 0;
+          for (const SearchNode& c : root->children) simulation += c.explore_count;
+          SPIEL_CHECK_LT(simulation, gumbel_schedule_.size());
+          chosen = GumbelRootSelect(*root, root_gumbel_, gumbel_schedule_[simulation],
+                                    root->raw_value);
+          SPIEL_CHECK_GE(chosen, 0);
+        } else {
+          chosen = GumbelInteriorSelect(*current_node, current_node->raw_value);
+        }
+        chosen_child = &current_node->children[chosen];
       } else {
         // Otherwise choose node with largest UCT value.
         double max_value = -std::numeric_limits<double>::infinity();
@@ -578,7 +717,7 @@ std::unique_ptr<SearchNode> MCTSBot::MCTSearch(const State& state) {
   for (int i = 0; (max_wall_clock_time_ > 0
                        ? absl::ToDoubleSeconds(absl::Now() - start_time) <
                              max_wall_clock_time_
-                       : i < max_simulations_);
+                       : i < max_simulations_ + (gumbel_ ? 1 : 0));
        ++i) {
     visit_path.clear();
     returns.clear();
@@ -594,6 +733,8 @@ std::unique_ptr<SearchNode> MCTSBot::MCTSearch(const State& state) {
     } else {
       returns = evaluator_->Evaluate(*working_state);
       solved = false;
+      // Our change (SetGumbel): the node's own value for its player to move.
+      visit_path.back()->raw_value = returns[working_state->CurrentPlayer()];
     }
 
     // Propagate values back.

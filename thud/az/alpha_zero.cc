@@ -228,8 +228,8 @@ Trajectory PlayGame(Logger* logger, int game_num, const open_spiel::Game& game,
       // random number is drawn, so the games are as before.
       const bool full = fast_bots == nullptr || fast_bots->empty() || full_share >= 1 ||
                         absl::uniform_real_distribution<double>(0.0, 1.0)(*rng) < full_share;
-      std::unique_ptr<SearchNode> root =
-          (full ? (*bots)[player] : (*fast_bots)[player])->MCTSearch(*state);
+      MCTSBot* bot = full ? (*bots)[player].get() : (*fast_bots)[player].get();
+      std::unique_ptr<SearchNode> root = bot->MCTSearch(*state);
       open_spiel::ActionsAndProbs policy;
       policy.reserve(root->children.size());
       for (const SearchNode& c : root->children) {
@@ -238,7 +238,9 @@ Trajectory PlayGame(Logger* logger, int game_num, const open_spiel::Game& game,
       }
       NormalizePolicy(&policy);
       open_spiel::Action action;
-      if (history.size() >= temperature_drop) {
+      if (bot->gumbel()) {  // Our change (2026-10-29): the halving's winner.
+        action = bot->GumbelAction(*root);
+      } else if (history.size() >= temperature_drop) {
         action = root->BestChild().action;
       } else {
         action = open_spiel::SampleAction(policy, *rng).first;
@@ -249,7 +251,7 @@ Trajectory PlayGame(Logger* logger, int game_num, const open_spiel::Game& game,
         // the visit counts with KataGo's pruning, if on; the move above was still
         // chosen from the unpruned counts, as before.
         open_spiel::ActionsAndProbs target;
-        if (completed_q_target && prior_source != nullptr) {  // Our change (2026-10-29).
+        if ((completed_q_target || bot->gumbel()) && prior_source != nullptr) {  // 2026-10-29.
           target = CompletedQTarget(*root, *state, prior_source);
         } else if (pruning_k > 0) {
           for (const auto& [a, n] : PrunedRootVisits(*root, uct_c, pruning_k)) {
@@ -520,6 +522,10 @@ std::unique_ptr<MCTSBot> InitAZBot(const AlphaZeroConfig& config,
       // Our change: KataGo's forced playouts in self-play, with the pruning.
       !evaluation && config.policy_target_pruning ? kForcedPlayoutsK : 0);
   bot->SetPolicyTemperatures(PerPlayerValues(config.player_policy_temperature));
+  // Our change (2026-10-29): Gumbel AlphaZero's search in self-play.
+  if (config.gumbel_search && !evaluation) {
+    bot->SetGumbel(config.gumbel_considered, config.gumbel_scale);
+  }
   return bot;
 }
 
@@ -606,6 +612,10 @@ void actor(const open_spiel::Game& game, const AlphaZeroConfig& config, int num,
   }
   if (config.policy_target != "visits") {  // Our change (2026-10-29).
     logger->Print("Policy target: %s", config.policy_target);
+  }
+  if (config.gumbel_search) {  // Our change (2026-10-29).
+    logger->Print("Gumbel search: %d considered actions, Gumbel scale %g; the completed-Q target",
+                  config.gumbel_considered, config.gumbel_scale);
   }
   int waited_games = 0, total_games = 0;  // Our change: games that waited for the queue.
   for (int game_num = 1; !stop->StopRequested(); ++game_num) {
@@ -1364,6 +1374,8 @@ bool AlphaZero(AlphaZeroConfig config, StopToken* stop, bool resuming) {
   // Our change (2026-10-29): the policy target is one of these, whether from flags or a
   // resumed config.json.
   SPIEL_CHECK_TRUE(config.policy_target == "visits" || config.policy_target == "completed_q");
+  SPIEL_CHECK_GE(config.gumbel_considered, 1);
+  SPIEL_CHECK_GE(config.gumbel_scale, 0);
   std::shared_ptr<const open_spiel::Game> game =
       open_spiel::LoadGame(config.game);
 

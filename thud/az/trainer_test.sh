@@ -90,7 +90,7 @@
 #   9. az_teacher_vs_search (2026-10-25) on the run: its candidates' measures in range, the
 #      uniform spread's agreement and breadth as computed, the visits' gap to themselves 0;
 #      mixes= (2026-10-29): at the run's own weights a mix is the target exactly (the control:
-#      the dwarfs' mix at 0.3 is not).
+#      the dwarfs' mix at 0.3 is not); gumbel=1: its two candidates in range.
 #  10. The carry-over and the stop between moves (2026-10-27): a fresh run of one step with a
 #      long last learning step (300 batches) and short battles (10 turns without a capture
 #      end one), so that games wait in the queue at its end:
@@ -106,6 +106,10 @@
 #      wiring: completed_q_test): a fresh run of one step with it exits 0 with finite losses,
 #      config.json records it and the actors log it; the control, part 1's run (visits, the
 #      default) logs no policy target.
+#  12. The Gumbel search (2026-10-29, --gumbel_search; its rules and searches: gumbel_search_test):
+#      a fresh run of one step with it (4 considered actions, 16 simulations, an evaluator
+#      playing on PUCT) exits 0 with finite losses, config.json records it and the actors log
+#      it; the control, part 1's run logs none.
 #
 #   thud/az/trainer_test.sh [BIN_DIR]    # default build-tests/bin
 #
@@ -230,7 +234,13 @@ for d in map(json.loads, open(sys.argv[1])):
   for side in present:
     s = d["by_side"][side]
     kl, mass = s.get("mean_kl_teacher_prior"), s.get("mean_prior_on_teacher_best")
-    ok &= kl is not None and math.isfinite(kl) and kl >= 0 and mass is not None and 0 <= mass <= 1
+    good = kl is not None and math.isfinite(kl) and kl >= 0 and mass is not None and 0 <= mass <= 1
+    if not good:  # Its cause, for the log (2026-10-29: failed twice under load, not reproduced).
+      print(f"step {d['step']} {side}: kl {kl!r} mass {mass!r} positions {s.get('positions')}")
+    ok &= good
+if not both:
+  print("no step with both sides' self-play positions:",
+        [(d["step"], sorted(d["by_side"])) for d in map(json.loads, open(sys.argv[1]))])
 sys.exit(0 if ok and both else 1)
 EOF
 check "1. the actors log the kickstarting settings" \
@@ -422,7 +432,7 @@ check "8. ... run again, the same results, nothing trained" bash -c \
 # 9. The teacher against the search (az_teacher_vs_search, 2026-10-24): on the run's own
 # games, with its settings (the teacher at depths 1 and 2, weights 0.7 and 0.3), the
 # trainer's own budget and 24 simulations against references of 16 and 32.
-"$bin/az_teacher_vs_search" run="$run" step=-1 sims=24 refs=16,32 last=2 max=3 threads=2 batch=2 mixes=0.3,0.7 \
+"$bin/az_teacher_vs_search" run="$run" step=-1 sims=24 refs=16,32 last=2 max=3 threads=2 batch=2 mixes=0.3,0.7 gumbel=1 \
   inference_threads=1 > "$tmp/teacher_vs_search.jsonl" 2> "$tmp/teacher_vs_search.err"
 check "9. az_teacher_vs_search exits 0 (its self-test passed), with the run's teacher" \
   bash -c "[ $? -eq 0 ] && grep -q \"the teacher's depths 1, 2, weights 0.7, 0.3\" '$tmp/teacher_vs_search.err'"
@@ -435,12 +445,13 @@ summaries = [d for d in lines if d.get("summary") and not d.get("stability")]
 stability = [d for d in lines if d.get("stability")]
 ok = len(rows) >= 4 and {d["side"] for d in rows} == {"dwarfs", "trolls"}
 for d in rows:
-  for c in ("visits", "visits24", "completed_q", "teacher", "target", "cq_target", "uniform"):
+  for c in ("visits", "visits24", "completed_q", "teacher", "target", "cq_target", "uniform",
+            "gumbel", "gumbel_target"):
     for r in (16, 32):
       x = d[f"{c}_ref{r}"]
       ok &= all(0 <= x[k] <= 1 + 1e-9 for k in ("agrees", "mass_on_best", "distance"))
     ok &= abs(d[f"uniform_ref16"]["agrees"] - 1 / d["legal"]) < 1e-3
-ok &= len(summaries) == 2 * 9 * 2 and len(stability) == 2
+ok &= len(summaries) == 2 * 11 * 2 and len(stability) == 2
 # mixes= (2026-10-29): at the run's own weights (0.7 for the dwarfs, 0.3 for the trolls) a mix
 # is the target exactly; at the other side's weight it is not.
 def row(side, c, r):
@@ -559,5 +570,30 @@ sys.exit(0 if ok else 1)
 EOF
 check "11. control: part 1's run (visits, the default) logs no policy target" \
   bash -c "! grep -q 'Policy target' '$run'/log-actor-*.txt"
+
+# 12. The Gumbel search (2026-10-29, --gumbel_search; its rules and searches: gumbel_search_test).
+gs=$tmp/gumbel
+"$bin/make_test_network" dir="$gs" nn_model=resnet_conv_policy input_planes=1 nn_width=8 \
+  nn_depth=1 checkpoints=1 > /dev/null 2>&1 || { echo "FAIL make_test_network (12)"; exit 1; }
+"$bin/az_trainer" --flagfile="$repo/thud/experiments/az_thud.flags" --path="$gs" \
+  --game="thud(max_turns_without_capture=10)" \
+  --graph_def=vpnet.pb --nn_model=resnet_conv_policy --nn_width=8 --nn_depth=1 \
+  --actors=2 --evaluators=1 --inference_batch_size=2 --inference_threads=1 \
+  --max_simulations=16 --replay_buffer_size=2048 --replay_buffer_reuse=4 \
+  --train_batch_size=64 --learner_batches=2 --checkpoint_freq=1 --max_steps=1 \
+  --gumbel_search --gumbel_considered=4 > "$tmp/gumbel.log" 2>&1
+check "12. a run with --gumbel_search exits 0" [ $? -eq 0 ]
+check "12. ... finite losses, config.json records it, the actors log it" python3 - "$gs" <<'EOF'
+import glob, json, math, sys
+d = [json.loads(l) for l in open(sys.argv[1] + "/learner.jsonl")]
+ok = len(d) == 1 and all(math.isfinite(d[0]["loss"][k]) for k in ("policy", "value"))
+c = json.load(open(sys.argv[1] + "/config.json"))
+ok &= c["gumbel_search"] is True and c["gumbel_considered"] == 4
+ok &= all("Gumbel search: 4 considered actions" in open(f).read()
+          for f in glob.glob(sys.argv[1] + "/log-actor-*.txt"))
+sys.exit(0 if ok else 1)
+EOF
+check "12. control: part 1's run (PUCT, the default) logs no Gumbel search" \
+  bash -c "! grep -q 'Gumbel search' '$run'/log-actor-*.txt"
 
 finish
