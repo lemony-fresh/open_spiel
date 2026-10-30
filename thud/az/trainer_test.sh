@@ -121,6 +121,12 @@
 #      long (long battles, 16,384 positions) is interrupted once the actors have played a
 #      game; it must exit by itself within 60 s, with status 0 and "Exiting cleanly". The
 #      code before the fix hung here (the test's positive control, run 2026-10-30).
+#  14. az_relabel (2026-10-30, the user's test of deeper targets) on part 1's run: the four
+#      buffers written and read back with each position's target the one meant (the tool's
+#      own check), the picks a share of each side, the surprise picks the most surprised, the
+#      deep search changing the targets (the control: all_low and all_deep differ); its probe
+#      mode on the held-out games — the same network twice paired to exactly 0, another
+#      network not (the control).
 #
 #   thud/az/trainer_test.sh [BIN_DIR]    # default build-tests/bin
 #
@@ -679,5 +685,45 @@ else
 fi
 check "13. interrupted while collecting, it exits by itself within 60 s, status 0 (it: $sig_status)" \
   bash -c "[ '$sig_status' = 0 ] && grep -q 'Exiting cleanly' '$tmp/sigint.log'"
+
+# 14. az_relabel.
+relabel=$tmp/relabel
+"$bin/az_relabel" run="$run" step=-1 out="$relabel" games=6 held_out=3 deep=12,8 share=0.5 \
+  threads=2 batch=2 inference_threads=1 > "$tmp/relabel.jsonl" 2> "$tmp/relabel.err"
+check "14. az_relabel exits 0 (its self-test and its read-back passed), four buffers" \
+  bash -c "[ $? -eq 0 ] && for v in all_low all_deep rand_deep surp_deep; do [ -s '$relabel'/\$v.data ] || exit 1; done"
+check "14. ... the picks half of each side, the surprise picks the most surprised; the control: the deep search changes targets (all_low and all_deep differ)" \
+  python3 - "$relabel" "$tmp/relabel.jsonl" <<'EOF'
+import json, sys
+rows = [json.loads(l) for l in open(sys.argv[1] + "/positions.jsonl")]
+summaries = [json.loads(l) for l in open(sys.argv[2]) if l.strip()]
+ok = len(rows) > 0 and len(summaries) == 2
+for side in ("dwarfs", "trolls"):
+  r = [x for x in rows if x["side"] == side]
+  k = int(0.5 * len(r) + 0.5)  # As llround: halves away from 0 (Python's round goes to even).
+  ok &= sum(x["rand"] for x in r) == k and sum(x["surp"] for x in r) == k
+  picked = [x["surprise"] for x in r if x["surp"]]
+  left = [x["surprise"] for x in r if not x["surp"]]
+  ok &= not picked or not left or min(picked) >= max(left)
+ok &= any(x["change"] > 0 for x in rows) and all(x["change"] >= 0 for x in rows)
+ok &= all(-1 <= x["value"] <= 1 for x in rows)
+if not ok: print([(x["side"], x["rand"], x["surp"], round(x["surprise"], 3)) for x in rows][:12])
+sys.exit(0 if ok else 1)
+EOF
+check "14. ... the control at the bytes: all_low and all_deep differ" \
+  bash -c "! cmp -s '$relabel/all_low.data' '$relabel/all_deep.data'"
+"$bin/az_relabel" probe=1 run="$run" step=-1 out="$relabel" ref=16 max=3 threads=2 batch=2 \
+  inference_threads=1 nets="a=$run:-1,a2=$run:-1,other=$carry:-1" > "$tmp/probe.jsonl" \
+  2> "$tmp/probe.err"
+check "14. the probe: exits 0; the same network twice paired to exactly 0; the control: another network not" \
+  python3 - "$tmp/probe.jsonl" $? <<'EOF'
+import json, sys
+lines = [json.loads(l) for l in open(sys.argv[1]) if l.strip()]
+s = {(d["side"], d["net"]): d for d in lines if d.get("summary")}
+ok = sys.argv[2] == "0" and len(s) == 6
+ok &= all(s[(side, "a2")]["minus_first"]["distance"] == [0, 0, 0] for side in ("dwarfs", "trolls"))
+ok &= any(s[(side, "other")]["minus_first"]["distance"][0] != 0 for side in ("dwarfs", "trolls"))
+sys.exit(0 if ok else 1)
+EOF
 
 finish

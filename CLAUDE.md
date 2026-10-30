@@ -385,7 +385,7 @@ and the teacher in one network's prior, `teacher_mix_a=`; since 2026-10-28 `side
 `az_capture_targets`, `az_teacher_vs_search` (2026-10-25: the trainer's search's visits at
 several budgets, the teacher's policy and the recorded target, each against the network's own
 long search, on a run's own games; since 2026-10-29 `gumbel=1`, a Gumbel search's target and move, `considered=M,...` one per
-count; since 2026-10-30 `gumbel_sims=N,...` at each budget, `targetN`, the trainer's target at each budget of `sims`, and per position the search's signals — the top two moves' visit gap, unstable, surprise, breadth, the teacher's gap), `az_teacher_stats` (since 2026-10-24 the search's time a position,
+count; since 2026-10-30 `gumbel_sims=N,...` at each budget, `targetN`, the trainer's target at each budget of `sims`, and per position the search's signals — the top two moves' visit gap, unstable, surprise, breadth, the teacher's gap), `az_relabel` (2026-10-30: a run's own self-play positions searched again as the trainer does at its budget and a deeper one, four buffers of the same positions — every target low, every target deep, deep on a random share, deep on the most surprised share — and `probe=1`, trained networks' priors against a long search on held-out games), `az_teacher_stats` (since 2026-10-24 the search's time a position,
 `ms_a_position`, and `check=1`: the table against none; since 2026-10-27 a line a side with the
 root moves' score gaps, the root window's bound per margin and the nodes a position, and
 `margin=M`: the timed search with the window, its promise checked; `quick=1`: the timed search
