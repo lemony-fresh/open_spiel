@@ -37,6 +37,16 @@
 #   7. Simulations by side (side_sims=D,T, 2026-10-27): 4,4 plays the battles of sims=4, in
 #      both paths (plain, and self-play's conditions with noise=1,1); the control: 6,2
 #      plays other battles, and the summary records it.
+#   8. Gumbel searches (gumbel_a=M, gumbel_b=M, 2026-10-29): gumbel_a=4 plays the same battles
+#      with 1 and 2 threads, in both paths (plain, and with noise=1,1); the controls: it
+#      differs from the match without it, the summary records it, gumbel_scale_a=0 plays
+#      other battles than scale 1, and gumbel_b=4 others than gumbel_a=4. That A searches the
+#      Gumbel way: with one action considered and no noise every simulation goes to the
+#      prior's best, which it then plays whatever the budget, so sims_a=4 and sims_a=12 play
+#      the same battles (PUCT's would differ); the control: with 4 considered they differ.
+#      Not distinguished here: the halving's winner (GumbelAction, tested in
+#      gumbel_search_test) from the most visited child, which A would play otherwise.
+#      gumbel_b against a player without a network is refused.
 #
 #   thud/experiments/az_match_test.sh [BIN_DIR]    # default build-tests/bin
 #
@@ -156,6 +166,30 @@ match side62 side_sims=6,2 && {
   check "7. control: the summary records side_sims [6, 2]" \
     grep -q '"side_sims": \[6, 2\]' "$tmp/side62.jsonl"
 }
+
+match gumbel_1 gumbel_a=4 && match gumbel_2 gumbel_a=4 threads=2 && {
+  check "8. gumbel_a=4: 1 and 2 threads play the same battles" same gumbel_1 gumbel_2
+  check "8. control: gumbel_a=4 differs from the match without it" differ gumbel_1 base
+  check "8. control: the summary records gumbel_a [4, 1]" \
+    grep -q '"gumbel_a": \[4, 1\]' "$tmp/gumbel_1.jsonl"
+}
+match gumbel_noise_1 gumbel_a=4 noise=1,1 && match gumbel_noise_2 gumbel_a=4 noise=1,1 threads=2 &&
+  check "8. gumbel_a=4 with noise=1,1: 1 and 2 threads play the same battles" \
+    same gumbel_noise_1 gumbel_noise_2
+match gumbel_scale0 gumbel_a=4 gumbel_scale_a=0 &&
+  check "8. control: gumbel_scale_a=0 plays other battles than scale 1" differ gumbel_scale0 gumbel_1
+match gumbel_b gumbel_b=4 &&
+  check "8. control: gumbel_b=4 plays other battles than gumbel_a=4" differ gumbel_b gumbel_1
+match gumbel_m1_s4 gumbel_a=1 gumbel_scale_a=0 sims_a=4 sims_b=4 &&
+  match gumbel_m1_s12 gumbel_a=1 gumbel_scale_a=0 sims_a=12 sims_b=4 &&
+  check "8. one action considered, no noise: A plays the prior's best at 4 and 12 simulations" \
+    same gumbel_m1_s4 gumbel_m1_s12
+match gumbel_m4_s4 gumbel_a=4 gumbel_scale_a=0 sims_a=4 sims_b=4 &&
+  match gumbel_m4_s12 gumbel_a=4 gumbel_scale_a=0 sims_a=12 sims_b=4 &&
+  check "8. control: with 4 considered, 4 and 12 simulations play other battles" \
+    differ gumbel_m4_s4 gumbel_m4_s12
+check "8. gumbel_b against b=alphabeta:1 is refused" bash -c "! OMP_NUM_THREADS=1 \
+  '$bin/az_match' a='$tmp/a:0' b=alphabeta:1 sims=4 pairs=1 gumbel_b=4 > /dev/null 2>&1"
 
 if [ "$failures" -eq 0 ]; then echo "ALL PASSED"; else echo "$failures FAILED"; fi
 [ "$failures" -eq 0 ]

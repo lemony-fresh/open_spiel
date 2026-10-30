@@ -82,10 +82,19 @@
 //     temperature_b=LIST progress=0 cache=262144 share=0 mcts_memory=1000 \
 //     hexparrot_player=PATH games=PATH capture_floor_a=LIST noise=LIST noise_alpha=0.1 \
 //     noise_epsilon=0.25 sample_plies=0 teacher_mix_a=LIST teacher_depth=2 \
-//     teacher_temperature=0.25 devices=/cpu:0 precision_a=float32 precision_b=float32]
+//     teacher_temperature=0.25 devices=/cpu:0 precision_a=float32 precision_b=float32 \
+//     gumbel_a=0 gumbel_b=0 gumbel_scale_a=1 gumbel_scale_b=1]
 // `precision_a`, `precision_b` (2026-10-19; thud/PLAN.md, mixed precision): each network's
 // inference — float32, mixed (the trunk in bfloat16, the heads in float32) or bfloat16
 // (VPNetModel::SetInferencePrecision); with share=1 network A's for both sides.
+// `gumbel_a=M`, `gumbel_b=M` (2026-10-29; Gumbel, part two — does its search play better at
+// self-play's budgets?): that network searches as the trainer's --gumbel_search does
+// (MCTSBot::SetGumbel: sequential halving over M sampled actions at the root, the
+// deterministic rule below it) and plays the halving's winner (GumbelAction), in every
+// battle and either path; `gumbel_scale_a`, `gumbel_scale_b` the Gumbel noise (default 1, as
+// in self-play; 0: the top M by prior, mctx's setting for evaluating perfect-information
+// games). 0, the default: PUCT, as before. Root noise (`noise`) does not reach a Gumbel
+// search, and it plays the halving's winner in `sample_plies` too (its draws explore).
 // `devices=LIST` (2026-10-15): where each network runs, comma-separated, one copy of it on
 // each (as the trainer's --devices: cpu, cuda:0, cuda:1, ...; cuda:0,cuda:0 puts two
 // copies on one GPU). Default /cpu:0, as before.
@@ -221,18 +230,21 @@ Chooser NetworkChooser(MCTSBot* bot) {
   return [bot](const open_spiel::State& state) {
     std::unique_ptr<SearchNode> root = bot->MCTSearch(state);
     simulations_done += root->explore_count;
-    return root->BestChild().action;
+    return bot->gumbel() ? bot->GumbelAction(*root) : root->BestChild().action;
   };
 }
 
 // A network's move in self-play's conditions (`noise`, `sample_plies`): searched by
 // bots[the player to move], and in the first `sample_plies` plies sampled from the root's
-// visit counts (the trainer's temperature 1), else its most visited.
+// visit counts (the trainer's temperature 1), else its most visited; a Gumbel search's
+// always the halving's winner, as the trainer plays it.
 Chooser SelfPlayChooser(std::array<MCTSBot*, 2> bots, int sample_plies,
                         std::mt19937* rng) {
   return [bots, sample_plies, rng](const open_spiel::State& state) {
-    std::unique_ptr<SearchNode> root = bots[state.CurrentPlayer()]->MCTSearch(state);
+    MCTSBot* bot = bots[state.CurrentPlayer()];
+    std::unique_ptr<SearchNode> root = bot->MCTSearch(state);
     simulations_done += root->explore_count;
+    if (bot->gumbel()) return bot->GumbelAction(*root);
     if (state.MoveNumber() >= sample_plies) return root->BestChild().action;
     open_spiel::ActionsAndProbs visits;
     for (const SearchNode& child : root->children) {
@@ -504,6 +516,13 @@ int main(int argc, char** argv) {
       open_spiel::thud_az::torch_az::PerPlayerValues(teacher_mix_list);
   const int teacher_depth = args.GetInt("teacher_depth", 2);
   const double teacher_temperature = std::stod(args.Get("teacher_temperature", "0.25"));
+  const int gumbel_a = args.GetInt("gumbel_a", 0), gumbel_b = args.GetInt("gumbel_b", 0);
+  const double gumbel_scale_a = std::stod(args.Get("gumbel_scale_a", "1"));
+  const double gumbel_scale_b = std::stod(args.Get("gumbel_scale_b", "1"));
+  SPIEL_CHECK_GE(gumbel_a, 0);
+  SPIEL_CHECK_GE(gumbel_b, 0);
+  SPIEL_CHECK_GE(gumbel_scale_a, 0);
+  SPIEL_CHECK_GE(gumbel_scale_b, 0);
   // Self-play's conditions: fresh searches every battle (SelfPlayChooser).
   const bool self_play_conditions =
       sample_plies > 0 || std::any_of(noise.begin(), noise.end(),
@@ -525,6 +544,9 @@ int main(int argc, char** argv) {
   const bool outside = kind_b == "mcts" || kind_b == "alphabeta" || kind_b == "hexparrot" ||
                        kind_b == "teacher";
   const int strength_b = outside ? std::stoi(spec_b.substr(kind_b.size() + 1)) : 0;
+  if (outside && gumbel_b > 0) {
+    open_spiel::SpielFatalError("gumbel_b= needs network B; " + spec_b + " searches without one");
+  }
   if (outside && kind_b == "hexparrot") {
     // A Python player that stopped shows as an error reading its reply, not a SIGPIPE.
     std::signal(SIGPIPE, SIG_IGN);
@@ -626,7 +648,8 @@ int main(int argc, char** argv) {
                           open_spiel::thud_az::UntriedMoveValue untried_rule,
                           const std::vector<double>& temperatures,
                           const std::vector<double>& capture_floors, int bot_seed,
-                          double dirichlet_alpha, double dirichlet_epsilon) {
+                          double dirichlet_alpha, double dirichlet_epsilon, int gumbel,
+                          double gumbel_scale) {
         auto bot = std::make_unique<MCTSBot>(
             *game, eval, /*uct_c=*/2, simulations, /*max_memory_mb=*/1000, /*solve=*/false,
             bot_seed, /*verbose=*/false,
@@ -634,6 +657,7 @@ int main(int argc, char** argv) {
             dirichlet_epsilon,
             /*dont_return_chance_node=*/false, /*max_wall_clock_time=*/-1, untried_rule);
         bot->SetPolicyTemperatures(temperatures);
+        if (gumbel > 0) bot->SetGumbel(gumbel, gumbel_scale);
         if (!capture_floors.empty()) {
           bot->SetPriorFloors(capture_floors, [](const open_spiel::State& s, Action a) {
             return absl::EndsWith(s.ActionToString(a), "x");
@@ -668,11 +692,11 @@ int main(int argc, char** argv) {
           const int base = 8 * BattleSeed(seed, i, a_player);
           std::unique_ptr<MCTSBot> a =
               make_bot(search_eval_a, sims_for(sims_a, a_player), rule_a, temperatures_a,
-                       capture_floors_a, base, 0, 0);
+                       capture_floors_a, base, 0, 0, gumbel_a, gumbel_scale_a);
           std::unique_ptr<MCTSBot> b;
           if (!outside) {
             b = make_bot(eval_b, sims_for(sims_b, 1 - a_player), rule_b, temperatures_b, {},
-                         base + 2, 0, 0);
+                         base + 2, 0, 0, gumbel_b, gumbel_scale_b);
           }
           return Play(*game, openings[i], NetworkChooser(a.get()),
                       outside ? choose_outside : NetworkChooser(b.get()), a_player);
@@ -683,10 +707,11 @@ int main(int argc, char** argv) {
           const bool noisy = p < noise.size() && noise[p] != 0;
           const double alpha = noisy ? noise_alpha : 0, epsilon = noisy ? noise_epsilon : 0;
           bots_a[p] = make_bot(search_eval_a, sims_for(sims_a, p), rule_a, temperatures_a,
-                               capture_floors_a, base + p, alpha, epsilon);
+                               capture_floors_a, base + p, alpha, epsilon, gumbel_a,
+                               gumbel_scale_a);
           if (!outside) {
             bots_b[p] = make_bot(eval_b, sims_for(sims_b, p), rule_b, temperatures_b, {},
-                                 base + 2 + p, alpha, epsilon);
+                                 base + 2 + p, alpha, epsilon, gumbel_b, gumbel_scale_b);
           }
         }
         std::mt19937 rng(base + 4);
@@ -788,6 +813,12 @@ int main(int argc, char** argv) {
             << (capture_floor_a.empty()
                     ? ""
                     : absl::StrFormat(", \"capture_floor_a\": \"%s\"", capture_floor_a))
+            << (gumbel_a == 0 ? ""
+                              : absl::StrFormat(", \"gumbel_a\": [%d, %g]", gumbel_a,
+                                                gumbel_scale_a))
+            << (gumbel_b == 0 ? ""
+                              : absl::StrFormat(", \"gumbel_b\": [%d, %g]", gumbel_b,
+                                                gumbel_scale_b))
             << (self_play_conditions
                     ? absl::StrFormat(", \"noise\": \"%s\", \"noise_alpha\": %g, "
                                       "\"noise_epsilon\": %g, \"sample_plies\": %d, "

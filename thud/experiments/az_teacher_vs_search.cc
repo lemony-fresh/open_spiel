@@ -35,6 +35,9 @@
 //   mixW     (2026-10-29, `mixes=W,...`) the target at the teacher's weight W, both sides;
 //   gumbel   (2026-10-29, `gumbel=1`) the completed-Q target of a Gumbel search (16 actions,
 //            scale 1) at the run's own simulations; gumbel_target, it mixed with the teacher;
+//            gumbel_move (2026-10-29), the move that search plays (GumbelAction), all its
+//            probability on it; with `considered=M,...` one search of each M sampled actions,
+//            the names gumbelM, gumbelM_target and gumbelM_move, and `gumbel_scale` its noise;
 //   uniform  every legal move alike — the floor: a candidate no closer than it says nothing;
 // each compared with the references — the same network's search without root noise at each
 // budget in `refs`, the run's settings otherwise (the first the reference proper; each deeper
@@ -56,7 +59,8 @@
 //   thud/build_programs.sh az_teacher_vs_search
 //   OMP_NUM_THREADS=4 build-shared/az_teacher_vs_search run=RUN_DIR step=STEP \
 //     [sims=(the run's) refs=2000,4000 last=2 max=100 threads=32 batch=32
-//      inference_threads=2 seed=1 precision=(the run's) depths=(the run's teacher's)]
+//      inference_threads=2 seed=1 precision=(the run's) depths=(the run's teacher's)
+//      mixes=W,... gumbel=0 considered=16 gumbel_scale=1]
 //
 // `depths` ("5,5"): the teacher's depths per side instead of the run's.
 //
@@ -229,7 +233,17 @@ int main(int argc, char** argv) {
   // gumbel=1 (2026-10-29; Gumbel, part two): the candidates gumbel, the completed-Q target of
   // a Gumbel search (MCTSBot::SetGumbel: 16 actions, Gumbel scale 1) at the run's own
   // simulations, and gumbel_target, it mixed with the teacher as `target` mixes the visits.
+  // considered=M,... (2026-10-29; the dwarfs' ~250 legal moves under a flat prior: are 16
+  // too few?): one Gumbel search for each M; gumbel_scale=S its Gumbel noise (0: the top M
+  // by prior, mctx's setting for evaluating perfect-information games).
   const bool with_gumbel = get("gumbel", "0") == "1";
+  std::vector<int> considered;
+  for (absl::string_view m : absl::StrSplit(get("considered", "16"), ',', absl::SkipEmpty())) {
+    int v;
+    if (!absl::SimpleAtoi(m, &v) || v < 1) open_spiel::SpielFatalError("considered=M,M,...");
+    considered.push_back(v);
+  }
+  const double gumbel_scale = std::stod(get("gumbel_scale", "1"));
   std::vector<double> mixes;
   for (absl::string_view w : absl::StrSplit(get("mixes", ""), ',', absl::SkipEmpty())) {
     mixes.push_back(std::stod(std::string(w)));
@@ -285,9 +299,11 @@ int main(int argc, char** argv) {
     candidates.push_back(c);
   }
   for (double w : mixes) candidates.push_back(absl::StrFormat("mix%.2f", w));
-  if (with_gumbel) {
-    candidates.push_back("gumbel");
-    candidates.push_back("gumbel_target");
+  // The Gumbel candidates' names: plain for the default single search of 16, else with M.
+  const bool plain_gumbel = considered == std::vector<int>{16};
+  for (int m = 0; m < considered.size() && with_gumbel; ++m) {
+    const std::string name = plain_gumbel ? "gumbel" : absl::StrCat("gumbel", considered[m]);
+    for (const char* suffix : {"", "_target", "_move"}) candidates.push_back(name + suffix);
   }
   std::cerr << absl::StrFormat("az_teacher_vs_search: %s step %d, game %s, the teacher's depths %d, %d, "
                                "weights %g, %g, temperature %g; precision %s",
@@ -392,10 +408,14 @@ int main(int argc, char** argv) {
             searches[p].push_back(make_bot(p, false, sims[b], seed * 1000 + 64 * t + 8 * b + p));
           }
         }
-        std::vector<std::unique_ptr<MCTSBot>> gumbel_searches(2);  // By side, if with_gumbel.
+        // By side, then considered count, if with_gumbel (the first's seeds as before).
+        std::vector<std::unique_ptr<MCTSBot>> gumbel_searches[2];
         for (int p = 0; p < 2 && with_gumbel; ++p) {
-          gumbel_searches[p] = make_bot(p, false, 0, seed * 1000 + 64 * t + 40 + p);
-          gumbel_searches[p]->SetGumbel(16, 1.0);
+          for (int m = 0; m < considered.size(); ++m) {
+            gumbel_searches[p].push_back(
+                make_bot(p, false, 0, seed * 1000 + 64 * t + 40 + 2 * m + p));
+            gumbel_searches[p].back()->SetGumbel(considered[m], gumbel_scale);
+          }
         }
         std::vector<std::unique_ptr<MCTSBot>> references[2];
         for (int p = 0; p < 2; ++p) {
@@ -444,17 +464,22 @@ int main(int argc, char** argv) {
             }
             policies.push_back(&mixed[m]);
           }
-          Policy gumbel_policy, gumbel_target;
-          if (with_gumbel) {
-            std::unique_ptr<SearchNode> groot = gumbel_searches[p]->MCTSearch(state);
+          // Per considered count: the target, it mixed with the teacher, and the move.
+          std::vector<Policy> gumbel(3 * gumbel_searches[p].size());
+          for (int m = 0; m < gumbel_searches[p].size(); ++m) {
+            Policy& gumbel_policy = gumbel[3 * m];
+            Policy& gumbel_target = gumbel[3 * m + 1];
+            Policy& gumbel_move = gumbel[3 * m + 2];
+            std::unique_ptr<SearchNode> groot = gumbel_searches[p][m]->MCTSearch(state);
             for (const auto& [a, q] : az::CompletedQTarget(*groot, state, eval.get())) {
               gumbel_policy[a] = q;
             }
             for (Action a : legal) {
               gumbel_target[a] = (1 - weights[p]) * gumbel_policy[a] + weights[p] * teacher_policy[a];
+              gumbel_move[a] = 0;
             }
-            policies.push_back(&gumbel_policy);
-            policies.push_back(&gumbel_target);
+            gumbel_move[gumbel_searches[p][m]->GumbelAction(*groot)] = 1;
+            for (const Policy* q : {&gumbel_policy, &gumbel_target, &gumbel_move}) policies.push_back(q);
           }
           for (const Policy* q : policies) spread[i].push_back(EffectiveMoves(*q));
           std::string line = absl::StrFormat("{\"position\": %d, \"side\": \"%s\", \"legal\": %d", i,

@@ -90,7 +90,9 @@
 #   9. az_teacher_vs_search (2026-10-25) on the run: its candidates' measures in range, the
 #      uniform spread's agreement and breadth as computed, the visits' gap to themselves 0;
 #      mixes= (2026-10-29): at the run's own weights a mix is the target exactly (the control:
-#      the dwarfs' mix at 0.3 is not); gumbel=1: its two candidates in range.
+#      the dwarfs' mix at 0.3 is not); gumbel=1: its three candidates in range, its move all
+#      on one move; considered=1,4 gumbel_scale=0: the candidates named by the count, each
+#      move one-hot (the control: the two counts' measures differ).
 #  10. The carry-over and the stop between moves (2026-10-27): a fresh run of one step with a
 #      long last learning step (300 batches) and short battles (10 turns without a capture
 #      end one), so that games wait in the queue at its end:
@@ -446,12 +448,17 @@ stability = [d for d in lines if d.get("stability")]
 ok = len(rows) >= 4 and {d["side"] for d in rows} == {"dwarfs", "trolls"}
 for d in rows:
   for c in ("visits", "visits24", "completed_q", "teacher", "target", "cq_target", "uniform",
-            "gumbel", "gumbel_target"):
+            "gumbel", "gumbel_target", "gumbel_move"):
     for r in (16, 32):
       x = d[f"{c}_ref{r}"]
       ok &= all(0 <= x[k] <= 1 + 1e-9 for k in ("agrees", "mass_on_best", "distance"))
     ok &= abs(d[f"uniform_ref16"]["agrees"] - 1 / d["legal"]) < 1e-3
-ok &= len(summaries) == 2 * 11 * 2 and len(stability) == 2
+  for r in (16, 32):  # The move: all its probability on one move.
+    x = d[f"gumbel_move_ref{r}"]
+    ok &= x["agrees"] in (0, 1) and x["mass_on_best"] == x["agrees"]
+ok &= len(summaries) == 2 * 12 * 2 and len(stability) == 2
+ok &= all(abs(s["effective_moves"][0] - 1) < 1e-9 for s in summaries
+          if s["candidate"] == "gumbel_move")
 # mixes= (2026-10-29): at the run's own weights (0.7 for the dwarfs, 0.3 for the trolls) a mix
 # is the target exactly; at the other side's weight it is not.
 def row(side, c, r):
@@ -466,6 +473,26 @@ legal = {side: [d["legal"] for d in rows if d["side"] == side] for side in ("dwa
 ok &= all(abs(s["effective_moves"][0] - sum(legal[s["side"]]) / len(legal[s["side"]])) < 1e-3
           for s in summaries if s["candidate"] == "uniform")
 if not ok: print(lines[:3], summaries[:2])
+sys.exit(0 if ok else 1)
+EOF
+"$bin/az_teacher_vs_search" run="$run" step=-1 refs=16 last=2 max=3 threads=2 batch=2 gumbel=1 \
+  considered=1,4 gumbel_scale=0 inference_threads=1 > "$tmp/considered.jsonl" 2> "$tmp/considered.err"
+check "9. considered=1,4 gumbel_scale=0: exits 0, the candidates named by the count, each move one-hot; the control: the counts' measures differ" \
+  python3 - "$tmp/considered.jsonl" $? <<'EOF'
+import json, sys
+lines = [json.loads(l) for l in open(sys.argv[1])]
+rows = [d for d in lines if "position" in d]
+summaries = [d for d in lines if d.get("summary") and not d.get("stability")]
+names = {s["candidate"] for s in summaries}
+ok = sys.argv[2] == "0" and len(rows) >= 4 and len(summaries) == 2 * 12
+ok &= {"gumbel1", "gumbel1_target", "gumbel1_move", "gumbel4", "gumbel4_target",
+       "gumbel4_move"} <= names and "gumbel" not in names
+for d in rows:
+  for m in (1, 4):
+    x = d[f"gumbel{m}_move_ref16"]
+    ok &= x["agrees"] in (0, 1) and x["mass_on_best"] == x["agrees"]
+ok &= any(d["gumbel1_ref16"] != d["gumbel4_ref16"] for d in rows)
+if not ok: print(sorted(names), rows[:1])
 sys.exit(0 if ok else 1)
 EOF
 
