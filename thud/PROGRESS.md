@@ -4287,4 +4287,15 @@ the push's and the rename's tests ran (memory beside the trainer), to resume.
   today's against itself at 200/100 without root noise for either side (~30 min), each side
   against its baseline; then R7 relaunched. The playout-cap test's design goes to the user.
 
+- **2026-10-30, 14:50-15:30: stronger trolls planned, test (A) built and queued.** The user:
+  make the trolls stronger (step by step; the plan's *Stronger trolls*: the steps, the metrics
+  and the reactions) and run test (A). Built test-first: `az_relabel` (`trainer_test.sh` 14;
+  `b152ee81`). `gumbel_noise_2026-10-30.sh` now runs, after R7_476's evaluation (~22:00): the
+  root-noise matches (~30 min), `relabel_test_2026-10-30.sh` (test A, ~4 hours: R7's newest 150
+  games relabelled by R7_476 at 200/100 and 800/400, four buffers, R7_476 trained on each, the
+  priors on held-out games, three matches), then the trolls' teacher weight 0.3 → 0.5 and R7's
+  relaunch (steps 477-496, ~02:30). The user's point on (B): a training run's result depends
+  on the old games in its buffer — yes for a change of the search: the buffer holds ~21 steps
+  of R7's games, so a short run learns mostly from them (the reply's options).
+
 **Next step:** as recorded in `## Current status` — R7's stop at 376 (~20:30) with the shorter evaluation, then 20-step segments on the merged code (the carry-over's first at 396, its gain measured at 397); the rule (the user, 2026-10-26: after two segments without gain one more, then back to R5_331); the teacher as the opponent's dwarfs later; more simulations for the trolls (200/100), Gumbel, the finer evaluation's cheap form, the measurement's control.
