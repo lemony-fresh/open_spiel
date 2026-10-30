@@ -4226,4 +4226,17 @@ the push's and the rename's tests ran (memory beside the trainer), to resume.
   R7_436): Gumbel's target farther from the long search than today's for both sides (the plan's
   Gumbel row) — not switched on; next, more sampled actions for the dwarfs, or an arm.
 
+- **2026-10-29, 19:30-20:40: the Gumbel match and the considered counts, set up.** R7_456's
+  matches: against R7_436 -1.93 (-5.35 to +1.50), R6_366 -1.77, hexparrot:3 +47.27 (40 of 40),
+  teacher:5 +21.38 (the dwarfs -7.38); the taper's gate passes (no loss beyond the noise). The
+  user: a match, and 128 actions offline too. Built (tests first): `az_match gumbel_a=M`
+  (`az_match_test` 8) and `az_teacher_vs_search considered=M,...` with the Gumbel search's move
+  (`trainer_test.sh` 9), commit `a2c0c79d`. A correction to my report: the "agrees" of the
+  `gumbel` candidate (0.170 for the dwarfs) was its target's top move, not the move the search
+  plays; the new `gumbel_move` measures that. `~/thud-runs/gumbel_tests_2026-10-29.sh`, with
+  `r7_run.stop` set: after R7_456's evaluation (the buffer test, ~21:40) the run ends; the
+  considered counts offline (~20 min), three matches (gumbel 16, 32, 64 against PUCT, R7_456 on
+  both sides, 200/100, self-play's conditions, ~1 h); then the run relaunched (the taper, steps
+  457-476).
+
 **Next step:** as recorded in `## Current status` — R7's stop at 376 (~20:30) with the shorter evaluation, then 20-step segments on the merged code (the carry-over's first at 396, its gain measured at 397); the rule (the user, 2026-10-26: after two segments without gain one more, then back to R5_331); the teacher as the opponent's dwarfs later; more simulations for the trolls (200/100), Gumbel, the finer evaluation's cheap form, the measurement's control.
