@@ -94,7 +94,8 @@
 #      on one move; considered=1,4 gumbel_scale=0: the candidates named by the count, each
 #      move one-hot (the control: the two counts' measures differ); since 2026-10-30
 #      gumbel_sims=0,12 (the names with the budget; the control, the budgets' measures differ)
-#      and targetN (the trainer's target at each extra budget of sims) in range.
+#      and targetN (the trainer's target at each extra budget of sims) in range; the
+#      search's signals per position in range, their effective moves the summary's.
 #  10. The carry-over and the stop between moves (2026-10-27): a fresh run of one step with a
 #      long last learning step (300 batches) and short battles (10 turns without a capture
 #      end one), so that games wait in the queue at its end:
@@ -462,6 +463,16 @@ ok &= len(summaries) == 2 * 13 * 2 and len(stability) == 2
 ok &= all(abs(s["effective_moves"][0] - 1) < 1e-9 for s in summaries
           if s["candidate"] == "gumbel_move")
 ok &= all(0 <= d[f"target24_ref{r}"]["distance"] <= 1 + 1e-9 for d in rows for r in (16, 32))
+# The search's signals (2026-10-30): in range, and their visits' effective moves those the
+# summary reports for the visits (the same root, computed apart).
+for d in rows:
+  s = d["signals"]
+  ok &= 0 <= s["top2_gap"] <= 1 and s["unstable"] in (0, 1) and s["surprise"] >= -1e-9
+  ok &= 1 - 1e-9 <= s["moves"] <= d["legal"] + 1e-6 and s["teacher_gap"] >= 0
+for side in ("dwarfs", "trolls"):
+  m = [d["signals"]["moves"] for d in rows if d["side"] == side]
+  v = [s for s in summaries if s["side"] == side and s["candidate"] == "visits" and s["ref"] == 16]
+  ok &= abs(sum(m) / len(m) - v[0]["effective_moves"][0]) < 2e-3
 # mixes= (2026-10-29): at the run's own weights (0.7 for the dwarfs, 0.3 for the trolls) a mix
 # is the target exactly; at the other side's weight it is not.
 def row(side, c, r):

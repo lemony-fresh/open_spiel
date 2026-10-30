@@ -77,6 +77,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <functional>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -131,6 +132,48 @@ Policy Visits(const SearchNode& root) {
 struct Comparison {
   double agrees, mass_on_best, distance;
 };
+
+// Cheap signals of a search's root (2026-10-30; the user: could playout caps choose which
+// moves get the deep search instead of drawing them?), to see which predicts where a longer
+// search changes the target most: how close its two most visited moves are (their visits'
+// difference over all the children's); whether its most visited move is not its best valued
+// among the moves with at least 5% of the visits (Huang, Coulom and Lin 2010, "unstable
+// evaluation": search on); how far its visits moved from the network's prior, KL(visits ||
+// prior) (KataGo's "policy surprise"); and its visits' effective moves.
+struct Signals {
+  double top2_gap = 0, surprise = 0, moves = 1;
+  int unstable = 0;
+};
+
+double EffectiveMoves(const Policy& p);  // Below.
+
+Signals SearchSignals(const SearchNode& root, const open_spiel::ActionsAndProbs& prior) {
+  Signals s;
+  std::vector<int> counts;
+  double total = 0;
+  for (const SearchNode& c : root.children) {
+    counts.push_back(c.explore_count);
+    total += c.explore_count;
+  }
+  if (total <= 0) return s;
+  std::sort(counts.begin(), counts.end(), std::greater<int>());
+  s.top2_gap = (counts[0] - (counts.size() > 1 ? counts[1] : 0)) / total;
+  const SearchNode& most = root.BestChild();
+  const SearchNode* best_valued = nullptr;
+  for (const SearchNode& c : root.children) {
+    if (c.explore_count < std::max(1.0, 0.05 * total)) continue;
+    if (best_valued == nullptr || c.total_reward / c.explore_count >
+                                      best_valued->total_reward / best_valued->explore_count) {
+      best_valued = &c;
+    }
+  }
+  s.unstable = best_valued != nullptr && best_valued->action != most.action;
+  std::map<Action, double> p(prior.begin(), prior.end());
+  const Policy visits = Visits(root);
+  for (const auto& [a, v] : visits) s.surprise += v * std::log(v / std::max(p[a], 1e-30));
+  s.moves = EffectiveMoves(visits);
+  return s;
+}
 
 // The exponential of the entropy: as many moves as an even spread with the same entropy.
 double EffectiveMoves(const Policy& p) {
@@ -451,6 +494,7 @@ int main(int argc, char** argv) {
           for (int r = 0; r < nr; ++r) ref.push_back(Visits(*references[p][r]->MCTSearch(state)));
           std::vector<Policy> visits;
           Policy completed_q, cq_target;
+          Signals signals;  // Of the run's own search (the first budget).
           for (int b = 0; b < nb; ++b) {
             std::unique_ptr<SearchNode> root = searches[p][b]->MCTSearch(state);
             visits.push_back(Visits(*root));
@@ -458,6 +502,7 @@ int main(int argc, char** argv) {
               for (const auto& [a, q] : az::CompletedQTarget(*root, state, eval.get())) {
                 completed_q[a] = q;
               }
+              signals = SearchSignals(*root, eval->Prior(state));
             }
           }
           Policy teacher_policy, target, uniform;
@@ -516,6 +561,20 @@ int main(int argc, char** argv) {
           for (const Policy* q : policies) spread[i].push_back(EffectiveMoves(*q));
           std::string line = absl::StrFormat("{\"position\": %d, \"side\": \"%s\", \"legal\": %d", i,
                                              p == 0 ? "dwarfs" : "trolls", legal.size());
+          // The signals (2026-10-30), and the teacher's: its best score's lead over the second
+          // best in points (its temperature x the log of their probabilities' ratio; 0 if tied).
+          std::vector<double> taught;
+          for (const auto& [a, q] : teacher_policy) taught.push_back(q);
+          std::sort(taught.begin(), taught.end(), std::greater<double>());
+          const double teacher_gap =
+              taught.size() > 1 && taught[1] > 0
+                  ? config.kickstart_temperature * std::log(taught[0] / taught[1])
+                  : 99;
+          absl::StrAppendFormat(&line,
+                                ", \"signals\": {\"top2_gap\": %.4f, \"unstable\": %d, "
+                                "\"surprise\": %.4f, \"moves\": %.3f, \"teacher_gap\": %.3f}",
+                                signals.top2_gap, signals.unstable, signals.surprise,
+                                signals.moves, teacher_gap);
           for (int r = 1; r < nr; ++r) {
             const Comparison c = Compare(ref[0], ref[r]);
             stable[i].push_back(c);
