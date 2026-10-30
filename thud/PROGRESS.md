@@ -4239,7 +4239,7 @@ the push's and the rename's tests ran (memory beside the trainer), to resume.
   both sides, 200/100, self-play's conditions, ~1 h); then the run relaunched (the taper, steps
   457-476).
 
-- **2026-10-29, 20:40 to 2026-10-30, 00:10: the Gumbel results at 200; the budget experiment
+- **2026-10-29, 20:40-23:55: the Gumbel results at 200; the budget experiment
   set up.** The buffer test: twice the buffer no better on the future positions (policy +0.0017,
   the seeds' spread 0.0027; value −0.0003) — the buffer stays. The Gumbel queue ran 21:35-22:48
   and relaunched R7 (the taper to 0.5, steps 457-476 from 22:48). Offline (R7_456, the dwarfs,
