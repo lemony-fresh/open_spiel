@@ -4239,4 +4239,21 @@ the push's and the rename's tests ran (memory beside the trainer), to resume.
   both sides, 200/100, self-play's conditions, ~1 h); then the run relaunched (the taper, steps
   457-476).
 
+- **2026-10-29, 20:40 to 2026-10-30, 00:10: the Gumbel results at 200; the budget experiment
+  set up.** The buffer test: twice the buffer no better on the future positions (policy +0.0017,
+  the seeds' spread 0.0027; value −0.0003) — the buffer stays. The Gumbel queue ran 21:35-22:48
+  and relaunched R7 (the taper to 0.5, steps 457-476 from 22:48). Offline (R7_456, the dwarfs,
+  each mixed target minus today's): +0.124, +0.113, +0.087, +0.069, +0.059 for 16, 32, 64, 128,
+  256 actions — closer with more, never closer than today's; the move Gumbel plays agrees with
+  the long search's best 9-18% (PUCT's 39%). Matches (R7_456 against itself, 200/100, self-play's
+  conditions): Gumbel 16 +1.68 (−3.62 to +6.97), 32 −15.93, 64 −23.05 — not switched on. The
+  user's aim: much better targets at a reasonable cost; Gumbel at 400 (800 if we can). Built
+  (tests first, `5c39f6ba`): `az_match side_sims_a=`/`side_sims_b=` (budgets per network) and
+  `az_teacher_vs_search gumbel_sims=` and `targetN`. `~/thud-runs/gumbel_budgets_2026-10-30.sh`
+  waits for R7 to end at `r7_run.stop` after the 476 stop, then the targets offline at 200, 400,
+  800 (~1 h) and 11 matches (~12 h; `gumbel_budgets.skip800` drops the 800 ones not begun),
+  rated together by `gumbel_budgets_report.py` (Massey's least squares, P200 at 0), then
+  relaunches R7. The offline targets use the dwarfs' weight 0.5 now (config.json after the
+  taper), the earlier ones 0.7.
+
 **Next step:** as recorded in `## Current status` — R7's stop at 376 (~20:30) with the shorter evaluation, then 20-step segments on the merged code (the carry-over's first at 396, its gain measured at 397); the rule (the user, 2026-10-26: after two segments without gain one more, then back to R5_331); the teacher as the opponent's dwarfs later; more simulations for the trolls (200/100), Gumbel, the finer evaluation's cheap form, the measurement's control.
