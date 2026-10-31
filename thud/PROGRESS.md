@@ -4312,4 +4312,8 @@ the push's and the rename's tests ran (memory beside the trainer), to resume.
   (~10:30) capsB and ctrlB side by side for 12 hours from R7_496 with the buffer cut to 5 steps,
   then three matches, then R7 relaunched (~00:00 on 11-01).
 
+- **2026-10-31, 02:25: the trolls' root noise to be lowered.** The user: lower it. ε 0.25 → 0.1
+  (`player_policy_epsilon` "0,0.1") set by `caps_arms_2026-10-31.sh` after test (B), before R7's
+  relaunch: steps 497-516 carry it (one change a segment; 477-496 the trolls' teacher weight).
+
 **Next step:** as recorded in `## Current status` — R7's stop at 376 (~20:30) with the shorter evaluation, then 20-step segments on the merged code (the carry-over's first at 396, its gain measured at 397); the rule (the user, 2026-10-26: after two segments without gain one more, then back to R5_331); the teacher as the opponent's dwarfs later; more simulations for the trolls (200/100), Gumbel, the finer evaluation's cheap form, the measurement's control.

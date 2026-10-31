@@ -625,8 +625,9 @@ main teacher.
   is a trade against their exploration, to weigh with the user — **it was the root noise**
   (2026-10-30: without noise Gumbel's trolls only +1.78 over today's; and today's trolls score
   ~12 points a game worse with their self-play noise, −4.60 against +7.28 without — so the
-  dwarfs train against trolls much weaker than ours): the trolls' ε 0.25 lower (0.1?), for the
-  user to decide; playout caps' fast searches have no noise either; (3) more simulations for the
+  dwarfs train against trolls much weaker than ours): **the trolls' ε 0.25 → 0.1 from step 497**
+  (the user, 2026-10-31; set by `caps_arms_2026-10-31.sh` before R7's relaunch, after test B);
+  playout caps' fast searches have no noise either; (3) more simulations for the
   trolls (200). **Watch**, every step and at every stop: the dwarfs' self-play margin
   (`learner.jsonl`; expected to fall a few points), the dwarfs' prior breadth and game
   lengths (the tripwire), the share of games ending at the no-capture limit, the matches by
@@ -932,6 +933,7 @@ the search and trainer*, run C'.
 | 2026-10-30 | **Stronger trolls, step by step**: the trolls' teacher weight 0.3 → 0.5 from step 477; then Gumbel for the trolls if the root-noise match shows Gumbel's search helps them; the metrics and the reactions in *Stronger trolls* | user | *Stronger trolls*, the levers table |
 | 2026-10-30 | **Gumbel stays off**: without root noise its trolls gain only +1.78 (n.s.) and its dwarfs lose −8.85 — its trolls' earlier gain was today's trolls' root noise, which costs them ~12 points a game in self-play's conditions (an open question for the user: a smaller ε for the trolls) | measured | the Gumbel row, *Stronger trolls* |
 | 2026-10-31 | **Test (A): deeper targets train a stronger network** (all at 800/400 +2.80 against all at 200/100, 0.61 to 4.99; the surprise-picked quarter +1.43, the random quarter +0.97); **test (B) started**: playout caps against R7's recipe, equal compute, side by side, the buffer cut to 5 steps | user | the playout cap row |
+| 2026-10-31 | **The trolls' root noise ε 0.25 → 0.1 from step 497** (stronger trolls, step 2: their self-play noise cost them ~12 points a game; α stays 0.1) | user | *Stronger trolls* |
 
 **Considered and set aside** (with the reason): the Python AlphaZero (a layout bug, and
 slow; fallback note below); a 32 x 2 network (its convolutions see 11 x 11 squares);
