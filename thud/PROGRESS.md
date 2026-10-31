@@ -4298,4 +4298,18 @@ the push's and the rename's tests ran (memory beside the trainer), to resume.
   on the old games in its buffer — yes for a change of the search: the buffer holds ~21 steps
   of R7's games, so a short run learns mostly from them (the reply's options).
 
+- **2026-10-30 20:15 to 2026-10-31 02:05: the 476 stop, the root-noise match, test (A), the trolls
+  stronger; test (B) queued.** R7_476 (the dwarfs' teacher 0.5, steps 457-476): against R7_456
+  −0.07 (−2.67 to +2.52), against R6_366 −3.17 (−6.31 to −0.04), the dwarfs against teacher:5
+  −7.53, hexparrot:3 +45.60, blunders 5.2% (the gate passes); the dwarfs' prior narrowed (108-153
+  effective moves; the tripwire alerted at steps 463 and 468 — the margin 5 below its baseline —
+  then quiet). The root-noise match: Gumbel's trolls' gain was the root noise (the plan's Gumbel
+  row): Gumbel stays off; the trolls' self-play noise costs them ~12 points a game — the user's
+  call whether to lower it. Test (A) (21:36-00:55): deeper targets train a stronger network (+2.80,
+  significant), the surprise pick +1.43 against the random +0.97 (the plan's playout cap row).
+  At 00:55 the trolls' teacher weight 0.3 → 0.5 and R7 relaunched (steps 477-496). The user: run
+  (B). `~/thud-runs/caps_arms_2026-10-31.sh` (set `r7_run.stop`): after R7_496's evaluation
+  (~10:30) capsB and ctrlB side by side for 12 hours from R7_496 with the buffer cut to 5 steps,
+  then three matches, then R7 relaunched (~00:00 on 11-01).
+
 **Next step:** as recorded in `## Current status` — R7's stop at 376 (~20:30) with the shorter evaluation, then 20-step segments on the merged code (the carry-over's first at 396, its gain measured at 397); the rule (the user, 2026-10-26: after two segments without gain one more, then back to R5_331); the teacher as the opponent's dwarfs later; more simulations for the trolls (200/100), Gumbel, the finer evaluation's cheap form, the measurement's control.
