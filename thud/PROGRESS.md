@@ -4316,4 +4316,16 @@ the push's and the rename's tests ran (memory beside the trainer), to resume.
   (`player_policy_epsilon` "0,0.1") set by `caps_arms_2026-10-31.sh` after test (B), before R7's
   relaunch: steps 497-516 carry it (one change a segment; 477-496 the trolls' teacher weight).
 
+- **2026-10-31, 11:22-11:35: the laptop's battery ran empty; everything resumed.** Unplugged by
+  accident, the laptop shut down; WSL restarted at 11:21:50 and every process had ended (R7's
+  trainer in step 495, the caps queue waiting, the tripwire, the CPU-limit log). R7's state
+  intact: step 494 saved at 10:36 (checkpoint, buffer at 10:23 from its collection), ~50
+  minutes of step 495 lost. Resumed in an order that avoids the stop file's race (it was set
+  for test B, and r7_run checks it at the top of every segment): the stop file removed, R7's
+  script relaunched (11:32: steps 495-496 from 494), then `caps_arms_2026-10-31.sh` (sets it
+  again), the tripwire (a new baseline, steps 475-494: the dwarfs' prior 104 effective moves,
+  margin −1.2 — the old one, 397-416, was from before the taper; it had alerted at steps 484,
+  485, 491 and 492, the breadth at 62-67% of it, no stop) and `cpu_limit_log.sh`. Test (B)'s
+  results move to ~04:00 on 11-01.
+
 **Next step:** as recorded in `## Current status` — R7's stop at 376 (~20:30) with the shorter evaluation, then 20-step segments on the merged code (the carry-over's first at 396, its gain measured at 397); the rule (the user, 2026-10-26: after two segments without gain one more, then back to R5_331); the teacher as the opponent's dwarfs later; more simulations for the trolls (200/100), Gumbel, the finer evaluation's cheap form, the measurement's control.
