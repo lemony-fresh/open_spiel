@@ -4354,7 +4354,22 @@ the push's and the rename's tests ran (memory beside the trainer), to resume.
   targets in the main line, goes to the user. R7 runs on meanwhile (steps 517-536, from
   09:30; R7_536's evaluation ~18:00).
 
-**Next step:** the user's decision on deeper targets in the main line (playout caps as test B
-ran them, from R7_536, or test B extended first); until then R7 runs on by its script. Later:
-surprise-picked caps in the trainer, tree reuse, more simulations for the trolls (*Stronger
-trolls*, step 3), the finer evaluation's cheap form.
+- **2026-11-01, 12:15-12:50: playout caps set aside; R7 at 400/200 from step 537.** The user:
+  caps' gain too small; double the searches instead, without a test first, 800/400 later.
+  Claude agreed: per step nothing halves (the same 21,845 new positions and learning a step),
+  only the steps an hour; R7 gains nothing at 200/100, so the slower recipe costs little, and
+  the second doubling gains less (the budget experiment: +10.2, then +7.5). R7's script had no
+  segment past 536 (it ends after R7_536's evaluation, ~18:00): its extended version
+  (`r7_run_2026-10-27.sh.next`: segments to 556, 576, 596, 616; `budget` sets
+  `player_simulations` "400,200" before the segment to 556; the trainer's limit 2 hours a step,
+  was 1; the teacher against the search at 556 and 596 with 800 as the deeper budget) is
+  installed by `~/thud-runs/r7_budget_2026-11-01.sh` (detached, from 12:46) once the running
+  script has ended with "all done" at 536, which then relaunches R7. `budget` tested on a copy
+  of the config (twice: the same result, only `player_simulations` changed). For 800/400 later:
+  the trainer's search memory limit (10 MB) would hold ~119,000 nodes, a dwarf search at 800 an
+  estimated ~116,000 — to raise first.
+
+**Next step:** R7_536's evaluation (~18:00), then R7 at 400/200 (steps 537-556, ~15 hours, its
+evaluation ~10:00 on 11-02): its gain against R7_536 and the stronger-trolls metrics (the
+dwarfs' self-play margin from ~−6). Later: 800/400 (the GPU, or when 400/200 plateaus; the
+memory limit first), tree reuse, the finer evaluation's cheap form.
