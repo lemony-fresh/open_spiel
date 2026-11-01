@@ -4328,4 +4328,33 @@ the push's and the rename's tests ran (memory beside the trainer), to resume.
   485, 491 and 492, the breadth at 62-67% of it, no stop) and `cpu_limit_log.sh`. Test (B)'s
   results move to ~04:00 on 11-01.
 
-**Next step:** as recorded in `## Current status` — R7's stop at 376 (~20:30) with the shorter evaluation, then 20-step segments on the merged code (the carry-over's first at 396, its gain measured at 397); the rule (the user, 2026-10-26: after two segments without gain one more, then back to R5_331); the teacher as the opponent's dwarfs later; more simulations for the trolls (200/100), Gumbel, the finer evaluation's cheap form, the measurement's control.
+- **2026-10-31 13:34 to 2026-11-01 12:00: test (B)'s result; R7's segment 497-516 with the
+  trolls' ε 0.1.** Test (B) ran its 12 hours unpaused (`capsB_eval/clock.log`): capsB 2 steps
+  (497-498, ~620 games a step, a quarter of their moves recorded), ctrlB 15 (497-511) — a
+  recorded position costs capsB ~1,100 simulations as the dwarfs and ~700 as the trolls
+  against 200 and 100, so ~7.5x fewer learning steps. capsB498 against ctrlB511 **+2.88**
+  (−0.06 to +5.81; pairs 24-5-11); against R7_496 capsB −1.35 (−3.49 to +0.79), ctrlB −1.60
+  (−3.59 to +0.39). Both paths together (inverse-variance) put caps ahead by ~+1.6 (≈ −0.5 to
+  +3.6); the loop disagrees by 2.6 points, 1.3 standard errors (noise). So at equal compute
+  playout caps did at least as well as R7's recipe, not beyond the noise, and neither arm
+  gained on R7_496. capsB's dwarfs scored −7.1 in self-play (ctrlB's ~−1: three quarters of
+  capsB's troll moves search without root noise). The log's clock went back an hour at 02:00
+  (daylight saving's end, PDT → PST): "the runs ended" (01:34 PDT) precedes the matches
+  (01:24-01:26 PST); the 12-hour timeout and the clock log run on monotonic and epoch time,
+  unaffected. R7 relaunched at 01:26 PST with the trolls' ε 0.1; **R7_516** (08:41-09:30):
+  against R7_496 −0.95 (−3.56 to +1.66), against R6_366 −2.83 (−5.56 to −0.09; R7_496 −2.62,
+  R7_476 −3.17), hexparrot:3 +48.48 (R7_496 +44.80; dwarfs +19.43, trolls +29.05), teacher:5
+  +20.55 (dwarfs −7.25, trolls +27.80; R7_496 −6.65 and +28.45), blunders 3.2% (4.9%). The
+  stronger-trolls metrics: the dwarfs' self-play margin −1.2 → −5 to −7 (the expected fall;
+  the tripwire alerted at steps 498-510 on the margin, the breadth 85-91% of its baseline, no
+  stop), games 218 → ~188 plies, the dwarfs against teacher:5 not lower beyond the noise, our
+  trolls there not higher: by the plan's rule no reaction, ε 0.1 kept. Three segments in a
+  row without a gain against the previous network (476 −0.07, 496 −0.93, 516 −0.95): a
+  plateau by the plateau rule, its cause the targets (tests A and B) — the next lever, deeper
+  targets in the main line, goes to the user. R7 runs on meanwhile (steps 517-536, from
+  09:30; R7_536's evaluation ~18:00).
+
+**Next step:** the user's decision on deeper targets in the main line (playout caps as test B
+ran them, from R7_536, or test B extended first); until then R7 runs on by its script. Later:
+surprise-picked caps in the trainer, tree reuse, more simulations for the trolls (*Stronger
+trolls*, step 3), the finer evaluation's cheap form.
