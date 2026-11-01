@@ -347,7 +347,11 @@ before; built as `az_trainer_d1`), `--lr_warmup_steps`, `--lr_warmup_start`,
 `--lr_schedule=STEP:FACTOR,...` and `--value_loss_weight` (2026-10-15: a learning-rate
 schedule on the network's own rate, logged per step, and the value loss's weight; off by
 default), `--playout_cap_full_share` and `--playout_cap_fast_simulations` (2026-10-15:
-KataGo's playout cap randomisation; off by default), `--learner_threads` (2026-10-20: the
+KataGo's playout cap randomisation; off by default), `--max_memory_mb` (2026-11-01: the
+self-play searches' memory limit, beyond which a search garbage-collects rarely visited
+subtrees; 10 by default, upstream's; run R7 at 32 from step 526; `learner.jsonl`'s
+`by_side` logs each side's trees, `median_tree_mb`, `max_tree_mb` and `collected_share`),
+`--learner_threads` (2026-10-20: the
 learner's own LibTorch thread count, the inference threads keeping OMP_NUM_THREADS's — LibTorch
 shares one value between threads not yet started, so each inference thread sets its own;
 `learner.jsonl`'s `threads` records them; 0, the default, as before); since 2026-10-27 the games waiting at a run's last step carried into the buffer

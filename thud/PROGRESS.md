@@ -4369,7 +4369,34 @@ the push's and the rename's tests ran (memory beside the trainer), to resume.
   the trainer's search memory limit (10 MB) would hold ~119,000 nodes, a dwarf search at 800 an
   estimated ~116,000 — to raise first.
 
-**Next step:** R7_536's evaluation (~18:00), then R7 at 400/200 (steps 537-556, ~15 hours, its
-evaluation ~10:00 on 11-02): its gain against R7_536 and the stronger-trolls metrics (the
-dwarfs' self-play margin from ~−6). Later: 800/400 (the GPU, or when 400/200 plateaus; the
-memory limit first), tree reuse, the finer evaluation's cheap form.
+- **2026-11-01, 12:55-14:15: 400/200 at once, and the search's memory limit a setting.** The
+  user: switch now rather than after 536, and fix the 10 MB limit. R7's trainer interrupted at
+  12:56 right after step 525 (4 minutes of step 526 lost); `r7_budget_2026-11-01.sh` stopped
+  (by PID) before it acted, `r7_run_2026-10-27.sh.next` deleted; the stopped script extended in
+  place (its version to 536 kept as `r7_run_2026-10-27.sh.to536`): the segment to 536 ends at
+  525 (a 9-step segment, evaluated as any; its games' offsets copied from `offsets_seg536.json`),
+  then 545, 565, 585, 605 at 400/200, `budget` also setting `max_memory_mb` 32 before the segment
+  to 545, the plasticity test at 565 and 605, the teacher against the search at 545 and 585
+  with 800 as its deeper budget. Relaunched at 12:57 for R7_525's evaluation, `r7_run.stop` set
+  once that had begun (12:59), so that the 400/200 segment waits for the merged fix. **The
+  fix**: `--max_memory_mb` in our trainer (config.json's `max_memory_mb`, 10 by default as
+  upstream's, an old config loading 10; checked above 0), and `MCTSBot::last_search_peak_nodes`
+  and `last_search_collections`, logged per side in `learner.jsonl` (`median_tree_mb`,
+  `max_tree_mb`, `collected_share`). Only the trainer's self-play searches had the 10 MB limit:
+  `az_match`'s network searches 1,000 MB, `az_relabel`'s 400 and 2,000, `az_teacher_vs_search`'s
+  200 and 2,000 — the budget experiment's 800-simulation matches and test A's deep searches were
+  not limited; capsB's 800-simulation searches were (by the estimate, near it). Tests:
+  `search_settings_test` 6 (at 10 MB a 400-simulation search of either side never collects and
+  its peak equals the tree's own count; the control at 1 MB collects 7 times, peak 12,376 of
+  11,916 nodes; the JSON), `trainer_test.sh` 15 (part 1's run records 10 and logs the trees,
+  none collected; the control, a run at 1 MB and 200 simulations, records 1 and its dwarfs'
+  searches collect). Also found: since 2026-10-27 the teacher-ties report at each stop failed
+  (`KeyError: 'best_share'`, in `r7_run_2026-10-27.log`) — `az_teacher_stats` now writes a
+  gaps line a side first; the stats files are complete, only the summary line in the log was
+  missing; fixed in the script while it stands at the stop (those lines skipped).
+
+**Next step:** R7_525's evaluation (~13:50), then R7 at 400/200 with 32 MB (steps 526-545,
+~15 hours, its evaluation ~06:00 on 11-02): its gain against R7_525, the stronger-trolls
+metrics (the dwarfs' self-play margin from ~−6) and the trees' sizes in `learner.jsonl`.
+Later: 800/400 (the GPU, or when 400/200 plateaus; the trees' sizes tell whether 32 MB holds
+it), tree reuse, the finer evaluation's cheap form.

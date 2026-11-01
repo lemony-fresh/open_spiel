@@ -303,6 +303,13 @@ class MCTSBot : public Bot {
     gumbel_scale_ = scale;
   }
   bool gumbel() const { return gumbel_; }
+  // Our change (2026-11-01): the last MCTSearch's tree — the most nodes it held (each
+  // NodeBytes(), as max_memory_mb counts them) and how often it reached that limit and
+  // garbage-collected (dropping the subtrees of rarely visited nodes; the root's children
+  // and their counts stay).
+  int last_search_peak_nodes() const { return last_peak_nodes_; }
+  int last_search_collections() const { return last_collections_; }
+  static constexpr int NodeBytes() { return sizeof(SearchNode); }
   // The move after a Gumbel search of `root` (the root of the last MCTSearch): among the
   // children with the most playouts, the highest gumbel + log prior + sigma(completed Q).
   Action GumbelAction(const SearchNode& root) const;
@@ -347,6 +354,8 @@ class MCTSBot : public Bot {
   int max_nodes_;  // Max nodes allowed in the tree
   int nodes_;  // Nodes used in the tree.
   int gc_limit_;
+  int last_peak_nodes_ = 0;    // Our change (2026-11-01): see last_search_peak_nodes.
+  int last_collections_ = 0;
   bool verbose_;
   bool solve_;
   double max_utility_;

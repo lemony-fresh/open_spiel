@@ -43,6 +43,11 @@
 //      floored prior, the dwarfs' roots keep theirs — and, the control that it reaches
 //      inside a search, some dwarf searches change (their trolls' replies now weigh
 //      captures).
+//   6. The search's memory limit (the trainer's max_memory_mb, 2026-11-01): at 10 MB a
+//      400-simulation search of either side never garbage-collects and its peak node
+//      count is exactly the tree's own (the root and every children vector); the control:
+//      at 1 MB the same dwarf search collects, its peak at the limit; the config's JSON
+//      keeps the setting, and an old run's config without it loads 10.
 //
 //   thud/run_tests.sh search_settings_test   # builds and runs it
 //   build-tests/bin/search_settings_test
@@ -383,6 +388,53 @@ int main(int argc, char** argv) {
           "5. control: the floor reaches inside the dwarfs' searches (" +
               std::to_string(dwarf_searches_changed) + " of " +
               std::to_string(dwarf_searches) + " changed)");
+  }
+
+  // 6. The search's memory limit (2026-11-01): the trainer's max_memory_mb reaches its
+  // self-play searches, and the tree counters are exact.
+  {
+    // The nodes a tree holds, counted as MCTSearch counts them (the root, and every
+    // expanded node's children vector).
+    std::function<long(const SearchNode&)> count = [&](const SearchNode& n) -> long {
+      long c = n.children.capacity();
+      for (const SearchNode& child : n.children) c += count(child);
+      return c;
+    };
+    open_spiel::thud_az::torch_az::AlphaZeroConfig limited = config;
+    limited.player_simulations = "400,400";
+    const long one_mb_nodes = (1L << 20) / MCTSBot::NodeBytes() + 1;
+    bool exact = true, none_collected = true;
+    for (int player : {0, 1}) {
+      const State& state = player == 0 ? *dwarfs_to_move : *trolls_to_move;
+      limited.max_memory_mb = 10;  // The default, upstream's.
+      auto bot = open_spiel::thud_az::torch_az::InitAZBot(limited, *game, eval, false, player);
+      const std::unique_ptr<SearchNode> root = bot->MCTSearch(state);
+      exact = exact && bot->last_search_peak_nodes() == 1 + count(*root);
+      none_collected = none_collected && bot->last_search_collections() == 0;
+    }
+    Check(exact, "6. at 10 MB, 400 simulations: the peak nodes equal the tree's own count, "
+                 "both sides");
+    Check(none_collected, "6. at 10 MB, 400 simulations: no garbage collection");
+    // Control: these trees exceed 1 MB, so a 1 MB limit must collect, and only then.
+    limited.max_memory_mb = 1;
+    auto small = open_spiel::thud_az::torch_az::InitAZBot(limited, *game, eval, false, 0);
+    small->MCTSearch(*dwarfs_to_move);
+    Check(small->last_search_collections() > 0 &&
+              small->last_search_peak_nodes() >= one_mb_nodes,
+          "6. control: at 1 MB the same dwarf search collects (" +
+              std::to_string(small->last_search_collections()) + " times, peak " +
+              std::to_string(small->last_search_peak_nodes()) + " nodes, the limit " +
+              std::to_string(one_mb_nodes) + ")");
+    limited.game = "thud";
+    limited.max_memory_mb = 32;
+    open_spiel::thud_az::torch_az::AlphaZeroConfig read;
+    read.FromJson(limited.ToJson());
+    open_spiel::json::Object old_json = limited.ToJson();
+    old_json.erase("max_memory_mb");
+    open_spiel::thud_az::torch_az::AlphaZeroConfig old_run;
+    old_run.FromJson(old_json);
+    Check(read.max_memory_mb == 32 && old_run.max_memory_mb == 10,
+          "6. the config's JSON keeps max_memory_mb; without it (old runs) 10");
   }
 
   std::cout << (failures ? "FAILED" : "ALL PASSED") << std::endl;

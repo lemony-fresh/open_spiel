@@ -284,6 +284,9 @@ Trajectory PlayGame(Logger* logger, int game_num, const open_spiel::Game& game,
         trajectory.states.push_back(Trajectory::State{
             state->ObservationTensor(), player, state->LegalActions(), action,
             std::move(target), root_value});
+        // Our change (2026-11-01): the search's tree, against its memory limit.
+        trajectory.states.back().tree_peak_nodes = bot->last_search_peak_nodes();
+        trajectory.states.back().tree_collections = bot->last_search_collections();
         // Our change (thud/PLAN.md, Instrumentation): the network's own prior
         // (before root noise: the evaluator's, cached since the search's first
         // evaluation), its entropy, the KL divergence of the root's visit counts
@@ -511,7 +514,7 @@ std::unique_ptr<MCTSBot> InitAZBot(const AlphaZeroConfig& config,
                                                                    : config.policy_alpha;
   auto bot = std::make_unique<MCTSBot>(
       game, std::move(evaluator), config.uct_c, max_simulations,
-      /*max_memory_mb=*/10,
+      config.max_memory_mb,  // Our change (2026-11-01): upstream fixes 10.
       /*solve=*/false,
       /*seed=*/0,
       /*verbose=*/false, ChildSelectionPolicy::PUCT,
@@ -811,6 +814,11 @@ class StepStats {
         side.teacher_kl.push_back(state.teacher_kl);
         side.teacher_best_mass.push_back(state.teacher_best_mass);
       }
+      if (state.tree_peak_nodes >= 0) {  // Our change (2026-11-01).
+        side.tree_mb.push_back(static_cast<double>(state.tree_peak_nodes) *
+                               MCTSBot::NodeBytes() / (1 << 20));
+        side.collected += state.tree_collections > 0;
+      }
     }
     for (int p = 0; p < 2; ++p) {
       if (turns[p].empty()) continue;
@@ -860,6 +868,11 @@ class StepStats {
         o.emplace("mean_kl_teacher_prior", Mean(side.teacher_kl));
         o.emplace("mean_prior_on_teacher_best", Mean(side.teacher_best_mass));
       }
+      if (!side.tree_mb.empty()) {  // Our change (2026-11-01): the trees, against the limit.
+        o.emplace("median_tree_mb", Median(side.tree_mb));
+        o.emplace("max_tree_mb", *absl::c_max_element(side.tree_mb));
+        o.emplace("collected_share", static_cast<double>(side.collected) / side.tree_mb.size());
+      }
       result.emplace(sides_[p], std::move(o));
     }
     return result;
@@ -874,8 +887,9 @@ class StepStats {
       "no_legal_move", "cutoff", "terminal", "other"};
   struct Side {
     std::vector<double> legal, visited, top_share, effective_moves,
-        prior_effective_moves, prior_kl, teacher_kl, teacher_best_mass;
+        prior_effective_moves, prior_kl, teacher_kl, teacher_best_mass, tree_mb;
     int prior_top_agrees = 0;
+    int collected = 0;  // Our change (2026-11-01): searches that garbage-collected.
     std::vector<open_spiel::BasicStats> value_accuracy =
         std::vector<open_spiel::BasicStats>(kStages);
     std::vector<open_spiel::BasicStats> value_prediction =
@@ -1379,6 +1393,7 @@ bool AlphaZero(AlphaZeroConfig config, StopToken* stop, bool resuming) {
   SPIEL_CHECK_TRUE(config.policy_target == "visits" || config.policy_target == "completed_q");
   SPIEL_CHECK_GE(config.gumbel_considered, 1);
   SPIEL_CHECK_GE(config.gumbel_scale, 0);
+  SPIEL_CHECK_GT(config.max_memory_mb, 0);  // Our change (2026-11-01): 0 would be no limit.
   std::shared_ptr<const open_spiel::Game> game =
       open_spiel::LoadGame(config.game);
 

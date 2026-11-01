@@ -116,6 +116,9 @@ struct AlphaZeroConfig {
   // noise, no forced playouts, not recorded). 1: every move in full, upstream's.
   double playout_cap_full_share = 1;
   int playout_cap_fast_simulations = 0;
+  // Added (2026-11-01): the self-play searches' memory limit in MB, beyond which a search
+  // garbage-collects (MCTSBot's max_memory_mb; upstream's InitAZBot fixes 10).
+  int max_memory_mb = 10;
   int checkpoint_freq;
   int evaluation_window;
 
@@ -242,6 +245,7 @@ struct AlphaZeroConfig {
         {"learner_threads", learner_threads},
         {"playout_cap_full_share", playout_cap_full_share},
         {"playout_cap_fast_simulations", playout_cap_fast_simulations},
+        {"max_memory_mb", max_memory_mb},
         {"checkpoint_freq", checkpoint_freq},
         {"evaluation_window", evaluation_window},
         {"uct_c", uct_c},
@@ -334,6 +338,9 @@ struct AlphaZeroConfig {
         config_json.count("playout_cap_fast_simulations")
             ? config_json.at("playout_cap_fast_simulations").GetInt()
             : 0;
+    max_memory_mb = config_json.count("max_memory_mb")
+                        ? config_json.at("max_memory_mb").GetInt()
+                        : 10;
     checkpoint_freq = config_json.at("checkpoint_freq").GetInt();
     evaluation_window = config_json.at("evaluation_window").GetInt();
     uct_c = config_json.at("uct_c").GetDouble();
@@ -472,6 +479,11 @@ struct Trajectory {
     // and its mass on the teacher's best moves. NaN if not measured.
     double teacher_kl = std::numeric_limits<double>::quiet_NaN();
     double teacher_best_mass = std::numeric_limits<double>::quiet_NaN();
+    // Our change (2026-11-01): the search's tree — its most nodes and how often it
+    // garbage-collected at the memory limit (MCTSBot::last_search_peak_nodes). -1 if
+    // not measured.
+    int tree_peak_nodes = -1;
+    int tree_collections = -1;
   };
 
   std::vector<State> states;

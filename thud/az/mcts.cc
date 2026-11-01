@@ -708,6 +708,8 @@ std::unique_ptr<State> MCTSBot::ApplyTreePolicy(
 std::unique_ptr<SearchNode> MCTSBot::MCTSearch(const State& state) {
   nodes_ = 1;
   gc_limit_ = MIN_GC_LIMIT;
+  last_peak_nodes_ = 1;  // Our change (2026-11-01): the tree's size, for the trainer's log.
+  last_collections_ = 0;
   auto root = std::make_unique<SearchNode>(kInvalidAction,
                                            state.CurrentPlayer(), 1);
   std::vector<SearchNode*> visit_path;
@@ -791,11 +793,13 @@ std::unique_ptr<SearchNode> MCTSBot::MCTSearch(const State& state) {
       }
     }
 
+    last_peak_nodes_ = std::max(last_peak_nodes_, nodes_);  // Our change (2026-11-01).
     if (!root->outcome.empty() ||  // Full game tree is solved.
         root->children.size() == 1) {
       break;
     }
     if (max_nodes_ > 1 && nodes_ >= max_nodes_) {
+      ++last_collections_;  // Our change (2026-11-01).
       // Note that actual memory used as counted by ps/top might exceed the
       // counted value here, possibly by a significant margin (1.5x even!). Part
       // of that is not counting the outcome array, but most of that is due to

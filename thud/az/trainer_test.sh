@@ -127,6 +127,11 @@
 #      deep search changing the targets (the control: all_low and all_deep differ); its probe
 #      mode on the held-out games — the same network twice paired to exactly 0, another
 #      network not (the control).
+#  15. The self-play searches' memory limit (2026-11-01, --max_memory_mb; the bots' counters:
+#      search_settings_test 6): part 1's run, at the default 10 MB, records it in config.json
+#      and logs every side's trees (a median and a maximum in MB, the share that
+#      garbage-collected: 0 there); the control, a fresh one-step run at 1 MB and 200
+#      simulations, records 1, and its dwarfs' searches collect, their largest tree at the limit.
 #
 #   thud/az/trainer_test.sh [BIN_DIR]    # default build-tests/bin
 #
@@ -725,5 +730,51 @@ ok &= all(s[(side, "a2")]["minus_first"]["distance"] == [0, 0, 0] for side in ("
 ok &= any(s[(side, "other")]["minus_first"]["distance"][0] != 0 for side in ("dwarfs", "trolls"))
 sys.exit(0 if ok else 1)
 EOF
+
+# 15. The self-play searches' memory limit.
+check "15. part 1's run: config.json records max_memory_mb 10, the default" python3 - "$run/config.json" <<'EOF'
+import json, sys
+sys.exit(0 if json.load(open(sys.argv[1])).get("max_memory_mb") == 10 else 1)
+EOF
+# Every side named with positions logs its trees: 0 < median <= max, the collected share SHARE
+# (or above 0 with "positive"), the largest tree at least AT_LEAST MB.
+trees() {
+  python3 - "$1" "$2" "$3" "$4" <<'EOF'
+import json, sys
+path, sides, share, at_least = sys.argv[1], sys.argv[2].split(","), sys.argv[3], float(sys.argv[4])
+ok, seen = True, 0
+for d in map(json.loads, open(path)):
+  for side in sides:
+    s = d["by_side"].get(side, {})
+    if s.get("positions", 0) == 0: continue
+    seen += 1
+    m, x, c = s.get("median_tree_mb"), s.get("max_tree_mb"), s.get("collected_share")
+    good = m is not None and x is not None and c is not None and 0 < m <= x and 0 <= c <= 1
+    good = good and (c > 0 if share == "positive" else c == float(share)) and x >= at_least
+    if not good: print(f"step {d['step']} {side}: median {m!r} max {x!r} collected {c!r}")
+    ok &= good
+sys.exit(0 if ok and seen else 1)
+EOF
+}
+check "15. part 1's run logs the trees per side, none collected at 10 MB" \
+  trees "$run/learner.jsonl" dwarfs,trolls 0 0
+mem=$tmp/memory
+"$bin/make_test_network" dir="$mem" nn_model=resnet_conv_policy input_planes=1 nn_width=8 \
+  nn_depth=1 checkpoints=1 > /dev/null 2>&1 || { echo "FAIL make_test_network (15)"; exit 1; }
+"$bin/az_trainer" --flagfile="$repo/thud/experiments/az_thud.flags" --path="$mem" \
+  --graph_def=vpnet.pb --nn_model=resnet_conv_policy --nn_width=8 --nn_depth=1 \
+  --actors=2 --evaluators=0 --inference_batch_size=2 --inference_threads=1 \
+  --max_simulations=200 --replay_buffer_size=512 --replay_buffer_reuse=4 \
+  --train_batch_size=64 --checkpoint_freq=1 --max_steps=1 --max_memory_mb=1 \
+  > "$tmp/memory.log" 2>&1
+mem_status=$?
+memory_recorded() {
+  python3 -c 'import json, sys; sys.exit(0 if json.load(open(sys.argv[1]))["max_memory_mb"] == 1 else 1)' \
+    "$mem/config.json"
+}
+check "15. the control, a run at 1 MB and 200 simulations, exits 0" [ "$mem_status" -eq 0 ]
+check "15. ... config.json records max_memory_mb 1" memory_recorded
+check "15. ... its dwarfs' searches collect, their largest tree at the 1 MB limit" \
+  trees "$mem/learner.jsonl" dwarfs positive 1.0
 
 finish

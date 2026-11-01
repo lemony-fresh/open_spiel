@@ -149,6 +149,9 @@ ABSL_FLAG(double, playout_cap_full_share, 1,
           "in full and recorded; the rest fast, not recorded (1: all in full).");
 ABSL_FLAG(int, playout_cap_fast_simulations, 0,
           "The fast searches' simulations (no root noise), if playout_cap_full_share < 1.");
+ABSL_FLAG(int, max_memory_mb, 10,
+          "The self-play searches' memory limit in MB, beyond which a search garbage-"
+          "collects rarely visited subtrees (10: upstream's).");
 ABSL_FLAG(double, value_loss_weight, 1,
           "The value loss's weight in each learning step (1: upstream's).");
 ABSL_FLAG(std::string, inference_precision, "float32",
@@ -300,6 +303,7 @@ int main(int argc, char** argv) {
     config.learner_threads = absl::GetFlag(FLAGS_learner_threads);
     config.playout_cap_full_share = absl::GetFlag(FLAGS_playout_cap_full_share);
     config.playout_cap_fast_simulations = absl::GetFlag(FLAGS_playout_cap_fast_simulations);
+    config.max_memory_mb = absl::GetFlag(FLAGS_max_memory_mb);
     if (config.playout_cap_full_share < 1) {  // Stops here, not in an actor.
       SPIEL_CHECK_GT(config.playout_cap_full_share, 0);
       SPIEL_CHECK_GT(config.playout_cap_fast_simulations, 0);
