@@ -4399,6 +4399,9 @@ the push's and the rename's tests ran (memory beside the trainer), to resume.
   trolls +27.32); the teacher's ties: the dwarfs' 45.0% of 302 moves, the trolls' 62.9% of 39.
   The script stopped at 13:48 as set, the ties fix applied, R7 relaunched at 13:49: `budget`
   set 400/200 and 32 MB, the trainer rebuilt from 648269e9, steps 526-545 from 13:49.
+  Step 526 (13:49-14:55, 66 minutes with the restart's loading; the CPU's limit 76-77%): the
+  dwarfs' trees at 400 a median 2.4 MB, at most 7.2, the trolls' at 200 0.9 and 3.6, none
+  collected — 10 MB would have held 400/200, not the dwarfs' 800 (~14 MB at most, by doubling).
 
 **Next step:** R7_525's evaluation (~13:50), then R7 at 400/200 with 32 MB (steps 526-545,
 ~15 hours, its evaluation ~06:00 on 11-02): its gain against R7_525, the stronger-trolls
