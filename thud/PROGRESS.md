@@ -4394,6 +4394,11 @@ the push's and the rename's tests ran (memory beside the trainer), to resume.
   (`KeyError: 'best_share'`, in `r7_run_2026-10-27.log`) — `az_teacher_stats` now writes a
   gaps line a side first; the stats files are complete, only the summary line in the log was
   missing; fixed in the script while it stands at the stop (those lines skipped).
+  **R7_525** (the 9-step segment 517-525 at 200/100): against R7_516 −0.72 (−3.06 to +1.61),
+  against R6_366 −4.50 (−7.56 to −1.44), hexparrot:3 +46.10, teacher:5 +21.07 (dwarfs −6.25,
+  trolls +27.32); the teacher's ties: the dwarfs' 45.0% of 302 moves, the trolls' 62.9% of 39.
+  The script stopped at 13:48 as set, the ties fix applied, R7 relaunched at 13:49: `budget`
+  set 400/200 and 32 MB, the trainer rebuilt from 648269e9, steps 526-545 from 13:49.
 
 **Next step:** R7_525's evaluation (~13:50), then R7 at 400/200 with 32 MB (steps 526-545,
 ~15 hours, its evaluation ~06:00 on 11-02): its gain against R7_525, the stronger-trolls
