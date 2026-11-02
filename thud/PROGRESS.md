@@ -4416,7 +4416,8 @@ the push's and the rename's tests ran (memory beside the trainer), to resume.
   for mains power: Windows logged the charger off from 21:23 to 00:48, the battery from 80% to
   30%). Step 533 ended at 01:08. **WSL ended at ~01:45** (the run's last writes 01:45:10, the
   VM's network adapter removed at 01:46:13; Windows itself ran on, no sleep until 03:36), ~2.5
-  minutes after a 12-second loss of mains (01:42:48-01:43:00; another, 3 minutes, at 00:48:54);
+  minutes after a 12-second loss of mains (01:42:48-01:43:00; another, 3 minutes, at 00:48:54;
+  the user: most likely the magnetic plug, undone by accident);
   the cause not found (the 32 error reports Windows filed at 01:46:00 were older ones from its
   queue, among them a blue screen of 10-31, `DRIVER_POWER_STATE_FAILURE` — the restart of WSL
   that day, 10:33). Step 534's ~37 minutes lost; the step-533 checkpoint and buffer intact
