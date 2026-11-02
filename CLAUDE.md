@@ -210,7 +210,9 @@ options*).
   and WSL restarted on waking — every process ended, detached ones too (2026-09-30 it had
   survived a 3-hour battery freeze). So check with `powershell.exe -NoProfile -Command
   "(Get-CimInstance Win32_Battery).BatteryStatus"` (2 = mains, 1 = battery) before and
-  during long runs; `uptime -s` shows when WSL last started.
+  during long runs; `uptime -s` shows when WSL last started. **WSL has also ended without
+  a sleep**: on 2026-11-02 at ~01:45, ~2.5 minutes after a 12-second loss of mains, Windows
+  running on (cause not found; `thud/PROGRESS.md`, 2026-11-02).
 - **Background jobs die with the Claude Code session that started them.** On 2026-09-30
   run D's whole process tree stopped at 10:54, minutes after a new session replaced the
   old one following a battery freeze (no crash, no out-of-memory kill; the harness marked

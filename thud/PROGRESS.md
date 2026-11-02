@@ -4411,8 +4411,24 @@ the push's and the rename's tests ran (memory beside the trainer), to resume.
   `learner.jsonl` includes the pause. The segment's timeout (40 h from 13:49) leaves ~23 hours
   for it, the tripwire 24 hours without a step.
 
-**Next step:** R7 at 400/200 with 32 MB, paused after step 532 until after midnight (steps
-533-545, ~11 hours from the resumption, its evaluation after): its gain against R7_525, the stronger-trolls
+- **2026-11-02, 00:48-12:10: R7 resumed, WSL ended at ~01:45, R7 restarted.** The pause
+  script resumed the trainer at 00:48:42 (38 minutes without input; it had waited from midnight
+  for mains power: Windows logged the charger off from 21:23 to 00:48, the battery from 80% to
+  30%). Step 533 ended at 01:08. **WSL ended at ~01:45** (the run's last writes 01:45:10, the
+  VM's network adapter removed at 01:46:13; Windows itself ran on, no sleep until 03:36), ~2.5
+  minutes after a 12-second loss of mains (01:42:48-01:43:00; another, 3 minutes, at 00:48:54);
+  the cause not found (the 32 error reports Windows filed at 01:46:00 were older ones from its
+  queue, among them a blue screen of 10-31, `DRIVER_POWER_STATE_FAILURE` — the restart of WSL
+  that day, 10:33). Step 534's ~37 minutes lost; the step-533 checkpoint and buffer intact
+  (`learner.jsonl` parses, no NUL bytes). Restarted at 12:04 (the user): `r7_run_2026-10-27.sh`
+  (steps 534-545; `budget` reapplied, the same 400/200 and 32 MB), the CPU-limit logger and the
+  tripwire — the tripwire now takes `watch RUN_DIR FIRST_STEP` to keep an earlier watch's
+  baseline (here 495: steps 475-494, the dwarfs' prior 104, margin −1.2, games 218, as at its
+  10-31 start); without it, a restart's baseline would have been steps 514-533 (prior ~88,
+  margin ~−5), the drift it should catch.
+
+**Next step:** R7 at 400/200 with 32 MB, restarted 12:04 on 11-02 (steps 534-545, ~10 hours,
+its evaluation after): its gain against R7_525, the stronger-trolls
 metrics (the dwarfs' self-play margin from ~−6) and the trees' sizes in `learner.jsonl`.
 Later: 800/400 (the GPU, or when 400/200 plateaus; the trees' sizes tell whether 32 MB holds
 it), tree reuse, the finer evaluation's cheap form.
