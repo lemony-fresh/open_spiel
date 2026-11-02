@@ -4402,9 +4402,17 @@ the push's and the rename's tests ran (memory beside the trainer), to resume.
   Step 526 (13:49-14:55, 66 minutes with the restart's loading; the CPU's limit 76-77%): the
   dwarfs' trees at 400 a median 2.4 MB, at most 7.2, the trolls' at 200 0.9 and 3.6, none
   collected — 10 MB would have held 400/200, not the dwarfs' 800 (~14 MB at most, by doubling).
+  **Paused at 19:32 after step 532** (the user: pause all computations, resume after midnight
+  once there has been no input for 15 minutes): `~/thud-runs/pause_r7_2026-11-01.sh`, detached,
+  stops the trainer with SIGSTOP and continues it with SIGCONT once it is past 00:00, Windows'
+  `GetLastInputInfo` (`~/thud-runs/idle_ms.ps1`) shows 15 minutes without input and the laptop
+  is on mains (an hour of failed idle readings after midnight resumes it anyway); both times go
+  to `stage1_matches/progress.log`. Steps 526-532 took ~49 minutes each; step 533's time in
+  `learner.jsonl` includes the pause. The segment's timeout (40 h from 13:49) leaves ~23 hours
+  for it, the tripwire 24 hours without a step.
 
-**Next step:** R7_525's evaluation (~13:50), then R7 at 400/200 with 32 MB (steps 526-545,
-~15 hours, its evaluation ~06:00 on 11-02): its gain against R7_525, the stronger-trolls
+**Next step:** R7 at 400/200 with 32 MB, paused after step 532 until after midnight (steps
+533-545, ~11 hours from the resumption, its evaluation after): its gain against R7_525, the stronger-trolls
 metrics (the dwarfs' self-play margin from ~−6) and the trees' sizes in `learner.jsonl`.
 Later: 800/400 (the GPU, or when 400/200 plateaus; the trees' sizes tell whether 32 MB holds
 it), tree reuse, the finer evaluation's cheap form.
