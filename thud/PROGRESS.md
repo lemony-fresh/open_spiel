@@ -4459,8 +4459,12 @@ the push's and the rename's tests ran (memory beside the trainer), to resume.
   already skips exact duplicates (the same observation, legal moves and targets) and keeps
   the last MAX_SIZE positions of its inputs, oldest first.
 
+  The user (11-03): very strongly consider a fresh network after R7_565's evaluation, trained on
+  the 400/200 positions alone (steps 526-565, two buffers), without testing the window first
+  (`PLAN.md`, the levers' *Plasticity fixes*). R7 goes on meanwhile (segment 566-585).
+
 **Next step:** R7 at 400/200 with 32 MB, steps 546-565 (~18:50 on 11-03, its evaluation with
-the plasticity test ~20:00): its gain against R7_545, the stronger-trolls
+the plasticity test ~20:00), then the decision on a fresh network: its gain against R7_545, the stronger-trolls
 metrics (the dwarfs' self-play margin from ~−6) and the trees' sizes in `learner.jsonl`.
 Later: 800/400 (the GPU, or when 400/200 plateaus; the trees' sizes tell whether 32 MB holds
 it), tree reuse, the finer evaluation's cheap form.
