@@ -664,7 +664,7 @@ dwarfs' searches 200 simulations, the trolls' 100; 400/200 from step 526):
 | **A finer evaluation for the teacher's ties** (cheap form: the root moves only) | not built | the user wants to discuss its cheap form first |
 | **The teacher's taper** | built (the gates), not started | the search beating the teacher in `az_teacher_vs_search` (2026-10-25: not yet for the distribution) |
 | **The teacher at depth 6** | not the main route | only if the teacher-vs-search measurement still favours depth |
-| **The bigger buffer** (KataGo's formula, ~1M) | to retry | the trigger is met: the main line's own positions since R281 fill ~2M |
+| **The bigger buffer** (KataGo's formula, ~1M) | **retried 2026-10-29: no gain**, kept at 458,752 (the forward test at the 456 stop: twice the buffer minus today's, policy +0.0017 with the seeds' spread 0.0027, value −0.0003; the decision log) | only on a new reason, such as 400/200's positions costing twice as much: twice the buffer in 400/200 positions alone exists from the 585 stop (steps 544-585) |
 | **The learning-rate sweep** (the trainer may underfit) | not run | any gap; offline on a buffer first (`az_restructure`) |
 | **Grow the network** (Net2Net, `az_grow`) | built | when learning flattens (KL and matches flat over several segments) |
 | **Plasticity fixes** (a fresh network trained on the archive; shrink and perturb) | built in part (`az_restructure copy=none`) | if plasticity keeps rising (R5/R6 ~1.0-1.3 at times, R4 ~0.55) |
