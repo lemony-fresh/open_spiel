@@ -4488,10 +4488,29 @@ the push's and the rename's tests ran (memory beside the trainer), to resume.
   and found one bug: a bare `wait` after the matches also waited for the pause detector, so the
   script would have hung there and never resumed R7 — it now waits for the matches' PIDs.
 
+  **Then the main line goes on from F565, run R8** (the user, 15:15: continue with the new
+  network instead of the old one; if its results are bad, we decide to go back after looking at
+  them together). `fresh_2026-11-03.sh` (stopped while it waited, changed, tested, started again
+  15:16) writes F565's checkpoint to `network.txt` and, at its end, starts
+  `~/thud-runs/r8_run_2026-11-03.sh` instead of resuming R7; R7 resumes only if F565 could not be
+  made. R8's script is generated from R7's (`make_r8.py`, every change asserted once): the run
+  folder is R7's buffer, log, config and carried games at step 565 with F565's checkpoint and
+  optimizer as checkpoints −1 and 565 (as run R from the reset network, 2026-10-19; F565's
+  `vpnet.pb` byte for byte R7's), R7's recipe unchanged (400/200, 32 MB, the teacher at 5/4);
+  segments of 20 steps (585, 605, ...); each evaluated as R7's plus a match against R7_565 (the
+  old line, for going back), the previous network's match from the first segment (F565), and
+  the plasticity test at every stop; R7's one-offs gone; the tripwire started on R8 with R7's
+  baseline (steps 475-494). If R8's folder cannot be set up, R7 resumes. Tested: the setup in a
+  scratch folder from a stand-in R7 at step 545 and the toy F545 (every file equal to its source,
+  the config only its path changed; the control without a network fell back to R7), and one
+  trainer step there at toy settings (it loaded F545's checkpoint, the buffer and the carried
+  games, learnt step 546 with exact batch-norm counts and saved it); the tripwire's pattern
+  against the running R7 tripwire.
+
 **Next step:** R7_565's evaluation (~19:50 on 11-03, with the plasticity test), then F565
-(`fresh_2026-11-03.sh`, results ~02:30 on 11-04), then the decision with the user: F565 as the
-main line if it beats R7_565 (a run from it, set up then), otherwise R7 on — R7 resumed
-meanwhile (steps 566-585). Also the stronger-troll metrics (the dwarfs' self-play margin from
-~−6) and the trees' sizes in `learner.jsonl`.
+(`fresh_2026-11-03.sh`, results ~02:30 on 11-04), then run R8 from F565 (its first segment,
+566-585, ~16 hours, evaluated against F565, R7_565, R6_366, hexparrot:3 and teacher:5). With
+the user: F565's and R8's results — going back to R7 if they are bad. Also the stronger-troll
+metrics (the dwarfs' self-play margin from ~−6) and the trees' sizes in `learner.jsonl`.
 Later: 800/400 (the GPU, or when 400/200 plateaus; the trees' sizes tell whether 32 MB holds
 it), tree reuse, the finer evaluation's cheap form.
