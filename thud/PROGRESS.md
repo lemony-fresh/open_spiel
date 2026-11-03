@@ -4428,8 +4428,13 @@ the push's and the rename's tests ran (memory beside the trainer), to resume.
   10-31 start); without it, a restart's baseline would have been steps 514-533 (prior ~88,
   margin ~−5), the drift it should catch.
 
-**Next step:** R7 at 400/200 with 32 MB, restarted 12:04 on 11-02 (steps 534-545, ~10 hours,
-its evaluation after): its gain against R7_525, the stronger-trolls
+  Steps 534-543 took ~43.5 minutes each (12:04-19:20; the CPU's limit 71-74%). **Paused again
+  at 19:52 after step 543** (the user, as the night before: `~/thud-runs/pause_r7_2026-11-02.sh`,
+  resuming after 00:00 on 11-03 once idle 15 minutes and on mains; the segment's timeout wants it
+  resumed by ~10:50).
+
+**Next step:** R7 at 400/200 with 32 MB, paused after step 543 (steps 544-545 ~1.2 hours from
+the resumption, its evaluation ~55 minutes after): its gain against R7_525, the stronger-trolls
 metrics (the dwarfs' self-play margin from ~−6) and the trees' sizes in `learner.jsonl`.
 Later: 800/400 (the GPU, or when 400/200 plateaus; the trees' sizes tell whether 32 MB holds
 it), tree reuse, the finer evaluation's cheap form.
