@@ -4449,6 +4449,16 @@ the push's and the rename's tests ran (memory beside the trainer), to resume.
   flat segments), and the buffer (21 steps' positions) was only ~95% 400/200 positions at 545.
   Steps 546-565 from 02:50, ~48 minutes each (the CPU's limit 71%).
 
+  **The plasticity readings at 700 batches are on another scale** (found 11-03, from the curves
+  in `plasticity_*.jsonl`): every network's random-target fit falls steeply between 700 and
+  1,000 batches, so R7's 3.65-4.20 (since the shorter evaluation's 700) are not comparable with
+  the earlier 0.45-1.38 at 1,000. At 700 alike: R201 3.30, R5_301 4.41, R7_376 4.02 (1.01 at
+  1,000), R7_416 3.83, R7_456 3.65, R7_496 4.20; a fresh network 0.34-0.54. No stiffening
+  beyond R5's shows. The user is considering a fresh network trained on recent self-play
+  positions after R7_565's evaluation (a reset, as run R's in 2026-10-18); `az_merge_buffers`
+  already skips exact duplicates (the same observation, legal moves and targets) and keeps
+  the last MAX_SIZE positions of its inputs, oldest first.
+
 **Next step:** R7 at 400/200 with 32 MB, steps 546-565 (~18:50 on 11-03, its evaluation with
 the plasticity test ~20:00): its gain against R7_545, the stronger-trolls
 metrics (the dwarfs' self-play margin from ~−6) and the trees' sizes in `learner.jsonl`.
