@@ -4463,8 +4463,35 @@ the push's and the rename's tests ran (memory beside the trainer), to resume.
   the 400/200 positions alone (steps 526-565, two buffers), without testing the window first
   (`PLAN.md`, the levers' *Plasticity fixes*). R7 goes on meanwhile (segment 566-585).
 
-**Next step:** R7 at 400/200 with 32 MB, steps 546-565 (~18:50 on 11-03, its evaluation with
-the plasticity test ~20:00), then the decision on a fresh network: its gain against R7_545, the stronger-trolls
-metrics (the dwarfs' self-play margin from ~−6) and the trees' sizes in `learner.jsonl`.
+  **The fresh network tonight** (the user, 11-03 afternoon: away 19:00-midnight, use the time;
+  of the two options, R7 on for ~5 more steps or this, this — and longer than midnight is fine
+  for better training or more evaluation): R7 ends after R7_565's evaluation
+  (`~/thud-runs/r7_run.stop`, touched 15:08), then `~/thud-runs/fresh_2026-11-03.sh` (started
+  15:08, waiting for it) trains **F565**, a fresh 64 x 4 network with the input planes, on R7's
+  400/200 positions alone: every position the buffer added after step 525's (its counter
+  10,413,144; step 526 took no carried games), steps 526-565 and the games carried at the 565
+  stop, ~874,000, merged from the 545 and 565 snapshots. The merge is tested against the
+  counters — the buffer's own "total added" is the learner's `total_states` plus the states
+  carried over at a stop (snap416: 8,020,207 + 6,092; snap516 and snap545 alike) — and against
+  the snapshots' overlap (identical positions also occur by themselves: 102 beyond the overlap
+  on 10-29, 177 in the test). The 10-18 reset's recipe (`capacity_2026-10-18.sh` C) on twice the
+  data: 6,000 batches at 0.001 after a warm-up of 200 (~7 passes, as the reset's 3,000 over
+  435,200; its held-out policy loss still fell slowly at 3,000, and most of the late gain came
+  from the 0.0001 phase), then 500 at 0.0001 from the best held-out checkpoint (policy +
+  value), with `buffer_size=` (az_restructure keeps 458,752 by default). Then F565 against
+  R7_565 over 80 pairs (seeds 3 and 4), against hexparrot:3 and teacher:5 (R7_565's openings,
+  pair by pair), its plasticity at 700 batches with the control, its dead channels and the
+  gates; then R7 resumed (steps 566-585) while the user decides. Expected: R7_565 evaluated
+  ~19:50, phase 1 to ~00:50 (2.94 s a batch at OMP 8 and the CPU's ~80%: the 10-29 buffer test
+  on 899,138 positions), all done and R7 running again ~02:30. The script's test at toy sizes
+  (`TEST=DIR`: the 525 and 545 snapshots, in the idle class beside the trainer) ran end to end
+  and found one bug: a bare `wait` after the matches also waited for the pause detector, so the
+  script would have hung there and never resumed R7 — it now waits for the matches' PIDs.
+
+**Next step:** R7_565's evaluation (~19:50 on 11-03, with the plasticity test), then F565
+(`fresh_2026-11-03.sh`, results ~02:30 on 11-04), then the decision with the user: F565 as the
+main line if it beats R7_565 (a run from it, set up then), otherwise R7 on — R7 resumed
+meanwhile (steps 566-585). Also the stronger-troll metrics (the dwarfs' self-play margin from
+~−6) and the trees' sizes in `learner.jsonl`.
 Later: 800/400 (the GPU, or when 400/200 plateaus; the trees' sizes tell whether 32 MB holds
 it), tree reuse, the finer evaluation's cheap form.
