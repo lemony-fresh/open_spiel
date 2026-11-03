@@ -4433,8 +4433,24 @@ the push's and the rename's tests ran (memory beside the trainer), to resume.
   resuming after 00:00 on 11-03 once idle 15 minutes and on mains; the segment's timeout wants it
   resumed by ~10:50).
 
-**Next step:** R7 at 400/200 with 32 MB, paused after step 543 (steps 544-545 ~1.2 hours from
-the resumption, its evaluation ~55 minutes after): its gain against R7_525, the stronger-trolls
+  Resumed at 00:50:32 on 11-03 (15 minutes without input, on mains). (WSL had frozen ~20
+  minutes at 14:31 on 11-02, the pause detector's `clock.log`: a sleep; nothing lost.)
+  **R7_545** (the first segment at 400/200, steps 526-545): **against R7_525 −0.70** (−3.77 to
+  +2.37; 17 won, 3 drawn, 20 lost) — the fourth flat segment (R7_476 −0.07, R7_496 −0.93,
+  R7_516 −0.95, R7_525 −0.72, each against the one before); against R6_366 −2.33 (−5.40 to
+  +0.75; R7_525 −4.50), teacher:5 +21.02 (dwarfs −6.62, trolls +27.65; R7_525 +21.07),
+  hexparrot:3 +45.77 (40 of 40), blunders 2.9% (the gates pass); self-play dwarfs' margin −4.9
+  (R7_525's segment −4.9, R7_516's −5.8); the dwarfs' targets' entropy 4.15 (4.09 to 525), the
+  KL above them R7_545 0.222, R7_525 0.220 (to 525: R7_525 0.227, R7_516 0.228 — the newer
+  network hardly closer, as before); the teacher's ties 45.5% of the dwarfs' moves. **The
+  targets did improve**: the trainer's search agrees with the long search (4,000) on the
+  dwarfs' best move 64% (R7_516 at 200: 58%), 72% at 800; the recorded target's distance 0.186
+  (800: 0.190 — the teacher's mix dominates it). Not yet a plateau of 400/200 by the rule (three
+  flat segments), and the buffer (21 steps' positions) was only ~95% 400/200 positions at 545.
+  Steps 546-565 from 02:50, ~48 minutes each (the CPU's limit 71%).
+
+**Next step:** R7 at 400/200 with 32 MB, steps 546-565 (~18:50 on 11-03, its evaluation with
+the plasticity test ~20:00): its gain against R7_545, the stronger-trolls
 metrics (the dwarfs' self-play margin from ~−6) and the trees' sizes in `learner.jsonl`.
 Later: 800/400 (the GPU, or when 400/200 plateaus; the trees' sizes tell whether 32 MB holds
 it), tree reuse, the finer evaluation's cheap form.
