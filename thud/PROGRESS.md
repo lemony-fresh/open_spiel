@@ -4635,7 +4635,7 @@ the push's and the rename's tests ran (memory beside the trainer), to resume.
   better (KL 0.263 → 0.056): so `captures` with the weights 0.25 (dwarfs at the frontier) and 0
   (trolls). The finer grid for the dwarfs (0.1-0.4, done 04:25) is flat from 0.2 to 0.3: the
   setting for gates 3 and 4 `captures` with the weights 0.25,0. Then the worktree's full tests
-  (`dev_full_tests_2026-11-04.sh`, from 04:25, its result in `~/thud-dev/build-tests/full.out`).
+  (`dev_full_tests_2026-11-04.sh`, from 04:20, its result in `~/thud-dev/build-tests/full.out`).
   **Built and tested** on the branch (`PLAN.md`, *Built and tested*): every quick test in the
   worktree, `trainer_test.sh` and `az_match_test.sh` in full, the two new C++ tests sanitized;
   planted bugs caught by the game's test, the threat test and both Python tests. Test-side
