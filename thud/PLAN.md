@@ -561,19 +561,12 @@ main teacher.
   material within its horizon — none of the positional value (cohesion, mobility, blocked
   lines) the network's value can learn, so a deeper material teacher matters less as the
   network gets better. Only if the measurement above still favours a deeper teacher.
-- **The last alpha-beta measure: tie-breaking by a finer evaluation** (the user). At depth
-  4-5 the teacher ties 20-50% of the dwarfs' moves and 50-75% of the trolls' for its best
-  score (by position set and depth: `az_teacher_stats`, 2026-10-23/24); within a tied group it says nothing. Positional terms worth together less than one
-  dwarf (so material still decides between groups) would order the moves inside a group —
-  after hexparrot's AI rules: threatened pieces, the dwarfs' cohesion, blocked shove lines,
-  dwarfs next to trolls, mobility. Unlike arm T (the ties shared by the search's own visits,
-  which narrowed the dwarfs' prior) this brings in information from outside the
-  network-and-search loop. The cheap form: the positional terms scored only on the root
-  moves' resulting positions, breaking ties among the root moves — the material search and
-  its frontier rule (exact only for a material evaluation, `material_search.h`) stay as
-  they are; terms at the search's leaves would need the frontier searched in full, many
-  times slower. The risk: the network learns the heuristic's biases where they are wrong.
-  An arm against the 5/x main line, before the teacher is tapered.
+- **The last alpha-beta measure: a finer evaluation for the teacher** (the user) — designed
+  2026-11-04, in its own section below (*The teacher's finer evaluation*): a threat term at the
+  search's frontier that corrects the material scores, and positional terms at the root that
+  order the moves inside a tied group. Unlike arm T (the ties shared by the search's own
+  visits, which narrowed the dwarfs' prior) it brings in information from outside the
+  network-and-search loop; the risk: the network learns the terms' biases where they are wrong.
 - **Then taper the teacher**, gated (*Tapers by results*, the design's conditions; arm RLT,
   the dwarfs' weight 0.35, lost −3.98 on 2026-10-20, when the network still needed it), with
   the search's own targets taking over. **When, and how** (the user, 2026-10-27): two
@@ -649,6 +642,130 @@ main teacher.
 - **Alpha-beta keeps its other roles**: the training opponent (30% of the positions) and
   the regression gates, where it catches tactical blunders.
 
+**The teacher's finer evaluation** (the user and Claude, 2026-11-03/04; *Levers still open*).
+The teacher scores moves by material alone, so it ties many and says nothing inside a tie: at
+R7's 565 stop 50.5% of the dwarfs' ~288 moves tied for its best score (92.9% of its policy's
+mass), 59.1% of the trolls' ~38 (95.8%). And it is blind beyond its horizon. Two additions,
+each behind its own switch, off by default; tests first, then the gates below, in order.
+
+1. **A threat term at the frontier — a correction of the material scores** (the user's choice
+   (b), 2026-11-04). Today the search applies plies 1-4 and stands in for the 5th with a scan:
+   one ply above the leaves only a capture changes the material, so a node there is worth its
+   material plus its best capture, found without generating a move (the frontier rule,
+   `ThudState::BestCapture`, `material_search.h`). What the opponent could take at ply 6
+   stays invisible. Scanning after a real 5th ply would be depth 6 itself — ~23x depth 5 for
+   the dwarfs (2.8 s a position), ~14x for the trolls (2026-10-27). So the threat is scanned at
+   the frontier itself: **T**, the most points the opponent could capture against the side to
+   move there if it were the opponent's move (the same scan for the other side; new in
+   `ThudState`). The side to move can cancel a threat with its 5th move in two ways: **by a
+   capture** (usually a handful a position) — apply each, scan after it, and that line has
+   depth 6's exact value (chess's quiescence search: at the horizon only the captures searched,
+   after Shannon 1950); **by a quiet move** (nearly all the moves: the threatened piece moved,
+   the landing square or the line blocked) — which one rescues only trying them shows, the
+   full ply's work, so the quiet alternative is estimated. The variants (`threat=`):
+   - `off`: today's search, bit for bit;
+   - `scan`: the frontier's value M + max(0, C) − w·T (M the material, C the best capture's
+     gain, both from the side to move's view);
+   - `captures`: the better of M − w·T (the best quiet move, estimated) and, for each capture
+     c, M + gain(c) − T(c), T(c) scanned after c (exact) — needs a generator of the capture
+     moves alone (new in `ThudState`; the full move list would be the full ply's cost);
+   - in both, a quiet move that ends the battle (the no-capture limit or the turn limit
+     reached) has no threat subtracted, and a capture that ends it scores the battle's return.
+
+   **The weight w**, per side at the frontier, fitted against depth 6 (below). In the trainer's
+   teacher (5 for the dwarfs, 4 for the trolls) the dwarfs are at the frontier in both
+   searches, so T is the trolls' threat; teacher:5 as the trolls (the matches, the training
+   opponent from step 586) puts the trolls there. The scores become fractional: integers in a
+   finer unit through the search and its table, converted back for the policy's temperature
+   and the root window's margin. A third level, only if both variants leave a large gap to
+   depth 6: the likely rescues tried (the threatened pieces' own moves, moves onto the attack
+   squares) — a fraction of a ply.
+
+2. **Positional terms at the root — a tie-break.** Six terms on the position after each root
+   move, E = Σ wᵢ·fᵢ from the dwarfs' view (the trolls prefer E low):
+   - **dwarf cohesion**: pairs of dwarfs on neighbouring squares, each pair once — every pair
+     a two-dwarf hurl line; against it, a troll landing beside a clump takes all of its
+     neighbours (Saucistophe's clustering term);
+   - **dwarf hurl reach**: the distinct squares, empty or holding a troll, that a dwarf could
+     reach by a hurl of 2 or more squares (its line at least that long behind it, the squares
+     between empty) — the ground a troll cannot step onto without risking a hurl;
+   - **troll cohesion**: pairs of trolls on neighbouring squares — every pair a two-troll shove
+     line (Saucistophe's tuned AI gives it its largest positional weight);
+   - **troll shove reach**: the distinct empty squares a troll could reach by a shove (2 to N
+     squares, the path empty), whether a dwarf stands beside them or not — a dwarf blocking a
+     shove line (hexparrot's line blocks) shrinks it;
+   - **troll mobility**: the trolls' steps onto empty squares (Saucistophe's; hemming the
+     trolls in is the dwarfs' long game);
+   - **distance**: the trolls' mean distance in king moves to their nearest dwarf
+     (hexparrot's trolls close in on it when nothing else is on).
+
+   Left out: **threatened pieces and dwarfs next to trolls at the root** (the depth-5 search
+   plays those captures out: inside a tied group every move has the same material after 5
+   plies, so a threat left there is one the search found harmless; threats belong at the
+   frontier, item 1), and **dwarf mobility** (queen moves, ~290: mostly open board;
+   Saucistophe's tuned weight 0). **The weights fitted, not guessed** — even the signs are
+   unclear (cohesion gives hurl lines but feeds multi-captures), and the one tuned set we know,
+   Saucistophe's genetic algorithm (dwarf cohesion 0, troll cohesion 2 a neighbour, troll
+   mobility 1 a move, against 13-15 a piece), was tuned on a small board at depth 3: weak
+   evidence. The fit: the final margin of our own games regressed on the material, the side to
+   move and the six terms at every position (least squares; R7's logged self-play at 400/200
+   and the matches at 200), whole games held out, intervals by resampling whole games — as
+   chess engines tune their evaluations on game results (Texel's tuning method) and Logistello
+   fitted Othello's patterns (Buro). The weights in points of final margin; a term whose
+   interval includes 0 dropped. **In the teacher's policy** (`--kickstart_ties=positional`):
+   each group of moves with equal scores keeps its total — the scores (material, with the
+   threat term) alone decide between groups, stricter than "the terms below one dwarf" — and
+   inside the group the total is shared by softmax(E / 0.25), the teacher's own temperature,
+   so a predicted point counts as a captured dwarf would. The teacher as a player
+   (`b=teacher:N`) draws its move from the best group by the same shares. Cost: the terms on
+   the ~290 positions after the root moves, against the search's ~0.12 s.
+
+**The tests, written first** (with a positive control wherever a test could pass by doing
+nothing; *Tests*):
+- off is today: the scores and the nodes bit for bit (`teacher_identity_test` extended);
+- each positional term on hand-built positions with known values: lone pieces, lines of 2-4,
+  the board's edge, the Thudstone in a line, a dwarf blocking a shove path, a troll on a hurl
+  square, the 2-square minimum of both reaches;
+- the opponent's capture scan against brute force (the same board with the other side to
+  move, every move applied) on random positions of random games; a position with a known
+  threat as the control;
+- the captures-only generator against the full move list filtered by `Captures()`;
+- `captures`' capture lines equal a brute-force two plies (the capture applied, the
+  opponent's every reply); a known recapture (a troll that takes and lands beside a dwarf
+  line) as the control;
+- the pruned search with the term equal to plain minimax with the same frontier value
+  (fractional values through alpha-beta and the table), depths 2-4;
+- the battle's end: a quiet move at the no-capture or turn limit subtracts no threat;
+- the policy: the groups' totals unchanged, zero weights today's policy, the split
+  softmax(E / 0.25); the teacher as a player choosing inside the exact best group;
+- the Python fit's terms equal the C++ ones on the same positions;
+- end to end: `trainer_test.sh` and `az_match_test.sh` with the switches on.
+
+**The gates, in order** (each can stop its part):
+1. **The positional fit** (Python; minutes on one core, beside R8 in the idle class): the
+   terms that survive; none, and the positional part stops.
+2. **The threat term against depth 6** (offline, ~100-200 of R7's positions a side; the
+   dwarfs' teacher at 5 against depth 6, the trolls' at 4 against depth 5): plain, `scan` and
+   `captures` over a grid of w — the scores' error against the reference, how often the best
+   move is the reference's, the policy's distance from the reference's. The variant and w that
+   agree best, if clearly better than plain (the positions resampled); neither, and the threat
+   part stops.
+3. **Timings** (the user, 2026-11-04): the teacher's milliseconds a position per side at its
+   depths for each variant, with and without the positional terms (`az_teacher_stats
+   quick=1`), then a trainer step with the chosen teacher (`bench_trainer.sh`) — at a stop,
+   not beside R8, the CPU's limit recorded.
+4. **The match**: teacher:5 with the chosen additions against the main line's network on the
+   40 openings, paired opening by opening with the plain teacher:5 match of the same stop; the
+   network's margin against it lower beyond the noise passes.
+5. **Then a training arm**, with the user: the teacher's target only (the training opponent
+   stays the plain teacher unless decided).
+
+**Where the work happens**: a git worktree (`~/thud-dev`, branch `teacher-terms` from `thud`)
+with its own build folders, built and tested beside R8 in the idle class — R8's queue builds
+from the main checkout before every segment, and a failed build ends the run. Merged into
+`thud` once every test passes, everything off by default, so that the queue's next build
+changes nothing the trainer does (the identity test).
+
 **Levers still open** (the user, 2026-10-27: keep track of what we still have to help the
 network improve; kept up to date here — tried and settled ones say so). As of run R7 (from
 R6_366: the teacher at 5/4, the training opponent as the trolls the teacher at depth 5, the
@@ -662,7 +779,7 @@ dwarfs' searches 200 simulations, the trolls' 100; 400/200 from step 526):
 | **Playout cap randomisation** (deep searches on a share of the moves) | built, off; **measured offline 2026-10-30** (R7_456, 100 positions a side, against the network's 4,000-simulation search): the recorded target at 800 simulations only a little closer than today's at 200 (dwarfs −0.028, −0.038 to −0.019; trolls at 800 −0.042), at 400 −0.022 and −0.026; **choosing the deep searches** (the user: instead of drawing them): of the normal search's cheap signals only the surprise, KL(visits ‖ prior) (KataGo's), predicts where 800 simulations improve the target — rank correlation +0.41 dwarfs, +0.36 trolls, its top quarter holding 49% and 40% of the gain (a random quarter 25%); the top two moves' closeness predicts nothing (−0.04, +0.03), the unstable evaluation (Huang, Coulom and Lin 2010) little | cheaper deep targets; chosen by surprise with importance weights (1/q) against the bias of the recorded positions, or KataGo's weighting — a training arm decides; **test (A)** (the user, 2026-10-30; `az_relabel`, `~/thud-runs/relabel_test_2026-10-30.sh`, after the root-noise match): R7's newest 150 games' positions searched again by R7_476 at 200/100 and at 800/400, four buffers of the same positions (all low, all deep, deep on a random quarter, deep on the most surprised quarter — the last two at the same cost), R7_476 trained on each alike (128 batches), then each prior against R7_476's 4,000-simulation search on held-out games and matches against all_low; every position recorded, so no 1/q weights are needed there; caps' other half (fewer recorded positions, more games) only training runs can test — and those start from a buffer of ~21 steps of R7's own games (458,752 positions, 21,845 a step), which dilutes a change of the search until the buffer has turned over; **test (A)'s result (2026-10-30/31**, 29,800 positions of R7's newest 150 games, every 10th game held out; R7_476 trained 128 batches on each): against the all-low network, 40 pairs at 200/100 without root noise — all deep **+2.80** (+0.61 to +4.99), surprise-picked quarter +1.43 (−0.13 to +2.98), random quarter +0.97 (−1.00 to +2.95): deeper targets train a stronger network even from this little training, and the surprise pick did a little better than the random one at the same cost (not beyond the noise); the deep search changed the targets by 0.096 (dwarfs, mean distance), the surprise quarter holding 35% of that change (random 25%); the priors against R7_476's 4,000-simulation search on the held-out games barely moved (surprise −0.0039 and random −0.0024 closer than all-low for the dwarfs, all deep +0.0022; R7_476 untrained closest for the trolls: the small training drifts the prior) — the matches, not this yardstick, decide; **test (B)** (the user, 2026-10-31; `~/thud-runs/caps_arms_2026-10-31.sh`, after R7_496's evaluation): capsB (a quarter at 800/400 recorded, the rest at 100, no noise, not recorded) against ctrlB (R7's recipe), side by side for 12 hours on half the machine each, from R7_496 with the buffer cut to its newest 5 steps (109,225 positions, reuse 5: R7's 21,845 a step and ~3 samples a position), then matches; **test (B)'s result (2026-11-01**, 12 hours unpaused): capsB 2 steps (497-498), ctrlB 15 (497-511) — a recorded position costs caps ~1,100/700 simulations against 200/100; capsB498 against ctrlB511 **+2.88** (−0.06 to +5.81), each against R7_496 −1.35 (−3.49 to +0.79) and −1.60 (−3.59 to +0.39): caps ahead by ~+1.6 over both paths (≈ −0.5 to +3.6) — at equal compute at least as good as R7's recipe, not beyond the noise; neither arm gained on R7_496 (R7 on a plateau); **set aside** (the user, 2026-11-01: the gain too small — the searches doubled on every move instead; capsB's 800 searches may have reached the search's memory limit near their ends, see *More simulations, 800/400*) |
 | **The training opponent as the dwarfs at the teacher's strength** (our trolls' opponent) | **from step 586** (the user, 2026-11-03: soon, if not too costly; `opponent` in `r8_run_2026-11-03.sh`, after F565's first segment, so that the comparison with R7 sees one change at a time): `--alphabeta_player=teacher --alphabeta_depth=5,5`; until then the dwarfs OpenSpiel's alpha-beta at depth 2 with random values at its leaves, which our trolls beat by +31.1 of 32 a game (R7's step 565: 37 games, the worst +30) | the cost estimated at ~1-2% of a step (~3,500 opponent moves a step at ~80-150 ms; the step times will show it); the gain likely small: our trolls beat the teacher's dwarfs too, by ~+28 a battle in the teacher:5 matches (R7_545 +27.65, R7_565 +28.52) — our own dwarfs in self-play stay their strongest opponent |
 | **Gumbel AlphaZero** (value-based targets, an even root search) | **part one built 2026-10-29** (the user: tests first, part two today or tomorrow): the completed-Q policy target, `--policy_target=completed_q` (`CompletedQPolicy`, matching mctx 0.0.71 to ~1e-16 on five roots; its wiring with the network's prior before noise and the mover's value — `completed_q_test`; `trainer_test.sh` 11), and `az_teacher_vs_search`'s candidates `completed_q` and `cq_target`; **part two built 2026-10-29**: Gumbel's search, `--gumbel_search` (`MCTSBot::SetGumbel`: sequential halving at the root over 16 actions sampled with Gumbel noise, the deterministic rule below it, the move the halving's winner, no root noise, the completed-Q target; its schedule and both rules as mctx's, its searches' root counts following the schedule exactly, PUCT's not — `gumbel_search_test`; `trainer_test.sh` 12), and `az_teacher_vs_search gumbel=1` | established (Danihelka et al., ICLR 2022; DeepMind's mctx), no guarantee for us; its gains largest with few simulations per legal move, the dwarfs' case (200 over ~250); first measured offline against the network's long search; **measured offline 2026-10-29** (`az_teacher_vs_search` on R7_436, 100 positions a side against the network's 4,000-simulation search): on our PUCT trees the completed-Q target is no better — the dwarfs' alone 0.395 against the visits' 0.442 in distance but its top move agreeing 0.33 against 0.54, the trolls' 0.395 against 0.260, and the recorded target with it 0.305 against today's 0.237 (trolls 0.278 against 0.208): with most moves at 0-1 visits its values are noise it amplifies; so not adopted alone — part two, the root search that gives the values it needs, then the two measured together; **part two measured offline 2026-10-29** (R7_436, 100 positions a side, against the network's 4,000-simulation PUCT search, paired): Gumbel's target farther than today's — mixed with the teacher +0.121 for the dwarfs (0.393 against 0.272), +0.153 for the trolls; alone, the dwarfs' top move the reference's 17% of the time (the visits 45%: 16 sampled of ~250 moves under a prior of ~140 effective moves miss the best), the trolls' 31% (the visits 21%) with twice the mass on it but far sharper (8.5 effective moves against 15.9). Not switched on in R7; the yardstick, a long PUCT search, favours PUCT-shaped targets, so only matches can settle it — next: more sampled actions for the dwarfs (32, 64) measured the same way, or an arm; **then (2026-10-29, the user: a match, and 128 and 256 too)**: `az_teacher_vs_search considered=16,32,64,128,256` (256 is every simulation one visit, the same search as any count at or above the budget — 200 for the dwarfs, 100 for the trolls — so 512 would repeat it) on R7_456 (with the Gumbel search's move, `gumbel_move`), and matches of R7_456 searching the Gumbel way against itself with PUCT at the trainer's budgets (200 dwarfs, 100 trolls; `az_match gumbel_a=M`, scale 1) for M = 16, 32, 64, both sides in self-play's conditions (`noise=0,1 sample_plies=10`: the trolls' root noise and the first 10 plies sampled, as the trainer plays; the Gumbel side plays the halving's winner throughout) — each side's self-play player against the other's, the same network on both, so that only the search differs; between steps 456 and 457, the run stopped for them (~1.5 hours); **measured 2026-10-29** (R7_456): offline, Gumbel's target moves closer to the long search as the count grows (the dwarfs' mixed target +0.124, +0.113, +0.087, +0.069, +0.059 against today's for 16, 32, 64, 128, 256 — never closer), its played move agreeing with the long search's best only 9-18% (PUCT's most visited 39%); the matches: 16 actions +1.68 (−3.62 to +6.97), 32 −15.93, 64 −23.05 against PUCT — at 200 simulations more candidates leave each too few visits, and the dwarfs pay; **not switched on**; next, the budget experiment (2026-10-30, the decision log): 200, 400, 800 simulations; **the budget experiment's matches (2026-10-30**, R7_456 against itself, 40 pairs each, self-play's conditions, rated together, today's search at 200 = 0): today's search at 400 +10.2, at 800 +17.7 (the margins add up: the loop's chi-square 0.11 on 1); Gumbel at its best count only ties today's search at the same budget — at 200 with 16 +1.7, at 400 with 16 −0.6 and 32 −1.0, at 800 with 32 +1.7 — and loses with too few or too many (200: 4 −17.3, 8 −4.8, 32 −15.9, 64 −23.1; 400: 8 −12.1; 800: 16 −5.2, 64 −7.6); by side, in every match **its dwarfs worse and its trolls better** (the control, today's search against itself: as dwarfs +3.5, as trolls −4.6; Gumbel's best: as dwarfs −7 to −9, as trolls +8 to +10) — but the trolls' comparison is confounded: today's trolls search with root noise in self-play's conditions, Gumbel's without; **not switched on**; next: a match without root noise to separate the two; **the match without root noise (2026-10-30)**: Gumbel 16 against today's search −6.92 (−10.68 to −3.17); by side against today's search against itself without noise (as dwarfs −7.12, as trolls +7.28): Gumbel's dwarfs −8.85, its trolls +1.78 — so its trolls' gain was the root noise today's trolls search with (+13.65 with it), not Gumbel; **Gumbel stays off** (at our budgets it adds nothing on either side) |
-| **A finer evaluation for the teacher's ties** (cheap form: the root moves only) | not built | the user wants to discuss its cheap form first |
+| **A finer evaluation for the teacher** (a threat term at the frontier; positional terms at the root for its ties) | **designed 2026-11-04** (*The teacher's finer evaluation*, above): tests first, then its gates | the fit, the comparison with depth 6, the timings, the match against the plain teacher; then an arm, with the user |
 | **The teacher's taper** | **begun**: the dwarfs' weight 0.7 → 0.5 from step 457 (the user, 2026-10-29, gated); the trolls' raised instead, 0.3 → 0.5 from step 477 (*Stronger trolls*) | the next step down when both of a side's signals agree (*Then taper the teacher*, above: the prior's distance from the teacher at a floor, the search as close to the long search as the teacher) |
 | **The teacher at depth 6** | not the main route | only if the teacher-vs-search measurement still favours depth |
 | **The bigger buffer** (KataGo's formula, ~1M) | **retried 2026-10-29: no gain**, kept at 458,752 (the forward test at the 456 stop: twice the buffer minus today's, policy +0.0017 with the seeds' spread 0.0027, value −0.0003; the decision log) | only on a new reason, such as 400/200's positions costing twice as much: twice the buffer in 400/200 positions alone exists from the 585 stop (steps 544-585) |
@@ -941,8 +1058,9 @@ the search and trainer*, run C'.
 | 2026-10-31 | **The trolls' root noise ε 0.25 → 0.1 from step 497** (stronger trolls, step 2: their self-play noise cost them ~12 points a game; α stays 0.1) | user | *Stronger trolls* |
 | 2026-11-01 | **Test (B)'s result**: at equal compute playout caps at least as good as R7's recipe — capsB498 (2 steps) against ctrlB511 (15 steps) +2.88 (−0.06 to +5.81), ~+1.6 over both paths (≈ −0.5 to +3.6), not beyond the noise; neither arm above R7_496 (−1.35, −1.60) | measured | the playout cap row |
 | 2026-11-01 | **The trolls' ε 0.1 kept** (R7_516: against R7_496 −0.95, n.s.; hexparrot:3 +48.48 against R7_496's +44.80; the dwarfs against teacher:5 −7.25 against −6.65; the dwarfs' self-play margin ~5 lower, as expected); **R7 on a plateau** (three segments without a gain against the previous network: −0.07, −0.93, −0.95), its cause the targets — deeper targets in the main line, for the user to decide | measured | *Stronger trolls*, the plateau rule |
-| 2026-11-03 | **A fresh network, F565, on R7's 400/200 positions (steps 526-565), and the main line on from it as run R8** (R7 flat for four segments; back to R7 only after looking at the results together); **the training opponent's dwarfs the teacher at depth 5 from step 586** (our trolls beat the depth-2 dwarfs by +31.1 of 32); **the learning-rate sweep at the 585 stop**; the no-capture limit in self-play unchanged at 100 (Claude's reading of the quiet stretches: lower would cut real play — for the user; *Deferred decisions*) | user, Claude | *Levers still open* |
 | 2026-11-01 | **Playout caps set aside; the searches doubled, 400/200 from step 526 (first planned for 537; the user: at once), without a test first** (R7 flat at 200/100, so a slower recipe costs little; each segment gated); **800/400 later** — on the GPU or when 400/200 plateaus, after raising the search's memory limit | user | the levers table, *More simulations* |
+| 2026-11-03 | **A fresh network, F565, on R7's 400/200 positions (steps 526-565), and the main line on from it as run R8** (R7 flat for four segments; back to R7 only after looking at the results together); **the training opponent's dwarfs the teacher at depth 5 from step 586** (our trolls beat the depth-2 dwarfs by +31.1 of 32); **the learning-rate sweep at the 585 stop**; the no-capture limit in self-play unchanged at 100 (Claude's reading of the quiet stretches: lower would cut real play — for the user; *Deferred decisions*) | user, Claude | *Levers still open* |
+| 2026-11-04 | **The teacher's finer evaluation designed**: a threat term at the search's frontier that corrects the material scores (the user's choice (b) of a tie-break or a correction; variants `scan` and `captures` behind a switch, its weight fitted against depth 6) and six positional terms at the root sharing each tied group's mass (their weights fitted to our games' results); tests first, then the fit, the comparison with depth 6, timings and a match as gates; the work in a separate worktree while R8 runs. **The learning-rate sweep gets 0.00003** (the user: is a smaller rate needed too?) | user, Claude | *The teacher's finer evaluation*; *Levers still open* |
 
 **Considered and set aside** (with the reason): the Python AlphaZero (a layout bug, and
 slow; fallback note below); a 32 x 2 network (its convolutions see 11 x 11 squares);

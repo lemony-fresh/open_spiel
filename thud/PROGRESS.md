@@ -4565,11 +4565,29 @@ the push's and the rename's tests ran (memory beside the trainer), to resume.
   from Saucistophe's and hexparrot's AIs and the rules' mechanics, their weights fitted to
   our games' results rather than guessed); waiting for the user's word.
 
+  **11-04, 01:00-02:00: the finer evaluation designed** (`PLAN.md`, *The teacher's finer
+  evaluation*, new). The user agreed to the six positional terms and the fit, and asked why
+  threatened pieces were left out: Claude had placed every term at the root, where the depth-5
+  search sees all threats; the user meant them at the leaves. But the search's 5th ply already
+  is the scan (`BestCapture` after 4 applied plies: the frontier rule), so scanning after a real
+  5th ply is depth 6 itself (~23x / ~14x). Instead **a threat term at the frontier**: the
+  opponent's best capture against the side to move there, scanned the same way. Asked whether
+  the 5th move's own captures can make those threats obsolete without the full ply: for
+  captures yes, cheaply and exactly (apply only them, scan after each: quiescence search's
+  idea); for quiet rescues no — that is the full ply's work, so estimated with a weight fitted
+  against depth 6. **Decided (the user):** the term as a correction of the material scores
+  (choice (b), not a tie-break only); both variants, `scan` and `captures`, behind a switch,
+  the comparison with depth 6 and timings deciding; tests first, timings on top; the decisions
+  in a new plan section. The work in a worktree (`~/thud-dev`), because R8's queue builds from
+  the main checkout before every segment and a failed build ends the run. (Claude's reply of
+  01:00 said "the five positional terms" once; there are six.) The decision log's 11-03 row
+  moved below the last 11-01 row (date order).
+
 **Next step:** F565 (`fresh_2026-11-03.sh`, training since 19:30, results ~03:00-03:30 on 11-04),
 then run R8 from F565 (its first segment,
 566-585, ~16 hours, evaluated against F565, R7_565, R6_366, hexparrot:3 and teacher:5; at its
 stop the learning-rate sweep, ~5 hours; from step 586 the training opponent's dwarfs the
 teacher at depth 5). With the user: F565's and R8's results — going back to R7 if they are bad;
-the teacher's tie-break (the terms proposed on 11-04, above). Also the stronger-troll metrics (the dwarfs'
+the plan section *The teacher's finer evaluation* (the user's review), then its tests, written first, and the code in `~/thud-dev`. Also the stronger-troll metrics (the dwarfs'
 self-play margin from ~−6) and the trees' sizes in `learner.jsonl`. Later: 800/400 (the GPU,
 or when 400/200 plateaus; the trees' sizes tell whether 32 MB holds it), tree reuse.
