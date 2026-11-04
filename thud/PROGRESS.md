@@ -4553,11 +4553,23 @@ the push's and the rename's tests ran (memory beside the trainer), to resume.
   terms against our network, paired with the plain teacher on the same openings — if it plays no
   better, its targets will not be better either.
 
-**Next step:** F565 (`fresh_2026-11-03.sh`, training since 19:30, results ~02:30 on 11-04),
+  **11-04, 00:45.** The user agreed: the no-capture limit stays 100, the sweep as set, the
+  tie-break's gate as proposed — but the terms to be nailed down with the user before any
+  code. Asked whether a smaller rate needs testing too: **0.00003 added to the sweep** (two
+  seeds; `make_r8.py` patched, `r8_run_2026-11-03.sh` regenerated — the diff three lines, the
+  rates and two comments — and installed by an atomic rename at 00:42, R8 not yet started):
+  F565 ends at 0.0001, offline training at 0.0001 overfit at once on 10-12 (convK83), and the
+  sweep's lower end so far was only F565 untouched. The sweep ~5 hours now (3.6 s a batch).
+  F565's phase 1 runs slower than planned (3.55 s a batch: batch 5,250 at 00:40), so its
+  results come ~1 hour later. The tie-break's terms proposed to the user (six candidates
+  from Saucistophe's and hexparrot's AIs and the rules' mechanics, their weights fitted to
+  our games' results rather than guessed); waiting for the user's word.
+
+**Next step:** F565 (`fresh_2026-11-03.sh`, training since 19:30, results ~03:00-03:30 on 11-04),
 then run R8 from F565 (its first segment,
 566-585, ~16 hours, evaluated against F565, R7_565, R6_366, hexparrot:3 and teacher:5; at its
-stop the learning-rate sweep, ~3.5-4 hours; from step 586 the training opponent's dwarfs the
+stop the learning-rate sweep, ~5 hours; from step 586 the training opponent's dwarfs the
 teacher at depth 5). With the user: F565's and R8's results — going back to R7 if they are bad;
-the teacher's tie-break (the proposal above). Also the stronger-troll metrics (the dwarfs'
+the teacher's tie-break (the terms proposed on 11-04, above). Also the stronger-troll metrics (the dwarfs'
 self-play margin from ~−6) and the trees' sizes in `learner.jsonl`. Later: 800/400 (the GPU,
 or when 400/200 plateaus; the trees' sizes tell whether 32 MB holds it), tree reuse.
