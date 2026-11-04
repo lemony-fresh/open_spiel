@@ -775,9 +775,18 @@ nothing; *Tests*):
    move rescues most threatened pieces, so a threat counts about a quarter. `captures` at 0 (the
    capture lines exact, no estimate) alone changes little (−0.034, the interval across 0). The
    cost on the loaded machine: the dwarfs' 214 ms a position → 431 (`scan`) and 565
-   (`captures`), the trolls' 14 → 18 and 26. **Gate 2 passed** at 0.25 for both; a finer grid
-   (0.1-0.4) and the trolls at the frontier (teacher:5's trolls, 5 against 6) queued after it;
-   the timings (gate 3) decide between the two.
+   (`captures`), the trolls' 14 → 18 and 26. **Gate 2 passed** at 0.25 for both. **With the
+   trolls at the frontier** (teacher:5's trolls, 5 against 6, the same 150 positions): any weight
+   above 0 is worse (KL +0.29 to +2.7: a troll a hurl threatens can almost always step away), but
+   `captures` at 0 — the capture lines exact — brings the trolls' teacher much closer (KL 0.263 →
+   0.056, −0.206, −0.285 to −0.138; its mass on the best +0.035; the error 0.123 → 0.023 points),
+   at 3.3x the time (259 → 847 ms). So **the weights by the side at the frontier: ~0.25 for the
+   dwarfs, 0 for the trolls, with `captures`** (`--teacher_threat_weights=0.25,0`); in the trainer's
+   teacher (5/4) the dwarfs are at the frontier in both searches, so only theirs counts there.
+   The finer grid (0.1-0.4, done 04:25) confirms the dwarfs' weight: `captures` best and flat
+   from 0.2 to 0.3 (KL −0.137 to −0.145; 0.1 −0.101, 0.4 −0.127), `scan` at 0.25-0.3 (−0.112,
+   −0.113). **The setting for gates 3 and 4: `captures`, the weights 0.25 (dwarfs) and 0
+   (trolls).** The timings (gate 3) at a stop, on a quiet machine.
 3. **Timings** (the user, 2026-11-04): the teacher's milliseconds a position per side at its
    depths for each variant, with and without the positional terms (`az_teacher_stats
    quick=1`), then a trainer step with the chosen teacher (`bench_trainer.sh`) — at a stop,

@@ -26,8 +26,8 @@ scored on steps 566-585).
 **In progress: the teacher's finer evaluation** (`PLAN.md`, *The teacher's finer evaluation*):
 a threat term at the teacher's search frontier (a correction of its material scores) and two
 positional terms splitting its tied moves. Built and tested on branch `teacher-terms` in the
-worktree `~/thud-dev`, **not merged**; gates 1 (the fit) and 2 (closer to the deeper search at
-weight 0.25) passed; next the finer grid (queued), `run_tests.sh --full` there, then gates 3
+worktree `~/thud-dev`, **not merged**; gates 1 (the fit) and 2 (closer to the deeper search —
+`captures`, the threat's weight ~0.25 with the dwarfs at the frontier, 0 with the trolls) passed; next the finer grid (queued), `run_tests.sh --full` there, then gates 3
 (timings) and 4 (a match) at a stop, then the merge and an arm with the user.
 
 **Also running:** the collapse tripwire (watching R8), the CPU-limit logger
@@ -4630,8 +4630,12 @@ the push's and the rename's tests ran (memory beside the trainer), to resume.
   the idle class, 30 minutes): at weight 0.25 both variants bring the teacher closer to the
   search one ply deeper (the dwarfs' KL −0.112 `scan`, −0.145 `captures`; the trolls' −0.074,
   −0.065), heavier weights worse; cost on the loaded machine ~2x (`scan`) and ~2.6x
-  (`captures`) for the dwarfs' teacher. The finer grid (0.1-0.4) and teacher:5's trolls at the
-  frontier are queued (`threat_probe_2026-11-04.sh`, `threat_probe_fine_2026-11-04.sh`).
+  (`captures`) for the dwarfs' teacher. With the trolls at the frontier (teacher:5's trolls, 5
+  against 6, done 03:50) any weight is worse, but `captures` at 0 — the capture lines exact — far
+  better (KL 0.263 → 0.056): so `captures` with the weights 0.25 (dwarfs at the frontier) and 0
+  (trolls). The finer grid for the dwarfs (0.1-0.4, done 04:25) is flat from 0.2 to 0.3: the
+  setting for gates 3 and 4 `captures` with the weights 0.25,0. Then the worktree's full tests
+  (`dev_full_tests_2026-11-04.sh`, from 04:25, its result in `~/thud-dev/build-tests/full.out`).
   **Built and tested** on the branch (`PLAN.md`, *Built and tested*): every quick test in the
   worktree, `trainer_test.sh` and `az_match_test.sh` in full, the two new C++ tests sanitized;
   planted bugs caught by the game's test, the threat test and both Python tests. Test-side
