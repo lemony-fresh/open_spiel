@@ -794,6 +794,9 @@ nothing; *Tests*):
 4. **The match**: teacher:5 with the chosen additions against the main line's network on the
    40 openings, paired opening by opening with the plain teacher:5 match of the same stop; the
    network's margin against it lower beyond the noise passes.
+   **Whether to switch it on is decided with the user once gates 3 and 4 are in** (the user,
+   2026-11-04: ~10% more compute a step, gate 2's rough estimate, is acceptable, since the
+   teacher is tapered out later).
 5. **Then a training arm**, with the user: the teacher's target only (the training opponent
    stays the plain teacher unless decided).
 
@@ -820,8 +823,8 @@ refusing only for its own checkout's running programs (another checkout's run do
 binaries). In the worktree every quick test passes, `trainer_test.sh` and `az_match_test.sh` in
 full, the two new C++ tests also sanitized. `trainer_test.sh` 7 (`az_restructure copy=none`, its
 fresh network's values unlike the source's) failed once in four runs, its folder gone; that
-path is unchanged by the branch — watched. Still to do before the merge: `run_tests.sh --full`
-there (the playthrough diff, every full test); with the merge, `CLAUDE.md`'s list of the
+path is unchanged by the branch — watched. `run_tests.sh --full` there passed (45 of 45,
+04:19-04:46, the playthrough diff and every full test). With the merge, `CLAUDE.md`'s list of the
 trainer's flags and of our programs and tests (`--teacher_threat`, `--teacher_threat_weights`,
 `--kickstart_ties=positional`, `--teacher_terms_weights`; `az_threat_probe`; the new tests).
 

@@ -11,7 +11,10 @@ Phase 6), a 64 x 4 network with the 50 input planes and the convolutional policy
 
 **The main line: run R8** (`~/thud-runs/r8_run_2026-11-03.sh`, detached; from 03:11 on 11-04),
 from **F565** — a fresh network trained offline on R7's 400/200 positions (steps 526-565), level
-with R7_565 (+0.19 over 80 pairs, −1.67 to +2.04), teacher:5 +21.57, hexparrot:3 +47.15. R7
+with R7_565 (+0.19 over 80 pairs, −1.67 to +2.04), teacher:5 +21.57 (R7_565 +23.18; paired by
+opening −1.60, −4.55 to +1.52), hexparrot:3 +47.15 (R7_565 +46.40; paired +0.75, −1.98 to
++3.42), its plasticity much restored (random targets' loss after 700 batches 1.07; R7_565 3.61,
+a fresh network 0.41). R7
 ended at step 565 on a plateau (R7_565 against R7_545 +1.30, against R6_366 −4.25). Back to R7
 only after looking at F565's and R8's results with the user. R8's recipe, R7's: 400/200
 simulations (dwarfs/trolls), the teacher at depths 5/4 with weights 0.5/0.5 at temperature 0.25
@@ -27,8 +30,11 @@ scored on steps 566-585).
 a threat term at the teacher's search frontier (a correction of its material scores) and two
 positional terms splitting its tied moves. Built and tested on branch `teacher-terms` in the
 worktree `~/thud-dev`, **not merged**; gates 1 (the fit) and 2 (closer to the deeper search —
-`captures`, the threat's weight ~0.25 with the dwarfs at the frontier, 0 with the trolls) passed; next the finer grid (queued), `run_tests.sh --full` there, then gates 3
-(timings) and 4 (a match) at a stop, then the merge and an arm with the user.
+`captures`, the threat's weight 0.25 with the dwarfs at the frontier, 0 with the trolls; the
+finer grid flat from 0.2 to 0.3) passed; `run_tests.sh --full` there passed (45 of 45). Next,
+at a stop, gates 3 (timings) and 4 (a match); **whether to switch it on is decided with the
+user once both are in** (the user accepts the ~10% more compute a step estimated, since the
+teacher is tapered out later); then the merge and an arm.
 
 **Also running:** the collapse tripwire (watching R8), the CPU-limit logger
 (`~/thud-runs/cpu_limit.log`). **Upstream:** PR #1637 (the replay buffer's memory) waiting;
@@ -4649,14 +4655,30 @@ the push's and the rename's tests ran (memory beside the trainer), to resume.
   80 pairs +0.19 (−1.67 to +2.04), teacher:5 +21.57, hexparrot:3 +47.15 — level with R7_565 on a
   fresh network; **R8 started at 03:11** (segment 566-585).
 
+  **10:15.** `run_tests.sh --full` in the worktree passed: 45 of 45, 04:19-04:46 (the
+  playthrough diff, the sanitized tests, `trainer_test.sh` and `az_match_test.sh` in full). The
+  user: whether to switch the finer evaluation on is decided once gates 3 and 4 are in; ~10%
+  more compute a step (gate 2's rough estimate) is acceptable, since the teacher is tapered out
+  later. **F565 in full** (`~/thud-runs/fresh_2026-11-03/`; R7_565's from `runR7_eval/`): the
+  merged buffer 880,688 positions (20,035 duplicates skipped); phase 1 6,000 batches at 0.001,
+  the best held-out at 5,250 (policy 3.8302, value 0.0088), phase 2 500 at 0.0001 (3.8057,
+  0.0076; R7_565 on the same positions, which it trained on, 3.7961 and 0.0096). Against R7_565
+  seed 3 −0.38 (−2.60 to +1.85), seed 4 +0.75 (−2.31 to +3.81), 35 pairs won, 5 drawn, 40 lost;
+  teacher:5 +21.57 against R7_565's +23.18 (paired by opening −1.60, −4.55 to +1.52; as dwarfs
+  −6.20 against −5.35, as trolls 27.77 against 28.52); hexparrot:3 +47.15 against +46.40 (paired
+  +0.75, −1.98 to +3.42). Plasticity (random targets, 700 batches): 1.07 against R7_565's 3.61, a
+  fresh network 0.41 — much of the lost plasticity back. Dead channels 0 in the trunk, 10 in the
+  heads of 705 (dormant at τ 0.1 25; R7_565 6 and 13, a fresh network 0 and 9) — monitored.
+  Gates: blunders −0.034 (R7_565 −0.038), troll kills +3.23 (+3.25); all pass. R8 at step 573;
+  the tripwire quiet at 570 (the dwarfs' prior 97 effective moves, 93% of the baseline).
+
 **Next step:** R8's first segment (566-585, from 03:11, ~16 hours), then at its stop the
 evaluation (against F565, R7_565, R6_366, hexparrot:3, teacher:5) and the learning-rate sweep
 (~5 hours); from step 586 the training opponent's dwarfs the teacher at depth 5. Meanwhile the
-finer evaluation: gate 2's finer grid and the trolls' half (queued, idle class), then
-`run_tests.sh --full` in `~/thud-dev`, then at a stop gate 3 (the timings: `az_threat_probe` on a
+finer evaluation: at a stop gate 3 (the timings: `az_threat_probe` on a
 quiet machine, and a trainer step) and gate 4 (teacher:5 with the additions against the main
 line's network, paired with the plain teacher:5 match; the positional split at the teacher's
-temperature and a softer one); then merge the branch (everything off by default) and an arm,
-with the user. With the user: F565's and R8's results (back to R7 if bad). Later: 800/400 (the
+temperature and a softer one); then, with the user, whether to switch it on, the merge
+(everything off by default) and an arm. With the user: F565's and R8's results (back to R7 if bad). Later: 800/400 (the
 GPU, or when 400/200 plateaus), tree reuse. Push the unpushed commits at a gap; ping upstream
 ~2026-11-07.
