@@ -100,6 +100,11 @@ tests=(
   "thread_count_test|quick|1|$bin/thread_count_test"
   "teacher_identity_test|quick|13|$bin/teacher_identity_test"
   "teacher_identity_deep|full|120|$bin/teacher_identity_test deep"
+  "teacher_terms_test|quick|0.3|$bin/teacher_terms_test"
+  "teacher_terms_py_test|quick|1|python3 thud/experiments/teacher_terms_test.py"
+  "teacher_terms_cross_test|quick|2|python3 thud/experiments/teacher_terms_cross_test.py $bin"
+  "terms_fit_test|quick|5|python3 thud/experiments/terms_fit_test.py"
+  "threat_search_test|full|120|$bin/threat_search_test"
 )
 
 # Two tests that are commands of their own, run as tests above.
@@ -139,7 +144,7 @@ EOF
     # binaries are instrumented (a sanitizer that is not there reports nothing).
     status=0
     for b in replay_buffer_test position_buffer_test features_test az_buffer_truncate \
-             teacher_identity_test; do
+             teacher_identity_test threat_search_test teacher_terms_test; do
       # grep -c reads all of nm's output (grep -q would stop early: nm's SIGPIPE fails
       # the pipe under pipefail).
       nm "$bin/sanitized/$b" | grep -c __asan_report_load > /dev/null ||
@@ -149,7 +154,9 @@ EOF
     "$bin/sanitized/replay_buffer_test" "$logs/sanitized_scratch" &&
       "$bin/sanitized/position_buffer_test" "$logs/sanitized_scratch" &&
       "$bin/sanitized/features_test" && "$bin/sanitized/az_buffer_truncate" self_test &&
-      "$bin/sanitized/teacher_identity_test" > /dev/null || status=1
+      "$bin/sanitized/teacher_identity_test" > /dev/null &&
+      "$bin/sanitized/threat_search_test" quick > /dev/null &&
+      "$bin/sanitized/teacher_terms_test" > /dev/null || status=1
     exit $status ;;
 esac
 if [ "$list" -eq 1 ]; then

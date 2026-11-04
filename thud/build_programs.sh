@@ -17,7 +17,7 @@
 # with a stale one: the game's library first (build-shared/), then every program whose
 # sources changed. With nothing to do it takes a second. Every queue in ~/thud-runs runs
 # it before starting (CLAUDE.md). It refuses to replace a program while one of ours from
-# build-shared/ is running — a run's next segment would start the new binary — and says
+# this checkout's build-shared/ is running — a run's next segment would start the new binary — and says
 # which; it then exits 2 without building (1: a build failed).
 #
 #   thud/build_programs.sh [PROGRAM ...]
@@ -34,7 +34,12 @@ if [ -z "$game_changed" ] && make -f thud/programs.mk -q "$@" > /dev/null 2>&1; 
   echo "build_programs: up to date"
   exit 0
 fi
-running=$(ps -eo pid,args | awk '$2 ~ /build-shared\/[^/ ]+$/ {print}')
+# Programs from this checkout's build-shared/, run by their full path (as the queues run
+# them) or by a relative one (which could be this checkout's); another checkout's programs (a
+# worktree's, 2026-11-04) do not use this one's binaries.
+running=$(ps -eo pid,args | awk -v dir="$repo/build-shared/" '
+  { p = $2 }
+  p ~ /^(\.\/)?build-shared\/[^\/ ]+$/ || (index(p, dir) == 1 && substr(p, length(dir) + 1) !~ /\//) {print}')
 if [ -n "$running" ]; then
   echo "build_programs: programs of ours are running, so nothing is replaced:" >&2
   echo "$running" | cut -c1-150 >&2

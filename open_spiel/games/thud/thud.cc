@@ -720,10 +720,13 @@ int ThudState::Captures(Action action) const {
   return dwarfs;
 }
 
-int ThudState::BestCapture() const {
+int ThudState::BestCapture() const { return BestCaptureFor(to_move_); }
+
+int ThudState::BestCaptureFor(Player player) const {
+  SPIEL_DCHECK_TRUE(player == kDwarfPlayer || player == kTrollPlayer);
   if (terminal_) return 0;
   const Geometry& geo = Geo();
-  if (to_move_ == kDwarfPlayer) {
+  if (player == kDwarfPlayer) {
     // A hurl takes one troll, the most a dwarf move can, so the question is whether there is
     // one — looked for from the trolls' side (2026-10-27, a speed-up: at most 8 trolls against
     // up to 32 dwarfs): from each troll along each line, the empty path to the first piece; a
@@ -764,6 +767,65 @@ int ThudState::BestCapture() const {
     }
   }
   return best;
+}
+
+std::vector<Action> ThudState::CaptureActions() const {
+  std::vector<Action> actions;
+  if (terminal_) return actions;
+  std::vector<Action> capture_steps;
+  const Geometry& geo = Geo();
+  const bool dwarfs = to_move_ == kDwarfPlayer;
+  const SquareSet& pieces = dwarfs ? dwarf_squares_ : troll_squares_;
+  // As AddDwarfMoves and AddTrollMoves, keeping only the moves that capture, in their order.
+  for (int w = 0; w < 3; ++w) {
+    for (uint64_t bits = pieces[w]; bits != 0; bits &= bits - 1) {
+      const int square = w * 64 + LowestBit(bits);
+      const int cell = geo.cell[square];
+      for (int d = 0; d < kNumDirections; ++d) {
+        const int step = kGridStep[d];
+        int target = cell + step;
+        if (dwarfs) {
+          int distance = 1;
+          for (; grid_[target] == Cell::kEmpty; ++distance) target += step;
+          if (grid_[target] == Cell::kTroll && distance <= LineLength(cell, -step)) {
+            actions.push_back(EncodeLineAction(square, d, distance));
+          }
+          continue;
+        }
+        if (grid_[target] != Cell::kEmpty) continue;
+        if (DwarfsNextTo(target) > 0) {
+          capture_steps.push_back(EncodeCaptureStepAction(square, d));
+        }
+        const int line = LineLength(cell, -step);
+        for (int distance = 2; distance <= line; ++distance) {
+          target += step;
+          if (grid_[target] != Cell::kEmpty) break;
+          if (DwarfsNextTo(target) > 0) {
+            actions.push_back(EncodeLineAction(square, d, distance));
+          }
+        }
+      }
+    }
+  }
+  actions.insert(actions.end(), capture_steps.begin(), capture_steps.end());
+  return actions;
+}
+
+bool ThudState::HasQuietMove() const {
+  if (terminal_) return false;
+  // A dwarf's one-square move or a troll's step that captures nothing goes to any empty
+  // square next to the piece, and every quiet move passes over one first.
+  const Geometry& geo = Geo();
+  const SquareSet& pieces = to_move_ == kDwarfPlayer ? dwarf_squares_ : troll_squares_;
+  for (int w = 0; w < 3; ++w) {
+    for (uint64_t bits = pieces[w]; bits != 0; bits &= bits - 1) {
+      const int cell = geo.cell[w * 64 + LowestBit(bits)];
+      for (int step : kGridStep) {
+        if (grid_[cell + step] == Cell::kEmpty) return true;
+      }
+    }
+  }
+  return false;
 }
 
 void ThudState::UndoAction(Player player, Action action) {

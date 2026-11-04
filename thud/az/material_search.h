@@ -39,6 +39,20 @@ namespace thud_az {
 // frontier rule below, which is exact only for kMaterial.
 enum class Evaluation { kMaterial };
 
+// The threat term at the frontier (2026-11-04; thud/PLAN.md, *The teacher's finer
+// evaluation*). The frontier rule stands in for the last ply with a scan of the best capture;
+// what the opponent could take after it stays unseen. With a threat term the frontier also
+// scans T, the most points the opponent could capture against the side to move there if it
+// were the opponent's move (ThudState::BestCaptureFor), and a node there is worth the better
+// of its best quiet move, estimated as its material less w x T (w the side's weight; no
+// threat if the move ends the battle), and its captures:
+//   kScan      the best capture's gain, less w x T (none if the move ends the battle);
+//   kCaptures  each capture applied and the opponent's best capture after it scanned and
+//              counted in full: depth 6's exact value for those lines (as chess's quiescence
+//              search looks at captures alone at the horizon).
+// kOff: the material frontier rule, today's search, bit for bit.
+enum class Threat { kOff, kScan, kCaptures };
+
 // Alpha-beta search of Thud to a fixed depth for exact values (2026-10-23; thud/PLAN.md,
 // the GPU checklist, item 3: kickstarting's teacher, AlphaBetaPlayer::Scores), on the
 // game's own state, made and unmade in place (ThudState::UndoAction). Its values are the
@@ -99,6 +113,20 @@ class MaterialSearch {
     }
   }
 
+  // The threat term (Threat, above) with the weight w for each side at the frontier, in
+  // points per point threatened ({dwarfs, trolls}); kOff, the default, with no weights.
+  // Values inside the search are then in hundredths of a point; with kOff in points, as
+  // before. Clears the table, whose values depend on it.
+  void SetThreat(Threat threat, std::array<double, 2> weights = {0, 0}) {
+    SPIEL_CHECK_TRUE(threat != Threat::kOff || (weights[0] == 0 && weights[1] == 0));
+    for (double w : weights) SPIEL_CHECK_TRUE(w >= 0 && w <= 1);
+    threat_ = threat;
+    threat_weights_ = weights;
+    unit_ = threat == Threat::kOff ? 1 : kThreatUnit;
+    std::fill(table_.begin(), table_.end(), Entry{});
+  }
+  Threat threat() const { return threat_; }
+
   // Every legal action's value, in points for the side to move at `state`, searched
   // `depth` plies (the move itself the first): the material after the move at depth 1, after
   // the best reply at depth 2, ... In LegalActions() order. With `margin` > 0 (the root
@@ -138,11 +166,11 @@ class MaterialSearch {
       if (s.IsTerminal() || depth == 1) {
         value = Evaluate(s, me);
       } else {
-        const int alpha = margin > 0 && best > -kInfinity ? best - margin : -kInfinity;
+        const int alpha = margin > 0 && best > -kInfinity ? best - margin * unit_ : -kInfinity;
         value = -Search(&s, depth - 1, -kInfinity, -alpha, 1 - me);
       }
       s.UndoAction(me, action);
-      scores[root_index_[action]] = value;
+      scores[root_index_[action]] = static_cast<double>(value) / unit_;
       best = std::max(best, value);
     }
     return scores;
@@ -156,6 +184,7 @@ class MaterialSearch {
     SPIEL_CHECK_GE(depth, 1);
     SPIEL_CHECK_LT(depth, kMaxDepth);
     SPIEL_CHECK_LT(alpha, beta);
+    SPIEL_CHECK_TRUE(threat_ == Threat::kOff);  // Values in points: the material search alone.
     std::unique_ptr<State> copy = state.Clone();
     auto& s = down_cast<thud::ThudState&>(*copy);
     const auto& game = down_cast<const thud::ThudGame&>(*s.GetGame());
@@ -173,10 +202,12 @@ class MaterialSearch {
 
  private:
   static constexpr int kInfinity = 1 << 20;
+  // The search's unit with a threat term: a hundredth of a point.
+  static constexpr int kThreatUnit = 100;
   static constexpr int kMaxDepth = 16;
 
-  // A table entry. `depth` 0: empty. Values are points (|value| <= 32 + 4 x 8), actions below
-  // 19,800: 16 bits each.
+  // A table entry. `depth` 0: empty. Values are points (|value| <= 32 + 4 x 8; with a threat
+  // term hundredths, |value| <= 6,400 + the threat's 700), actions below 19,800: 16 bits each.
   enum Bound : uint8_t { kExact, kLower, kUpper };
   struct Entry {
     uint64_t key = 0;
@@ -214,7 +245,7 @@ class MaterialSearch {
       case Evaluation::kMaterial: {
         const int margin =
             s.NumDwarfs() * thud::kDwarfValue - s.NumTrolls() * thud::kTrollValue;
-        return me == thud::kDwarfPlayer ? margin : -margin;
+        return (me == thud::kDwarfPlayer ? margin : -margin) * unit_;
       }
     }
     SpielFatalError("MaterialSearch: unknown evaluation");
@@ -224,6 +255,7 @@ class MaterialSearch {
   int Search(thud::ThudState* s, int depth, int alpha, int beta, Player me) {
     ++nodes_;
     if (s->IsTerminal() || depth == 0) return Evaluate(*s, me);
+    if (depth == 1 && threat_ != Threat::kOff) return ThreatFrontier(s, beta, me);
     if (depth == 1 && evaluation_ == Evaluation::kMaterial) {  // The frontier rule.
       const int material = Evaluate(*s, me);
       const int worth = me == thud::kDwarfPlayer ? thud::kTrollValue : thud::kDwarfValue;
@@ -289,6 +321,42 @@ class MaterialSearch {
     return best;
   }
 
+  // A frontier node's value with the threat term (Threat, above), from `me`'s view, fail-soft
+  // (a value at least beta is a lower bound). In units.
+  int ThreatFrontier(thud::ThudState* s, int beta, Player me) {
+    const int material = Evaluate(*s, me);
+    const int mine = (me == thud::kDwarfPlayer ? thud::kDwarfValue : thud::kTrollValue) * unit_;
+    const int theirs = (me == thud::kDwarfPlayer ? thud::kTrollValue : thud::kDwarfValue) * unit_;
+    // A move ends the battle if it reaches the turn limit, a quiet one also the no-capture
+    // limit; then the opponent never gets to carry out a threat.
+    const bool any_move_ends = s->TurnsPlayed() + 1 >= max_turns_;
+    const bool quiet_move_ends =
+        any_move_ends || s->TurnsWithoutCapture() + 1 >= max_turns_without_capture_;
+    const int threat = s->BestCaptureFor(1 - me) * mine;
+    const int penalty = static_cast<int>(std::lround(threat_weights_[me] * threat));
+    int best = -kInfinity;
+    if (s->HasQuietMove()) best = material - (quiet_move_ends ? 0 : penalty);
+    if (best >= beta) return best;
+    if (threat_ == Threat::kScan) {
+      const int capture = s->BestCapture();
+      if (capture > 0) {
+        best = std::max(best, material + capture * theirs - (any_move_ends ? 0 : penalty));
+      }
+      return best;
+    }
+    for (Action action : s->CaptureActions()) {
+      s->ApplyAction(action);
+      const int value =
+          s->IsTerminal()
+              ? static_cast<int>(std::lround(s->PlayerReturn(me) * thud::kMaxMargin)) * unit_
+              : Evaluate(*s, me) - s->BestCapture() * mine;
+      s->UndoAction(me, action);
+      best = std::max(best, value);
+      if (best >= beta) break;
+    }
+    return best;
+  }
+
 #ifndef NDEBUG
   // The frontier node searched in full, for the rule's check: every move applied, each
   // child scored by Evaluate(), or by the game's return (in points) if the battle ends.
@@ -347,6 +415,9 @@ class MaterialSearch {
 
   const Evaluation evaluation_;
   const bool captures_first_, killers_on_;
+  Threat threat_ = Threat::kOff;  // SetThreat's.
+  std::array<double, 2> threat_weights_ = {0, 0};
+  int unit_ = 1;  // The search's unit: a point, or with a threat term kThreatUnit to a point.
   std::array<std::array<Action, 2>, kMaxDepth> killer_moves_{};
   std::vector<std::pair<int, int>> ranked_;  // Order()'s, reused (no recursion inside it).
   std::vector<Action> unordered_;

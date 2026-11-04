@@ -3018,6 +3018,123 @@ void TestCaptures() {
   }
 }
 
+// The state with the other side to move, the board and the counters unchanged.
+std::unique_ptr<ThudState> OtherSideToMove(const ThudState& state) {
+  std::string text = state.ToString();
+  const bool dwarfs = absl::StrContains(text, "to_move=dwarfs");
+  const std::string from = dwarfs ? "to_move=dwarfs" : "to_move=trolls";
+  const size_t at = text.find(from);
+  SPIEL_CHECK_NE(at, std::string::npos);
+  text.replace(at, from.size(), dwarfs ? "to_move=trolls" : "to_move=dwarfs");
+  return FromDiagram(state.GetGame(), text);
+}
+
+// BestCaptureFor, CaptureActions and HasQuietMove (2026-11-04, for the teacher's threat
+// term: thud/PLAN.md, *The teacher's finer evaluation*), on the hand-built positions and
+// every 5th position of random games, uniform and capture-greedy:
+//   1. BestCaptureFor(the side to move) is BestCapture(); BestCaptureFor(the other side)
+//      is the BestCapture() of the same board with that side to move — the threats against
+//      the side to move; both 0 in a battle that is over;
+//   2. CaptureActions() is LegalActions() filtered by Captures() > 0, in its order;
+//   3. HasQuietMove() says whether some legal move captures nothing (false when over).
+// The controls, required: threats against each side, positions with several capturing
+// moves, every capturing kind (hurl, capture step, shove) among them, and positions whose
+// side to move can only capture — a dwarf boxed in by trolls among them.
+void TestThreatsAndCaptureActions() {
+  int threatened[2] = {0, 0}, several = 0, captures_only = 0;
+  std::map<Kind, int> kinds;
+  auto check_all = [&](const ThudState& state) {
+    if (state.IsTerminal()) {
+      SPIEL_CHECK_EQ(state.BestCaptureFor(kDwarfPlayer), 0);
+      SPIEL_CHECK_EQ(state.BestCaptureFor(kTrollPlayer), 0);
+      SPIEL_CHECK_TRUE(state.CaptureActions().empty());
+      SPIEL_CHECK_FALSE(state.HasQuietMove());
+      return;
+    }
+    const Player mover = state.CurrentPlayer();
+    SPIEL_CHECK_EQ(state.BestCaptureFor(mover), state.BestCapture());
+    const int threat = state.BestCaptureFor(1 - mover);
+    const int expected_threat = OtherSideToMove(state)->BestCapture();
+    if (threat != expected_threat) {
+      SpielFatalError(absl::StrCat("BestCaptureFor(the other side) is ", threat,
+                                   ", that side to move captures at most ", expected_threat,
+                                   " in\n", state.ToString()));
+    }
+    threatened[mover] += threat > 0;
+    std::vector<Action> expected;
+    bool quiet = false;
+    for (Action action : state.LegalActions()) {
+      if (state.Captures(action) > 0) {
+        expected.push_back(action);
+      } else {
+        quiet = true;
+      }
+    }
+    if (state.CaptureActions() != expected) {
+      SpielFatalError(absl::StrCat("CaptureActions() is [",
+                                   absl::StrJoin(state.CaptureActions(), ","), "], the legal "
+                                   "captures are [", absl::StrJoin(expected, ","), "] in\n",
+                                   state.ToString()));
+    }
+    if (state.HasQuietMove() != quiet) {
+      SpielFatalError(absl::StrCat("HasQuietMove() is ", state.HasQuietMove(), " in\n",
+                                   state.ToString()));
+    }
+    several += expected.size() >= 2;
+    captures_only += !quiet;
+    for (Action action : expected) ++kinds[Classify(state, action).kind];
+  };
+  for (const auto& [diagram, status] : std::vector<std::pair<const char*, const char*>>{
+           {kInitial, "to_move=dwarfs"}, {kHurlLine, "to_move=dwarfs"},
+           {kHurlLine, "to_move=trolls"}, {kShoveLine, "to_move=trolls"},
+           {kShoveLine, "to_move=dwarfs"}, {kLongestShove, "to_move=trolls"},
+           {kShoveBorders, "to_move=trolls"}, {kStepOpen, "to_move=trolls"},
+           {kStepEdges, "to_move=trolls"}, {kTangled, "to_move=trolls"},
+           {kTangled, "to_move=dwarfs"}, {kLastTroll, "to_move=dwarfs"},
+           {kLastDwarfs, "to_move=trolls"}, {kNoTrolls, "to_move=trolls"}}) {
+    check_all(*FromDiagram(diagram, status));
+  }
+  // A dwarf boxed in on the cut corner by four trolls: its only moves are lone hurls.
+  std::unique_ptr<ThudState> boxed = FromDiagram(
+      Board({{0, 5, 'd'}, {0, 6, 'T'}, {1, 4, 'T'}, {1, 5, 'T'}, {1, 6, 'T'}, {10, 10, 'd'},
+             {11, 11, 'd'}, {12, 11, 'd'}, {13, 10, 'd'}, {9, 9, 'T'}}),
+      "to_move=dwarfs");
+  // The far dwarfs can move: boxed in, the corner dwarf alone has captures only.
+  SPIEL_CHECK_TRUE(boxed->HasQuietMove());
+  check_all(*boxed);
+  std::unique_ptr<ThudState> alone = FromDiagram(
+      Board({{0, 5, 'd'}, {0, 6, 'T'}, {1, 4, 'T'}, {1, 5, 'T'}, {1, 6, 'T'}}),
+      "to_move=dwarfs");
+  SPIEL_CHECK_FALSE(alone->HasQuietMove());
+  SPIEL_CHECK_EQ(alone->CaptureActions().size(), 4);
+  check_all(*alone);
+  std::mt19937 rng(43);
+  std::shared_ptr<const Game> game = Thud();
+  for (int g = 0; g < 16; ++g) {
+    std::unique_ptr<State> state = game->NewInitialState();
+    for (int ply = 0; !state->IsTerminal() && ply < 600; ++ply) {
+      const auto& s = down_cast<const ThudState&>(*state);
+      if (ply % 5 == 0) check_all(s);
+      std::vector<Action> legal = s.LegalActions(), captures;
+      for (Action a : legal) {
+        if (g % 2 == 1 && s.Captures(a) > 0) captures.push_back(a);
+      }
+      const std::vector<Action>& pool = captures.empty() ? legal : captures;
+      state->ApplyAction(pool[rng() % pool.size()]);
+    }
+    check_all(down_cast<const ThudState&>(*state));
+  }
+  if (threatened[kDwarfPlayer] < 20 || threatened[kTrollPlayer] < 20 || several < 20 ||
+      kinds[Kind::kHurl] == 0 || kinds[Kind::kCaptureStep] == 0 || kinds[Kind::kShove] == 0 ||
+      captures_only < 1) {
+    SpielFatalError(absl::StrCat(
+        "Threats coverage: dwarfs threatened in ", threatened[kDwarfPlayer], ", trolls in ",
+        threatened[kTrollPlayer], " (20 each required), ", several, " with several captures, ",
+        kinds[Kind::kHurl], " hurls, ", kinds[Kind::kCaptureStep], " capture steps, ",
+        kinds[Kind::kShove], " shoves, ", captures_only, " with captures only"));
+  }
+}
+
 // The opening's hash: fixed, as the keys are.
 constexpr uint64_t kOpeningHash = 3827452289155153197ULL;
 
@@ -3256,6 +3373,7 @@ int main(int argc, char** argv) {
   thud::TestUndoLimits();
   thud::TestUndoRandomGames();
   thud::TestCaptures();
+  thud::TestThreatsAndCaptureActions();
   thud::TestHash();
   thud::TestDecodeTable();
   thud::TestGolden();

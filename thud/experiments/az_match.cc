@@ -48,7 +48,13 @@
 //                         `hexparrot_player` gives another path to it)
 //   b=teacher:DEPTH       kickstarting's teacher as a player (2026-10-25): the material
 //                         after DEPTH plies by the teacher's own search, a move drawn
-//                         evenly from those with the best score (TeacherOpponent below)
+//                         evenly from those with the best score (TeacherOpponent below);
+//                         since 2026-11-04 with the finer evaluation if asked
+//                         (thud/PLAN.md, *The teacher's finer evaluation*):
+//                         `teacher_threat=scan|captures` with `teacher_threat_weights=WD,WT`
+//                         (one for both) the threat term at its frontier, and
+//                         `teacher_terms=REACH,PAIRS` (at `teacher_terms_temperature`,
+//                         0.25) its move drawn inside the best group by the positional terms
 // Each starts every battle from a seed fixed by `seed`, the pair and the side, so reruns
 // play the same games whichever thread plays them. The pair lines then also give the
 // pair's seconds and each side's seconds per move it chose (wall clock: on a loaded
@@ -349,8 +355,17 @@ class AlphaBetaOpponent : public Opponent {
 // plays other battles than on 2026-10-25.)
 class TeacherOpponent : public Opponent {
  public:
-  TeacherOpponent(const open_spiel::Game& game, int depth) : player_(game, depth) {
+  TeacherOpponent(const open_spiel::Game& game, int depth,
+                  open_spiel::thud_az::Threat threat = open_spiel::thud_az::Threat::kOff,
+                  std::array<double, 2> threat_weights = {0, 0},
+                  const std::vector<double>& terms = {}, double terms_temperature = 0.25)
+      : player_(game, depth) {
     player_.SetMode(open_spiel::thud_az::AlphaBetaPlayer::Mode::kTeacher);
+    player_.SetThreat(threat, threat_weights);  // 2026-11-04: kOff, as before, by default.
+    if (!terms.empty()) {
+      SPIEL_CHECK_EQ(terms.size(), 2);
+      player_.SetPositionalTerms({terms[0], terms[1]}, terms_temperature);
+    }
   }
   void NewBattle(int seed) override { player_.NewGame(seed); }
   Action Choose(const open_spiel::State& state) override { return player_.Choose(state); }
@@ -532,6 +547,34 @@ int main(int argc, char** argv) {
   const int gumbel_a = args.GetInt("gumbel_a", 0), gumbel_b = args.GetInt("gumbel_b", 0);
   const double gumbel_scale_a = std::stod(args.Get("gumbel_scale_a", "1"));
   const double gumbel_scale_b = std::stod(args.Get("gumbel_scale_b", "1"));
+  // The teacher's finer evaluation, for b=teacher:DEPTH (2026-11-04).
+  auto numbers = [](const std::string& list) {
+    std::vector<double> values;
+    for (absl::string_view x : absl::StrSplit(list, ',', absl::SkipEmpty())) {
+      values.push_back(std::stod(std::string(x)));
+    }
+    return values;
+  };
+  const std::string teacher_threat_name = args.Get("teacher_threat", "off");
+  const std::vector<double> teacher_threat_weights =
+      numbers(args.Get("teacher_threat_weights", ""));
+  const std::vector<double> teacher_terms = numbers(args.Get("teacher_terms", ""));
+  const double teacher_terms_temperature =
+      std::stod(args.Get("teacher_terms_temperature", "0.25"));
+  const open_spiel::thud_az::Threat teacher_threat =
+      teacher_threat_name == "scan"       ? open_spiel::thud_az::Threat::kScan
+      : teacher_threat_name == "captures" ? open_spiel::thud_az::Threat::kCaptures
+                                          : open_spiel::thud_az::Threat::kOff;
+  SPIEL_CHECK_TRUE(teacher_threat_name == "off" || teacher_threat_name == "scan" ||
+                   teacher_threat_name == "captures");
+  SPIEL_CHECK_TRUE((teacher_threat == open_spiel::thud_az::Threat::kOff) ==
+                   teacher_threat_weights.empty());
+  SPIEL_CHECK_LE(teacher_threat_weights.size(), 2);
+  SPIEL_CHECK_TRUE(teacher_terms.empty() || teacher_terms.size() == 2);
+  const std::array<double, 2> threat_weights_b =
+      teacher_threat_weights.empty()
+          ? std::array<double, 2>{0, 0}
+          : std::array<double, 2>{teacher_threat_weights[0], teacher_threat_weights.back()};
   SPIEL_CHECK_GE(gumbel_a, 0);
   SPIEL_CHECK_GE(gumbel_b, 0);
   SPIEL_CHECK_GE(gumbel_scale_a, 0);
@@ -686,7 +729,9 @@ int main(int argc, char** argv) {
       } else if (kind_b == "alphabeta") {
         opponent = std::make_unique<AlphaBetaOpponent>(*game, strength_b);
       } else if (kind_b == "teacher") {
-        opponent = std::make_unique<TeacherOpponent>(*game, strength_b);
+        opponent = std::make_unique<TeacherOpponent>(*game, strength_b, teacher_threat,
+                                                     threat_weights_b, teacher_terms,
+                                                     teacher_terms_temperature);
       } else {
         opponent = std::make_unique<HexparrotOpponent>(strength_b, hexparrot_player);
       }

@@ -275,6 +275,16 @@ class ThudState : public State {
   // The most pieces one move can capture for the side to move — the largest Captures()
   // over LegalActions() — found without generating the moves; 0 in a battle that is over.
   int BestCapture() const;
+  // The same for `player` on the board as it is, as if it were that side's turn: for the
+  // side to move BestCapture(); for the other side the threats against the side to move
+  // (the teacher's threat term). 0 in a battle that is over.
+  int BestCaptureFor(Player player) const;
+  // The side to move's capturing moves — hurls, capture steps, shoves — in LegalActions()
+  // order, without generating the others; empty in a battle that is over.
+  std::vector<Action> CaptureActions() const;
+  // Whether the side to move has a move that captures nothing (a dwarf moving to an empty
+  // square, a troll stepping without capturing); false in a battle that is over.
+  bool HasQuietMove() const;
   // A 64-bit Zobrist hash of the board and the side to move — the counters left out —
   // kept up to date as moves are made and taken back (for a search's transposition
   // table). The same position gives the same hash in every run, however it was reached.

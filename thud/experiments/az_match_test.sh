@@ -50,6 +50,10 @@
 #      Not distinguished here: the halving's winner (GumbelAction, tested in
 #      gumbel_search_test) from the most visited child, which A would play otherwise.
 #      gumbel_b against a player without a network is refused.
+#   9. The teacher's finer evaluation (b=teacher:2 with teacher_threat=captures,
+#      teacher_threat_weights=0.5 and teacher_terms=0.1,-0.2; 2026-11-04): the same battles
+#      with 1 and 2 threads; the controls: each setting alone plays other battles than the
+#      plain teacher:2, and a threat without weights is refused.
 #
 #   thud/experiments/az_match_test.sh [BIN_DIR]    # default build-tests/bin
 #
@@ -159,6 +163,19 @@ done
 match teacher_seed2 b=teacher:2 seed=2 &&
   check "6. control: b=teacher:2 with seed 2 plays other battles (its ties drawn by the seed)" \
     differ teacher_1 teacher_seed2
+
+fine="teacher_threat=captures teacher_threat_weights=0.5 teacher_terms=0.1,-0.2"
+# shellcheck disable=SC2086
+match finer_1 b=teacher:2 $fine && match finer_2 b=teacher:2 $fine threads=2 &&
+  check "9. the finer teacher: 1 and 2 threads play the same battles" same finer_1 finer_2
+match finer_threat b=teacher:2 teacher_threat=captures teacher_threat_weights=0.5 &&
+  check "9. control: the threat term alone plays other battles than teacher:2" \
+    differ finer_threat teacher_1
+match finer_terms b=teacher:2 teacher_terms=0.1,-0.2 &&
+  check "9. control: the positional terms alone play other battles than teacher:2" \
+    differ finer_terms teacher_1
+check "9. control: a threat without weights is refused" \
+  bash -c "! '$bin/az_match' a='$tmp/a:0' b=teacher:2 teacher_threat=scan sims=4 pairs=1 > /dev/null 2>&1"
 
 match side44 side_sims=4,4 && check "7. side_sims=4,4 plays the battles of sims=4" same side44 base
 match side44_noise side_sims=4,4 noise=1,1 &&

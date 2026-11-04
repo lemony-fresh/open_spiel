@@ -132,6 +132,11 @@
 #      and logs every side's trees (a median and a maximum in MB, the share that
 #      garbage-collected: 0 there); the control, a fresh one-step run at 1 MB and 200
 #      simulations, records 1, and its dwarfs' searches collect, their largest tree at the limit.
+#  16. The teacher's finer evaluation (2026-11-04; its parts: threat_search_test, kickstart_test
+#      8): a fresh one-step run with the threat term (captures, 0.5,0.25) and positional ties
+#      (0.1,-0.2) exits 0, records the three settings in config.json, and its actors log them;
+#      the controls: a threat without weights, positional ties without terms and an unknown
+#      threat each stop the trainer at its start, before any actor.
 #
 #   thud/az/trainer_test.sh [BIN_DIR]    # default build-tests/bin
 #
@@ -776,5 +781,43 @@ check "15. the control, a run at 1 MB and 200 simulations, exits 0" [ "$mem_stat
 check "15. ... config.json records max_memory_mb 1" memory_recorded
 check "15. ... its dwarfs' searches collect, their largest tree at the 1 MB limit" \
   trees "$mem/learner.jsonl" dwarfs positive 1.0
+
+# 16. The teacher's finer evaluation.
+fine=$tmp/finer
+"$bin/make_test_network" dir="$fine" nn_model=resnet_conv_policy input_planes=1 nn_width=8 \
+  nn_depth=1 checkpoints=1 > /dev/null 2>&1 || { echo "FAIL make_test_network (16)"; exit 1; }
+finer_run() {  # finer_run DIR LOG EXTRA_FLAGS...
+  local dir=$1 log=$2
+  shift 2
+  "$bin/az_trainer" --flagfile="$repo/thud/experiments/az_thud.flags" --path="$dir" \
+    --graph_def=vpnet.pb --nn_model=resnet_conv_policy --nn_width=8 --nn_depth=1 \
+    --actors=2 --evaluators=0 --inference_batch_size=2 --inference_threads=1 \
+    --max_simulations=8 --replay_buffer_size=512 --replay_buffer_reuse=4 \
+    --train_batch_size=64 --checkpoint_freq=1 --max_steps=1 --kickstart_weight=0.5 \
+    --kickstart_depth=2 "$@" > "$log" 2>&1
+}
+finer_run "$fine" "$tmp/finer.log" --teacher_threat=captures --teacher_threat_weights=0.5,0.25 \
+  --kickstart_ties=positional --teacher_terms_weights=0.1,-0.2
+check "16. a run with the threat term and positional ties exits 0" [ $? -eq 0 ]
+check "16. ... config.json records the three settings" python3 - "$fine/config.json" <<'EOF'
+import json, sys
+c = json.load(open(sys.argv[1]))
+sys.exit(0 if (c["teacher_threat"], c["teacher_threat_weights"], c["teacher_terms_weights"],
+               c["kickstart_ties"]) == ("captures", "0.5,0.25", "0.1,-0.2", "positional") else 1)
+EOF
+check "16. ... its actors log them" grep -q \
+  "finer evaluation: threat captures (weights 0.5,0.25), positional terms 0.1,-0.2" \
+  "$fine/log-actor-0.txt"
+for bad in "--teacher_threat=scan" "--kickstart_ties=positional" \
+           "--teacher_threat=deep --teacher_threat_weights=1"; do
+  dir=$tmp/finer_bad_$(echo "$bad" | tr -c 'a-z0-9' '_')
+  "$bin/make_test_network" dir="$dir" nn_model=resnet_conv_policy input_planes=1 nn_width=8 \
+    nn_depth=1 checkpoints=1 > /dev/null 2>&1
+  # shellcheck disable=SC2086
+  finer_run "$dir" "$dir.log" $bad
+  status=$?
+  check "16. the control: $bad stops the trainer at its start" \
+    test "$status" -ne 0 -a ! -e "$dir/log-actor-0.txt"
+done
 
 finish

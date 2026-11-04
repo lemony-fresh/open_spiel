@@ -17,12 +17,16 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstdint>
+#include <limits>
 #include <memory>
+#include <utility>
 #include <vector>
 
 #include "open_spiel/algorithms/minimax.h"
 #include "thud/az/material_search.h"
+#include "thud/az/teacher_terms.h"
 #include "open_spiel/games/thud/thud.h"
 #include "open_spiel/spiel.h"
 #include "open_spiel/spiel_utils.h"
@@ -88,15 +92,80 @@ class AlphaBetaPlayer {
   // the moves so far. Since 2026-10-27 the scores with a root window of 1 (material_search.h):
   // only the best moves' scores are exact, the others' bounds stay below them, so the moves
   // tied for the best — and the move drawn — are those of exact scores.
+  // Our change (2026-11-04): with positional terms (SetPositionalTerms) the move is drawn
+  // among the best by the terms' softmax (TermsScores over the temperature), by the same
+  // hash; without them evenly, as before.
   Action ChooseByScores(const State& state) const {
     const std::vector<Action> legal = state.LegalActions();
     const std::vector<double> scores = Scores(state, /*margin=*/1);
     const double best = *std::max_element(scores.begin(), scores.end());
     std::vector<Action> tied;
+    std::vector<size_t> tied_index;
     for (size_t i = 0; i < legal.size(); ++i) {
-      if (scores[i] == best) tied.push_back(legal[i]);
+      if (scores[i] == best) {
+        tied.push_back(legal[i]);
+        tied_index.push_back(i);
+      }
     }
-    return tied[mix(HistoryHash(mix(seed_), state, 0)) % tied.size()];
+    const uint64_t hash = mix(HistoryHash(mix(seed_), state, 0));
+    if (!has_positional_terms() || tied.size() == 1) return tied[hash % tied.size()];
+    const std::vector<double> terms = TermsScores(state);
+    double top = -std::numeric_limits<double>::infinity();
+    for (size_t i : tied_index) top = std::max(top, terms[i]);
+    std::vector<double> weights;
+    double sum = 0;
+    for (size_t i : tied_index) {
+      weights.push_back(std::exp((terms[i] - top) / terms_temperature_));
+      sum += weights.back();
+    }
+    double u = (hash >> 11) * 0x1.0p-53 * sum;  // [0, sum)
+    for (size_t k = 0; k < tied.size(); ++k) {
+      if (u < weights[k]) return tied[k];
+      u -= weights[k];
+    }
+    return tied.back();
+  }
+
+  // Our change (2026-11-04; thud/PLAN.md, *The teacher's finer evaluation*): the threat term at
+  // the search's frontier (MaterialSearch::SetThreat) for Scores and the teacher's choice;
+  // Threat::kOff, the default, the material search as before.
+  void SetThreat(Threat threat, std::array<double, 2> weights) {
+    SPIEL_CHECK_TRUE(threat != Threat::kOff || (weights[0] == 0 && weights[1] == 0));
+    threat_ = threat;
+    threat_weights_ = weights;
+  }
+  Threat threat() const { return threat_; }
+  const std::array<double, 2>& threat_weights() const { return threat_weights_; }
+
+  // Our change (2026-11-04): the positional terms (teacher_terms.h) with `weights` (hurl
+  // reach, troll pairs; points of final margin from the dwarfs' view) at `temperature`: the
+  // teacher's move drawn among its best by them (ChooseByScores), and the trainer's
+  // kickstart_ties=positional sharing each group of equal scores by them (TeacherTiesByTerms).
+  void SetPositionalTerms(std::array<double, 2> weights, double temperature) {
+    SPIEL_CHECK_GT(temperature, 0);
+    terms_weights_ = weights;
+    terms_temperature_ = temperature;
+    has_terms_ = true;
+  }
+  bool has_positional_terms() const { return has_terms_; }
+  double terms_temperature() const { return terms_temperature_; }
+  const std::array<double, 2>& terms_weights() const { return terms_weights_; }
+
+  // Each legal action's positional score (PositionalScore of the position after it) from the
+  // side to move's view, in LegalActions() order. Requires SetPositionalTerms.
+  std::vector<double> TermsScores(const State& state) const {
+    SPIEL_CHECK_TRUE(has_terms_);
+    const Player me = state.CurrentPlayer();
+    std::unique_ptr<State> copy = state.Clone();
+    auto& s = down_cast<thud::ThudState&>(*copy);
+    std::vector<double> scores;
+    for (Action action : s.LegalActions()) {
+      s.ApplyAction(action);
+      const double dwarfs = PositionalScore(ComputePositionalTerms(s), terms_weights_);
+      s.UndoAction(me, action);
+      scores.push_back(me == thud::kDwarfPlayer ? dwarfs : -dwarfs);
+    }
+    return scores;
   }
 
   // The depth it searches with `player` to move.
@@ -122,10 +191,24 @@ class AlphaBetaPlayer {
   std::vector<double> Scores(const State& state, int margin) const {
     // Since 2026-10-23 MaterialSearch (material_search.h: the same values, its moves
     // ordered and its frontier counted without applying moves), with its transposition
-    // table: one a thread, kept from call to call.
-    thread_local MaterialSearch search(Evaluation::kMaterial, /*captures_first=*/true,
-                                       /*killers=*/true, MaterialSearch::kTeacherTableBits);
-    return search.Scores(state, depths_[state.CurrentPlayer()], margin);
+    // table: one a thread, kept from call to call — since 2026-11-04 one a thread for each
+    // threat setting in use, since the table's values depend on it.
+    thread_local std::vector<std::pair<std::pair<Threat, std::array<double, 2>>,
+                                       std::unique_ptr<MaterialSearch>>>
+        searches;
+    MaterialSearch* search = nullptr;
+    for (auto& [setting, s] : searches) {
+      if (setting.first == threat_ && setting.second == threat_weights_) search = s.get();
+    }
+    if (search == nullptr) {
+      searches.emplace_back(std::make_pair(threat_, threat_weights_),
+                            std::make_unique<MaterialSearch>(
+                                Evaluation::kMaterial, /*captures_first=*/true,
+                                /*killers=*/true, MaterialSearch::kTeacherTableBits));
+      search = searches.back().second.get();
+      search->SetThreat(threat_, threat_weights_);
+    }
+    return search->Scores(state, depths_[state.CurrentPlayer()], margin);
   }
 
   static double Material(const State& state, Player me) {
@@ -164,6 +247,11 @@ class AlphaBetaPlayer {
   uint64_t seed_ = 0;
   Mode mode_ = Mode::kSearch;
   int root_margin_ = 0;  // Scores()'s root window (SetRootMargin): 0, every score exact.
+  Threat threat_ = Threat::kOff;  // SetThreat's.
+  std::array<double, 2> threat_weights_ = {0, 0};
+  bool has_terms_ = false;  // SetPositionalTerms'.
+  std::array<double, 2> terms_weights_ = {0, 0};
+  double terms_temperature_ = 1;
 };
 
 }  // namespace thud_az

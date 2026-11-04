@@ -106,8 +106,18 @@ ABSL_FLAG(std::string, player_kickstart_depth, "",
 ABSL_FLAG(double, kickstart_temperature, 1,
           "The teacher's softmax temperature, in points of material.");
 ABSL_FLAG(std::string, kickstart_ties, "even",
-          "How the teacher shares moves with the same score: even (the softmax's) or search "
-          "(by the search's visits within them).");
+          "How the teacher shares moves with the same score: even (the softmax's), search "
+          "(by the search's visits within them) or positional (by its positional terms, "
+          "teacher_terms_weights).");
+ABSL_FLAG(std::string, teacher_threat, "off",
+          "The teacher's threat term at its search's frontier: off, scan or captures "
+          "(material_search.h; thud/PLAN.md, the teacher's finer evaluation).");
+ABSL_FLAG(std::string, teacher_threat_weights, "",
+          "The threat term's weights for the dwarfs and the trolls at the frontier, \"WD,WT\" "
+          "or one for both, in points per point threatened; empty with teacher_threat=off.");
+ABSL_FLAG(std::string, teacher_terms_weights, "",
+          "With kickstart_ties=positional, the positional terms' weights \"REACH,PAIRS\" "
+          "(thud/az/teacher_terms.h), in points of final margin from the dwarfs' view.");
 ABSL_FLAG(int, kickstart_root_margin, 0,
           "The teacher's root window: moves this many points or more below the best get a "
           "bound (at most best - margin) instead of their score; 0: every score exact.");
@@ -279,7 +289,11 @@ int main(int argc, char** argv) {
     config.player_kickstart_depth = absl::GetFlag(FLAGS_player_kickstart_depth);
     config.kickstart_temperature = absl::GetFlag(FLAGS_kickstart_temperature);
     config.kickstart_ties = absl::GetFlag(FLAGS_kickstart_ties);
-    SPIEL_CHECK_TRUE(config.kickstart_ties == "even" || config.kickstart_ties == "search");
+    SPIEL_CHECK_TRUE(config.kickstart_ties == "even" || config.kickstart_ties == "search" ||
+                     config.kickstart_ties == "positional");
+    config.teacher_threat = absl::GetFlag(FLAGS_teacher_threat);
+    config.teacher_threat_weights = absl::GetFlag(FLAGS_teacher_threat_weights);
+    config.teacher_terms_weights = absl::GetFlag(FLAGS_teacher_terms_weights);
     config.kickstart_root_margin = absl::GetFlag(FLAGS_kickstart_root_margin);
     config.policy_target = absl::GetFlag(FLAGS_policy_target);
     config.gumbel_search = absl::GetFlag(FLAGS_gumbel_search);
@@ -289,6 +303,11 @@ int main(int argc, char** argv) {
     for (int p = 0; p < 2; ++p) {  // Stops here, not in an actor, on a malformed list.
       open_spiel::thud_az::torch_az::AlphaBetaDepth(config, p);
       open_spiel::thud_az::torch_az::AlphaBetaMode(config, p);
+    }
+    {  // The same for the teacher's finer evaluation (2026-11-04).
+      std::shared_ptr<const open_spiel::Game> game = open_spiel::LoadGame(config.game);
+      open_spiel::thud_az::AlphaBetaPlayer check(*game, 1);
+      open_spiel::thud_az::torch_az::ConfigureTeacher(config, &check);
     }
     open_spiel::thud_az::torch_az::KickstartDepths(config);  // The same.
     config.learner_batches = absl::GetFlag(FLAGS_learner_batches);

@@ -48,10 +48,21 @@
 //      same moves played, every target (1 - w) x the visits + w x TeacherTiesBySearch of
 //      TeacherPolicy and the visits, exactly (the control: some target differs from the
 //      even ties'); the setting round-trips, an older config.json loads "even" (part 4).
+//   8. (2026-11-04) The teacher's finer evaluation (thud/PLAN.md): TermsScores equal each
+//      child's PositionalScore from the mover's view (computed apart, by Child); with
+//      kickstart_ties=positional TeacherTiesByTerms keeps every group's total, shares it
+//      inside by exp(term / temperature), sums to 1, gives the teacher's own policy at zero
+//      weights (the control: with weights it differs); PlayGame plays the same moves and
+//      records (1 - w) x the visits + w x TeacherTiesByTerms(TeacherPolicy); the teacher as a
+//      player draws inside its best group, by the terms' shares over 4,000 seeds (each within
+//      0.03), evenly without terms; a threat setting reaches the player's Scores
+//      (MaterialSearch with SetThreat, the same scores; the control: kOff's differ); the three
+//      settings round-trip, an older config.json loads them off (part 4).
 //
 //   thud/run_tests.sh kickstart_test   # builds and runs it
 //   build-tests/bin/kickstart_test
 
+#include <algorithm>
 #include <array>
 #include <chrono>
 #include <cmath>
@@ -329,6 +340,185 @@ int main(int argc, char** argv) {
           "the visits) (control: some differ from the even ties')");
   }
 
+  // 8. The teacher's finer evaluation.
+  {
+    using open_spiel::ActionsAndProbs;
+    using open_spiel::thud_az::ComputePositionalTerms;
+    using open_spiel::thud_az::PositionalScore;
+    using open_spiel::thud_az::Threat;
+    using open_spiel::thud_az::torch_az::TeacherTiesByTerms;
+    const std::array<double, 2> weights = {0.1, -0.2};
+    const double temperature = 0.25;
+    AlphaBetaPlayer termed(*game, 2), zero(*game, 2);
+    termed.SetPositionalTerms(weights, temperature);
+    zero.SetPositionalTerms({0, 0}, temperature);
+    // Positions of a game played on, every 9th move, both sides to move.
+    std::vector<std::unique_ptr<State>> positions;
+    {
+      std::mt19937 rng(5);
+      std::unique_ptr<State> s = game->NewInitialState();
+      for (int ply = 0; ply < 120 && !s->IsTerminal(); ++ply) {
+        if (ply % 9 == 4) positions.push_back(s->Clone());
+        const std::vector<Action> legal = s->LegalActions();
+        s->ApplyAction(legal[rng() % legal.size()]);
+      }
+    }
+    bool terms_ok = true, totals = true, inside = true, sums = true, zero_same = true,
+         differs = false;
+    for (const auto& s : positions) {
+      const std::vector<double> terms = termed.TermsScores(*s);
+      const std::vector<Action> legal = s->LegalActions();
+      const double sign = s->CurrentPlayer() == open_spiel::thud::kDwarfPlayer ? 1 : -1;
+      for (size_t i = 0; i < legal.size(); ++i) {
+        const auto child = s->Child(legal[i]);
+        const double want = sign * PositionalScore(ComputePositionalTerms(
+            open_spiel::down_cast<const open_spiel::thud::ThudState&>(*child)), weights);
+        terms_ok = terms_ok && std::abs(terms[i] - want) < 1e-12;
+      }
+      const ActionsAndProbs teacher = TeacherPolicy(*s, termed, temperature);
+      const ActionsAndProbs shared = TeacherTiesByTerms(teacher, *s, termed, temperature);
+      const ActionsAndProbs unshared = TeacherTiesByTerms(teacher, *s, zero, temperature);
+      std::map<double, double> before, after;
+      double sum = 0;
+      for (size_t i = 0; i < teacher.size(); ++i) {
+        before[teacher[i].second] += teacher[i].second;
+        after[teacher[i].second] += shared[i].second;
+        sum += shared[i].second;
+        zero_same = zero_same && unshared[i].first == teacher[i].first &&
+                    std::abs(unshared[i].second - teacher[i].second) < 1e-12;
+        differs = differs || std::abs(shared[i].second - teacher[i].second) > 1e-6;
+        for (size_t j = 0; j < teacher.size(); ++j) {
+          if (teacher[j].second != teacher[i].second || shared[j].second < 1e-200) continue;
+          const double ratio = shared[i].second / shared[j].second;
+          const double want = std::exp((terms[i] - terms[j]) / temperature);
+          inside = inside && std::abs(ratio / want - 1) < 1e-9;
+        }
+      }
+      for (const auto& [p, total] : before) totals = totals && std::abs(after[p] - total) < 1e-12;
+      sums = sums && std::abs(sum - 1) < 1e-12;
+    }
+    Check(terms_ok && !positions.empty(),
+          "8. TermsScores: each child's PositionalScore from the mover's view");
+    Check(totals && inside && sums && zero_same && differs,
+          "8. TeacherTiesByTerms: groups' totals kept, shared by exp(term / temperature), "
+          "summing to 1, the teacher's own at zero weights (control: with weights it differs)");
+    // In PlayGame.
+    const double w = 0.3;
+    const Trajectory none = Play(*game, nullptr, 0);
+    const Trajectory termed_play = Play(*game, &termed, w);
+    bool same_moves = none.states.size() == termed_play.states.size();
+    for (int i = 0; same_moves && i < none.states.size(); ++i) {
+      same_moves = none.states[i].action == termed_play.states[i].action;
+    }
+    bool exact = same_moves;
+    std::unique_ptr<State> state = game->NewInitialState();
+    for (int i = 0; exact && i < none.states.size(); ++i) {
+      std::map<Action, double> taught;
+      // PlayGame's teacher policy at Play's teacher temperature (1), its ties split at the
+      // terms' (0.25); the trainer sets both to kickstart_temperature.
+      for (const auto& [a, p] : TeacherTiesByTerms(TeacherPolicy(*state, termed, 1), *state,
+                                                   termed, termed.terms_temperature())) {
+        taught[a] = p;
+      }
+      for (int j = 0; j < none.states[i].policy.size(); ++j) {
+        const auto& [a, v] = none.states[i].policy[j];
+        exact = exact && termed_play.states[i].policy[j].first == a &&
+                std::abs(termed_play.states[i].policy[j].second -
+                         ((1 - w) * v + w * taught[a])) < 1e-12;
+      }
+      state->ApplyAction(none.states[i].action);
+    }
+    Check(same_moves && exact,
+          "8. PlayGame with positional ties: the same moves, every target 0.7 x the visits + "
+          "0.3 x TeacherTiesByTerms(TeacherPolicy)");
+    // The teacher as a player: a position whose best group has moves of different terms.
+    AlphaBetaPlayer player(*game, 2), even_player(*game, 2);
+    player.SetMode(AlphaBetaPlayer::Mode::kTeacher);
+    even_player.SetMode(AlphaBetaPlayer::Mode::kTeacher);
+    player.SetPositionalTerms(weights, temperature);
+    const State* chosen = nullptr;
+    std::vector<double> shares;
+    std::vector<Action> group;
+    // More positions than above: one whose best group has a move standing out is needed.
+    std::vector<std::unique_ptr<State>> candidates;
+    {
+      std::mt19937 rng(7);
+      for (int g = 0; g < 6; ++g) {
+        std::unique_ptr<State> s = game->NewInitialState();
+        for (int ply = 0; ply < 160 && !s->IsTerminal(); ++ply) {
+          if (ply % 3 == 2) candidates.push_back(s->Clone());
+          const std::vector<Action> legal = s->LegalActions();
+          s->ApplyAction(legal[rng() % legal.size()]);
+        }
+      }
+    }
+    for (const auto& s : candidates) {
+      const std::vector<double> scores = player.Scores(*s);
+      const std::vector<double> terms = player.TermsScores(*s);
+      const std::vector<Action> legal = s->LegalActions();
+      const double best = *std::max_element(scores.begin(), scores.end());
+      group.clear();
+      shares.clear();
+      double sum = 0;
+      for (size_t i = 0; i < legal.size(); ++i) {
+        if (scores[i] != best) continue;
+        group.push_back(legal[i]);
+        shares.push_back(std::exp(terms[i] / temperature));
+        sum += shares.back();
+      }
+      for (double& x : shares) x /= sum;
+      const double most = *std::max_element(shares.begin(), shares.end());
+      if (group.size() >= 3 && group.size() <= 60 && most >= std::max(0.2, 3.0 / group.size())) {
+        chosen = s.get();
+        break;
+      }
+    }
+    Check(chosen != nullptr,
+          "8. a position with a best group of 3-60 moves, one with a share of 0.2 and 3x even");
+    if (chosen != nullptr) {
+      std::map<Action, int> drawn, drawn_even;
+      const int n = 4000;
+      for (int seed = 0; seed < n; ++seed) {
+        player.NewGame(seed);
+        even_player.NewGame(seed);
+        ++drawn[player.Choose(*chosen)];
+        ++drawn_even[even_player.Choose(*chosen)];
+      }
+      bool within = true, in_group = true, even_ok = true;
+      const size_t top = std::max_element(shares.begin(), shares.end()) - shares.begin();
+      // The control: the top move's frequency away from the even share, so that an even draw
+      // would fail the comparison with the terms' shares.
+      const bool not_even =
+          std::abs(static_cast<double>(drawn[group[top]]) / n - 1.0 / group.size()) > 0.1;
+      for (const auto& [a, k] : drawn) {
+        in_group = in_group && std::find(group.begin(), group.end(), a) != group.end();
+      }
+      for (size_t i = 0; i < group.size(); ++i) {
+        within = within && std::abs(static_cast<double>(drawn[group[i]]) / n - shares[i]) < 0.03;
+        even_ok = even_ok &&
+                  std::abs(static_cast<double>(drawn_even[group[i]]) / n - 1.0 / group.size()) <
+                      0.03;
+      }
+      Check(in_group && within && even_ok && not_even,
+            absl::StrCat("8. the teacher as a player: inside its best group of ", group.size(),
+                         ", drawn by the terms' shares (each within 0.03 over 4,000 seeds), "
+                         "evenly without terms (control: the top move's frequency 0.1 or more "
+                         "from even)"));
+    }
+    // The threat setting reaches the player's Scores.
+    AlphaBetaPlayer threatened(*game, 3);
+    threatened.SetThreat(Threat::kCaptures, {0.5, 0.5});
+    bool same = true, other = false;
+    for (const auto& s : positions) {
+      open_spiel::thud_az::MaterialSearch search;
+      search.SetThreat(Threat::kCaptures, {0.5, 0.5});
+      const std::vector<double> got = threatened.Scores(*s);
+      same = same && got == search.Scores(*s, 3);
+      other = other || got != depth3.Scores(*s);
+    }
+    Check(same && other, "8. SetThreat reaches the player's Scores (control: kOff's differ)");
+  }
+
   // 4. The configuration.
   {
     AlphaZeroConfig c;
@@ -347,15 +537,22 @@ int main(int argc, char** argv) {
     c.FromJson(j);
     const bool old_ok = c.kickstart_weight == 0 && c.kickstart_depth == 2 &&
                         c.kickstart_temperature == 1 && c.player_kickstart_weight.empty() &&
-                        c.kickstart_ties == "even";
+                        c.kickstart_ties == "even" && c.teacher_threat == "off" &&
+                        c.teacher_threat_weights.empty() && c.teacher_terms_weights.empty();
     c.kickstart_weight = 0.3;
     c.kickstart_depth = 3;
     c.kickstart_temperature = 0.5;
     c.player_kickstart_weight = "0.7";
     c.kickstart_ties = "search";
     c.player_kickstart_depth = "4,5";
+    c.teacher_threat = "captures";
+    c.teacher_threat_weights = "0.5,0.25";
+    c.teacher_terms_weights = "0.1,-0.2";
     AlphaZeroConfig back;
     back.FromJson(c.ToJson());
+    Check(back.teacher_threat == "captures" && back.teacher_threat_weights == "0.5,0.25" &&
+              back.teacher_terms_weights == "0.1,-0.2",
+          "8. the finer evaluation's settings round-trip");
     Check(old_ok && c.player_kickstart_depth.size() == 3 && back.kickstart_weight == 0.3 &&
               back.kickstart_depth == 3 && back.kickstart_temperature == 0.5 &&
               back.player_kickstart_weight == "0.7" && back.kickstart_ties == "search" &&

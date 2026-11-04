@@ -274,6 +274,9 @@ Trajectory PlayGame(Logger* logger, int game_num, const open_spiel::Game& game,
               TeacherPolicy(*state, *teacher, teacher_temperature);
           if (teacher_ties_by_search) {  // Our change: kickstart_ties=search.
             teacher_policy = TeacherTiesBySearch(teacher_policy, target);
+          } else if (teacher->has_positional_terms()) {  // kickstart_ties=positional.
+            teacher_policy = TeacherTiesByTerms(teacher_policy, *state, *teacher,
+                                                teacher->terms_temperature());
           }
           taught_policy = teacher_policy;
           for (const auto& [a, p] : teacher_policy) taught[a] = p;
@@ -414,6 +417,59 @@ open_spiel::ActionsAndProbs TeacherPolicy(const open_spiel::State& state,
   }
   for (auto& [a, p] : policy) p /= sum;
   return policy;
+}
+
+open_spiel::ActionsAndProbs TeacherTiesByTerms(const open_spiel::ActionsAndProbs& teacher,
+                                               const open_spiel::State& state,
+                                               const AlphaBetaPlayer& player,
+                                               double temperature) {
+  const std::vector<double> terms = player.TermsScores(state);
+  SPIEL_CHECK_EQ(terms.size(), teacher.size());
+  // Each group: its total, and the largest term in it (for a stable softmax).
+  std::map<double, std::pair<double, double>> groups;
+  for (size_t i = 0; i < teacher.size(); ++i) {
+    auto [it, fresh] = groups.try_emplace(teacher[i].second, 0.0, terms[i]);
+    it->second.first += teacher[i].second;
+    it->second.second = std::max(it->second.second, terms[i]);
+  }
+  std::map<double, double> sums;  // Each group's sum of exp((term - top) / temperature).
+  for (size_t i = 0; i < teacher.size(); ++i) {
+    sums[teacher[i].second] +=
+        std::exp((terms[i] - groups[teacher[i].second].second) / temperature);
+  }
+  open_spiel::ActionsAndProbs shared;
+  for (size_t i = 0; i < teacher.size(); ++i) {
+    const double p = teacher[i].second;
+    const auto& [total, top] = groups[p];
+    shared.emplace_back(teacher[i].first,
+                        total * std::exp((terms[i] - top) / temperature) / sums[p]);
+  }
+  return shared;
+}
+
+void ConfigureTeacher(const AlphaZeroConfig& config, AlphaBetaPlayer* teacher) {
+  const std::map<std::string, Threat> threats = {
+      {"off", Threat::kOff}, {"scan", Threat::kScan}, {"captures", Threat::kCaptures}};
+  if (!threats.count(config.teacher_threat)) {
+    SpielFatalError(absl::StrCat("teacher_threat: off, scan or captures, not \"",
+                                 config.teacher_threat, "\""));
+  }
+  const std::vector<double> w = PerPlayerValues(config.teacher_threat_weights);
+  SPIEL_CHECK_LE(w.size(), 2);
+  const Threat threat = threats.at(config.teacher_threat);
+  if (threat == Threat::kOff) {
+    SPIEL_CHECK_TRUE(w.empty());
+  } else {
+    SPIEL_CHECK_FALSE(w.empty());
+    teacher->SetThreat(threat, {w[0], w.size() == 2 ? w[1] : w[0]});
+  }
+  const std::vector<double> terms = PerPlayerValues(config.teacher_terms_weights);
+  if (config.kickstart_ties == "positional") {
+    SPIEL_CHECK_EQ(terms.size(), 2);
+    teacher->SetPositionalTerms({terms[0], terms[1]}, config.kickstart_temperature);
+  } else {
+    SPIEL_CHECK_TRUE(terms.empty());
+  }
 }
 
 std::vector<double> KickstartWeights(const AlphaZeroConfig& config) {
@@ -611,6 +667,13 @@ void actor(const open_spiel::Game& game, const AlphaZeroConfig& config, int num,
     const std::array<int, 2> depths = KickstartDepths(config);
     teacher = std::make_unique<AlphaBetaPlayer>(game, depths);
     teacher->SetRootMargin(config.kickstart_root_margin);  // Our change, 2026-10-27.
+    ConfigureTeacher(config, teacher.get());  // Our change, 2026-11-04.
+    if (config.teacher_threat != "off" || config.kickstart_ties == "positional") {
+      logger->Print("The teacher's finer evaluation: threat %s (weights %s), positional "
+                    "terms %s", config.teacher_threat, config.teacher_threat_weights,
+                    config.kickstart_ties == "positional" ? config.teacher_terms_weights
+                                                          : "off");
+    }
     logger->Print("Kickstarting: weight %g (per player %g, %g), depth %d (per player %d, %d), "
                   "temperature %g, ties %s, root margin %d",
                   config.kickstart_weight, kickstart_weights[0], kickstart_weights[1],

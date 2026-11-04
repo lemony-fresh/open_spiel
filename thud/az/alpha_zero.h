@@ -186,6 +186,19 @@ struct AlphaZeroConfig {
   // (the default): every score exact, as before. 3 (MaterialSearch::kTeacherRootMargin) saved
   // only 1.4% of the dwarfs' nodes at depth 5 (material_search.h), so it is not used.
   int kickstart_root_margin = 0;
+  // Added (2026-11-04; thud/PLAN.md, *The teacher's finer evaluation*): kickstarting's
+  // teacher's threat term at its search's frontier — "off" (the default, as before), "scan"
+  // or "captures" (material_search.h, Threat) — with its weights for the dwarfs and the
+  // trolls at the frontier, "WD,WT" or one for both (points per point threatened). The
+  // training opponent is not changed by it.
+  std::string teacher_threat = "off";
+  std::string teacher_threat_weights;
+  // Added (2026-11-04): the positional terms' weights for kickstart_ties=positional,
+  // "REACH,PAIRS" (teacher_terms.h: points of final margin per square of the dwarfs' hurl
+  // reach and per pair of trolls, from the dwarfs' view): each group of moves with equal
+  // scores keeps its total, shared inside by the softmax of the terms after each move over
+  // kickstart_temperature (TeacherTiesByTerms).
+  std::string teacher_terms_weights;
   // Added (2026-10-29; Gumbel targets, part one): the policy target of each recorded position
   // — "visits" (the default: the root's visit counts, upstream's, KataGo's pruning on top if
   // policy_target_pruning) or "completed_q" (CompletedQTarget: Gumbel AlphaZero's completed
@@ -268,6 +281,9 @@ struct AlphaZeroConfig {
         {"kickstart_temperature", kickstart_temperature},
         {"kickstart_ties", kickstart_ties},
         {"kickstart_root_margin", kickstart_root_margin},
+        {"teacher_threat", teacher_threat},
+        {"teacher_threat_weights", teacher_threat_weights},
+        {"teacher_terms_weights", teacher_terms_weights},
         {"policy_target", policy_target},
         {"gumbel_search", gumbel_search},
         {"gumbel_considered", gumbel_considered},
@@ -406,6 +422,15 @@ struct AlphaZeroConfig {
     kickstart_root_margin = config_json.count("kickstart_root_margin")
                                 ? config_json.at("kickstart_root_margin").GetInt()
                                 : 0;
+    teacher_threat = config_json.count("teacher_threat")
+                         ? config_json.at("teacher_threat").GetString()
+                         : "off";
+    teacher_threat_weights = config_json.count("teacher_threat_weights")
+                                 ? config_json.at("teacher_threat_weights").GetString()
+                                 : "";
+    teacher_terms_weights = config_json.count("teacher_terms_weights")
+                                ? config_json.at("teacher_terms_weights").GetString()
+                                : "";
     policy_target = config_json.count("policy_target")
                         ? config_json.at("policy_target").GetString()
                         : "visits";
@@ -549,6 +574,21 @@ open_spiel::ActionsAndProbs TeacherPolicy(const open_spiel::State& state,
 // between scores, are unchanged.
 open_spiel::ActionsAndProbs TeacherTiesBySearch(const open_spiel::ActionsAndProbs& teacher,
                                                 const open_spiel::ActionsAndProbs& visits);
+
+// Added (kickstart_ties=positional, 2026-11-04; thud/PLAN.md, *The teacher's finer
+// evaluation*): `teacher` (TeacherPolicy of `state`, in LegalActions() order) with each group
+// of moves of exactly the same probability keeping its total, shared inside by the softmax
+// of `player`'s TermsScores over `temperature`. The groups' totals are unchanged.
+open_spiel::ActionsAndProbs TeacherTiesByTerms(const open_spiel::ActionsAndProbs& teacher,
+                                               const open_spiel::State& state,
+                                               const AlphaBetaPlayer& player,
+                                               double temperature);
+
+// Added (2026-11-04): kickstarting's teacher set up from `config`: its threat term
+// (teacher_threat, teacher_threat_weights) and, with kickstart_ties=positional, its
+// positional terms (teacher_terms_weights, at kickstart_temperature). Stops with a fatal
+// error on a malformed setting.
+void ConfigureTeacher(const AlphaZeroConfig& config, AlphaBetaPlayer* teacher);
 
 // Added: the search the trainer uses — for self-play when player >= 0 (that
 // player's simulations and the policy temperatures), for evaluation games when
