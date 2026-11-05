@@ -9,14 +9,13 @@
 AlphaZero-style learning with our copy of OpenSpiel's C++ AlphaZero (`thud/az/`; `PLAN.md`,
 Phase 6), a 64 x 4 network with the 50 input planes and the convolutional policy head.
 
-**The main line: run R8** (`~/thud-runs/r8_run_2026-11-03.sh`, detached; from 03:11 on 11-04),
-from **F565** — a fresh network trained offline on R7's 400/200 positions (steps 526-565), level
+**The main line: run R8** (`~/thud-runs/r8_run_2026-11-03.sh`; from 03:11 on 11-04; stopped at
+step 586 for the learning-rate sweep, resumed after it by `r8_resume_2026-11-05.sh`), from **F565** — a fresh network trained offline on R7's 400/200 positions (steps 526-565), level
 with R7_565 (+0.19 over 80 pairs, −1.67 to +2.04), teacher:5 +21.57 (R7_565 +23.18; paired by
 opening −1.60, −4.55 to +1.52), hexparrot:3 +47.15 (R7_565 +46.40; paired +0.75, −1.98 to
 +3.42), its plasticity much restored (random targets' loss after 700 batches 1.07; R7_565 3.61,
-a fresh network 0.41). R7
-ended at step 565 on a plateau (R7_565 against R7_545 +1.30, against R6_366 −4.25). Back to R7
-only after looking at F565's and R8's results with the user. R8's recipe, R7's: 400/200
+a fresh network 0.41). R7 ended at step 565 on a plateau (R7_565 against R7_545 +1.30, against R6_366 −4.25). Back to R7
+only if R8 goes badly (F565 and R8_585 seen with the user on 11-04). R8's recipe, R7's: 400/200
 simulations (dwarfs/trolls), the teacher at depths 5/4 with weights 0.5/0.5 at temperature 0.25
 (ties even), the training opponent on 30% of the positions (the trolls the teacher at depth 5;
 the dwarfs alpha-beta at depth 2 — **from step 586 the teacher at depth 5**), buffer 458,752,
@@ -26,8 +25,11 @@ teacher:5, the regression gates). **R8_585** (the first segment's network): agai
 −0.72, F565 +1.40, R6_366 −3.40, teacher:5 +23.48, hexparrot:3 +48.17, plasticity 0.92 (F565
 1.07) — learning, level with R7_565. **The learning-rate sweep did not run at 585**: twin
 actors (two actors seeded alike, playing identical games: 2,650 duplicate positions) failed
-its future test; proposed: the actors' seeding fixed, the sweep at the 605 stop (~12:00 on
-11-05; F565 at 0.00003, 0.0001, 0.0003 and 0.001, two seeds each, scored on steps 566-585).
+its future test. **R8 stopped at step 586 (21:12 on 11-04); the sweep runs from after midnight**
+once the laptop has had 15 minutes without input (`~/thud-runs/r8_resume_2026-11-05.sh`,
+detached; F565 at 0.00003, 0.0001, 0.0003 and 0.001, two seeds each, ~5 hours, scored on steps
+566-585's 435,825 distinct positions), then R8 resumes to 605 with **the actors' seeding
+fixed** (each actor from the clock and its number, its searches from it).
 
 **In progress: the teacher's finer evaluation** (`PLAN.md`, *The teacher's finer evaluation*):
 a threat term at the teacher's search frontier (a correction of its material scores) and two
@@ -4708,13 +4710,44 @@ the push's and the rename's tests ran (memory beside the trainer), to resume.
   stop instead, its future taken as the newest positions less the duplicates (the test: those
   and the skipped exactly the future's count, so no position from before step 566).
 
-**Next step:** R8's second segment (586-605, from 19:46; the training opponent's dwarfs now
-the teacher at depth 5), at its stop (~12:00 on 11-05) the evaluation; with the user: the
-seeding fix and the learning-rate sweep at that stop (~5 hours, its future test corrected).
-Meanwhile the finer evaluation: at a stop gate 3 (the timings: `az_threat_probe` on a
+  **21:10-21:45.** The user: the seeding fix yes; the sweep tonight rather than at 605 — R8
+  stopped now, the sweep started only after midnight once the laptop has had 15 minutes
+  without input. **R8 stopped at step 586** (one SIGINT to the trainer, 21:12:41; it exited
+  cleanly in 8 s, `r8_run` ended with "stopped before step 605"). The games then in play
+  toward step 587 (~28 minutes of self-play) are lost: an interrupt while collecting keeps only
+  completed steps, `carried_games.txt` is written only at a run's planned last step.
+  **The seeding fix** (`thud/az/alpha_zero.h`, `ActorGenerator` and `SearchSeed`): each actor's
+  generator from `std::seed_seq` of the clock's 64 bits and its number, and each of its
+  searches (and the playout cap's fast searches) seeded from it; the evaluation searches keep
+  0 (no noise). The buffer at 585 also showed the second effect of the searches' common seed
+  0: every actor's first search of a segment gave the start position the same target (groups
+  of up to 8 copies at turn 0, split only by the games' outcomes). Tested: `instrumentation_test`
+  (64 actors of one clock tick, and their searches, draw apart at three clock values;
+  repeatable; the clock's high bits count — the controls: upstream's seeding gives the 64 one
+  stream, and clocks 2^32 apart alike), and the actor's use of it measured once with the old
+  and the new trainer (8 actors, one step: the start position's targets 6 distinct of 13 old,
+  14 of 14 new; `~/thud-runs/dupcheck_2026-11-04/wiring.sh`). **The sweep's future test
+  corrected** in `r8_run_2026-11-03.sh` (its earlier text kept as `.before_twins`): a first merge
+  counts the duplicates D, the future is the newest n − D positions the merge keeps (D counts
+  every duplicate, so never one from before step 566), the second merge's skipped equal to D
+  and D at most 2% of n; and the count read from the run's own `learner.jsonl`, not the
+  snapshot's — a test of the function (the real merges, a stand-in for the training) found
+  that once step 586 had consumed `carried_games.txt` the snapshot's log came 2,888 short. The
+  test passed: 435,825 positions of 438,475, 2,650 skipped and counted, the eight arms on R7's
+  565 buffer, the nine scorings at that size. **`~/thud-runs/r8_resume_2026-11-05.sh`**
+  (detached, from 21:27) waits for 00:00, then for 900 s without keyboard or mouse input
+  (Windows' `GetLastInputInfo` through `powershell.exe`, read from a detached process too) on
+  mains power, then runs `r8_run_2026-11-03.sh`: its 585 point skipped but for the sweep
+  (~5 hours), then the segment to 605 from step 587, built with the fix.
+
+**Next step:** the learning-rate sweep from after midnight (`r8_resume_2026-11-05.sh`, ~5
+hours), then R8's segment to 605 from step 587 with the seeding fix (~14 hours; the training
+opponent's dwarfs the teacher at depth 5), its evaluation at the stop. The sweep's reading with
+the user. Meanwhile the finer evaluation: at a stop gate 3 (the timings: `az_threat_probe` on a
 quiet machine, and a trainer step) and gate 4 (teacher:5 with the additions against the main
 line's network, paired with the plain teacher:5 match; the positional split at the teacher's
 temperature and a softer one); then, with the user, whether to switch it on, the merge
-(everything off by default) and an arm. With the user: F565's and R8's results (back to R7 if bad). Later: 800/400 (the
+(everything off by default) and an arm. F565 and R8_585 seen with the user: R8 stays the main
+line (back to R7 only if it goes badly). Later: 800/400 (the
 GPU, or when 400/200 plateaus), tree reuse. Push the unpushed commits at a gap; ping upstream
 ~2026-11-07.

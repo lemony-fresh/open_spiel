@@ -358,7 +358,10 @@ learner's own LibTorch thread count, the inference threads keeping OMP_NUM_THREA
 shares one value between threads not yet started, so each inference thread sets its own;
 `learner.jsonl`'s `threads` records them; 0, the default, as before); since 2026-10-27 the games waiting at a run's last step carried into the buffer
 (`carried_games.txt`, so that the next start's first step collects that many fewer) and the
-games in play ended at a stop (the exit waited minutes for them); since 2026-10-15 crash-safe saving (the buffer and the checkpoints written under
+games in play ended at a stop (the exit waited minutes for them); since 2026-11-04 each actor
+seeded from the clock and its number and its searches from the actor's generator (upstream: the
+clock alone and every search 0, so two actors started in one clock tick played identical games —
+twin actors; `ActorGenerator`, tested in `instrumentation_test`); since 2026-10-15 crash-safe saving (the buffer and the checkpoints written under
 a temporary name and renamed, a truncated last record skipped on resume, a cut-off buffer
 refused; since 2026-10-19 the buffer compact, `thud/az/position_buffer.h`: ~7x fewer bytes,
 bit for bit the same training, older and smaller buffers' files load, `az_merge_buffers OUT

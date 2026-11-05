@@ -491,7 +491,7 @@ int AlphaBetaDepth(const AlphaZeroConfig& config, open_spiel::Player player) {
 std::unique_ptr<MCTSBot> InitAZBot(const AlphaZeroConfig& config,
                                    const open_spiel::Game& game,
                                    std::shared_ptr<Evaluator> evaluator,
-                                   bool evaluation, int player) {
+                                   bool evaluation, int player, int seed) {
   // Our change (thud/PLAN.md, training the dwarfs): per-player simulations in
   // self-play, and the policy softmax temperatures in every search.
   const std::vector<double> simulations = PerPlayerValues(config.player_simulations);
@@ -516,7 +516,7 @@ std::unique_ptr<MCTSBot> InitAZBot(const AlphaZeroConfig& config,
       game, std::move(evaluator), config.uct_c, max_simulations,
       config.max_memory_mb,  // Our change (2026-11-01): upstream fixes 10.
       /*solve=*/false,
-      /*seed=*/0,
+      seed,  // Our change (2026-11-04): upstream's is 0 for every search.
       /*verbose=*/false, ChildSelectionPolicy::PUCT,
       alpha, evaluation ? 0 : epsilon,
       /*dont_return_chance_node*/ true, /*max_wall_clock_time=*/-1,
@@ -534,7 +534,8 @@ std::unique_ptr<MCTSBot> InitAZBot(const AlphaZeroConfig& config,
 
 std::vector<std::unique_ptr<MCTSBot>> FastBots(const AlphaZeroConfig& config,
                                                const open_spiel::Game& game,
-                                               std::shared_ptr<Evaluator> evaluator) {
+                                               std::shared_ptr<Evaluator> evaluator,
+                                               std::mt19937* rng) {
   std::vector<std::unique_ptr<MCTSBot>> bots;
   if (config.playout_cap_full_share >= 1) return bots;
   SPIEL_CHECK_GT(config.playout_cap_full_share, 0);
@@ -545,7 +546,8 @@ std::vector<std::unique_ptr<MCTSBot>> FastBots(const AlphaZeroConfig& config,
   for (int player = 0; player < 2; ++player) {
     // As an evaluation search: no root noise, no forced playouts; the player's policy
     // temperature kept.
-    bots.push_back(InitAZBot(fast, game, evaluator, /*evaluation=*/true, player));
+    bots.push_back(InitAZBot(fast, game, evaluator, /*evaluation=*/true, player,
+                             rng == nullptr ? 0 : SearchSeed(rng)));
   }
   return bots;
 }
@@ -562,15 +564,17 @@ void actor(const open_spiel::Game& game, const AlphaZeroConfig& config, int num,
   } else {
     logger.reset(new NoopLogger());
   }
-  std::mt19937 rng(absl::ToUnixNanos(absl::Now()));
+  // Our change (2026-11-04, twin actors): the clock and the actor's number (ActorGenerator).
+  std::mt19937 rng = ActorGenerator(absl::ToUnixNanos(absl::Now()), num);
   absl::uniform_real_distribution<double> dist(0.0, 1.0);
   std::vector<std::unique_ptr<MCTSBot>> bots;
   bots.reserve(2);
   for (int player = 0; player < 2; player++) {
-    bots.push_back(InitAZBot(config, game, vp_eval, false, player));  // Our change.
+    // Our change: the player's search; since 2026-11-04 seeded from the actor's generator.
+    bots.push_back(InitAZBot(config, game, vp_eval, false, player, SearchSeed(&rng)));
   }
   // Our change (playout cap randomisation): the fast searches, if the cap is on.
-  std::vector<std::unique_ptr<MCTSBot>> fast_bots = FastBots(config, game, vp_eval);
+  std::vector<std::unique_ptr<MCTSBot>> fast_bots = FastBots(config, game, vp_eval, &rng);
   if (!fast_bots.empty()) {
     logger->Print("Playout caps: a full search on %g of the moves, else %d simulations",
                   config.playout_cap_full_share, config.playout_cap_fast_simulations);

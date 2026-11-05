@@ -23,6 +23,11 @@
 // so upstream's single try would drop the item), while PushPatiently — trying every 50 ms —
 // succeeds once a reader takes the waiting item after 300 ms, in several tries, the item
 // then in the queue; and with no reader it returns false soon after a stop is requested.
+// Since 2026-11-04 also ActorGenerator, the actors' seeding (twin actors): 64 actors started
+// in one clock tick draw apart, and so do the searches each seeds from its generator, at
+// several clock values; the same clock and number give the same generator; clocks that differ
+// only above 32 bits give different ones. The controls: upstream's seeding,
+// std::mt19937(nanos), gives the 64 actors of a tick one stream, and clocks 2^32 apart alike.
 //
 //   thud/run_tests.sh instrumentation_test   # builds and runs it
 //   build-tests/bin/instrumentation_test
@@ -31,7 +36,10 @@
 
 #include <chrono>  // NOLINT
 #include <iostream>
+#include <cstdint>
 #include <memory>
+#include <random>
+#include <set>
 #include <thread>  // NOLINT
 #include <string>
 #include <vector>
@@ -170,6 +178,54 @@ int main(int argc, char** argv) {
       ++failures;
     } else {
       std::cout << "PASS PushPatiently returns after a stop (" << seconds << " s)" << std::endl;
+    }
+  }
+  // ActorGenerator (2026-11-04, twin actors).
+  {
+    using open_spiel::thud_az::torch_az::ActorGenerator;
+    using open_spiel::thud_az::torch_az::SearchSeed;
+    const int kActors = 64;
+    bool apart = true, upstream_alike = true, searches_apart = true, nonnegative = true;
+    for (int64_t nanos : {int64_t{0}, int64_t{-5}, int64_t{1762300000123456789}}) {
+      std::set<std::vector<uint32_t>> streams, upstream;
+      std::set<std::pair<int, int>> search_seeds;
+      for (int num = 0; num < kActors; ++num) {
+        std::mt19937 rng = ActorGenerator(nanos, num);
+        // As the actor: its two searches' seeds first, then its own draws.
+        const int dwarfs = SearchSeed(&rng), trolls = SearchSeed(&rng);
+        nonnegative &= dwarfs >= 0 && trolls >= 0;
+        search_seeds.insert({dwarfs, trolls});
+        std::vector<uint32_t> stream;
+        for (int k = 0; k < 4; ++k) stream.push_back(rng());
+        streams.insert(stream);
+        std::mt19937 old(nanos);  // Upstream's actor.
+        std::vector<uint32_t> old_stream;
+        for (int k = 0; k < 4; ++k) old_stream.push_back(old());
+        upstream.insert(old_stream);
+      }
+      apart &= streams.size() == kActors;
+      searches_apart &= search_seeds.size() == kActors;
+      upstream_alike &= upstream.size() == 1;
+    }
+    std::mt19937 again = ActorGenerator(1762300000123456789, 7),
+                 same = ActorGenerator(1762300000123456789, 7);
+    const bool repeatable = again() == same() && again() == same();
+    const int64_t low = 123456789, high = low + (int64_t{1} << 32);
+    std::mt19937 low_gen = ActorGenerator(low, 0), high_gen = ActorGenerator(high, 0);
+    std::mt19937 low_old(low), high_old(high);
+    const bool high_bits = low_gen() != high_gen(), old_truncates = low_old() == high_old();
+    if (!apart || !searches_apart || !nonnegative || !repeatable || !high_bits ||
+        !upstream_alike || !old_truncates) {
+      std::cerr << "FAIL: ActorGenerator: actors apart " << apart << ", searches apart "
+                << searches_apart << ", seeds non-negative " << nonnegative << ", repeatable "
+                << repeatable << ", high bits count " << high_bits
+                << "; the controls: upstream's actors of a tick alike " << upstream_alike
+                << ", upstream's clocks 2^32 apart alike " << old_truncates << std::endl;
+      ++failures;
+    } else {
+      std::cout << "PASS ActorGenerator: " << kActors << " actors of one clock tick draw "
+                << "apart, their searches too (the control: upstream's seeding gives them "
+                << "one stream, and clocks 2^32 apart one)" << std::endl;
     }
   }
   std::cout << (failures ? "INSTRUMENTATION TEST FAILED"

@@ -532,7 +532,8 @@ open_spiel::ActionsAndProbs CompletedQTarget(const SearchNode& root,
 // playouts, the policy temperatures kept; empty if the cap is off.
 std::vector<std::unique_ptr<MCTSBot>> FastBots(const AlphaZeroConfig& config,
                                                const open_spiel::Game& game,
-                                               std::shared_ptr<Evaluator> evaluator);
+                                               std::shared_ptr<Evaluator> evaluator,
+                                               std::mt19937* rng = nullptr);
 
 // Added (kickstarting): the teacher's policy over `state`'s legal moves — the softmax
 // of teacher.Scores(state) over `temperature` points.
@@ -551,11 +552,31 @@ open_spiel::ActionsAndProbs TeacherTiesBySearch(const open_spiel::ActionsAndProb
 
 // Added: the search the trainer uses — for self-play when player >= 0 (that
 // player's simulations and the policy temperatures), for evaluation games when
-// evaluation is true (no root noise).
+// evaluation is true (no root noise). `seed` seeds its generator (the root noise,
+// the order its moves are tried in); upstream's is 0 for every search.
 std::unique_ptr<MCTSBot> InitAZBot(const AlphaZeroConfig& config,
                                    const open_spiel::Game& game,
                                    std::shared_ptr<Evaluator> evaluator,
-                                   bool evaluation, int player = -1);
+                                   bool evaluation, int player = -1, int seed = 0);
+
+// Our change (2026-11-04; thud/PROGRESS.md, 2026-11-04, *twin actors*): an actor's
+// generator, from the clock's `nanos` and the actor's number `num`. Upstream seeds each
+// actor from the clock alone, std::mt19937 rng(absl::ToUnixNanos(absl::Now())), and
+// every search with 0: two actors started in the same clock tick drew alike and played
+// identical games in lockstep (runs R, R7 and R8: up to 23 games), and every actor's
+// first search of a run gave the same target. With the number in the seed, two actors
+// started together draw apart; the actor seeds its searches from this generator.
+inline std::mt19937 ActorGenerator(int64_t nanos, int num) {
+  const uint64_t bits = static_cast<uint64_t>(nanos);
+  std::seed_seq seed{static_cast<uint32_t>(bits), static_cast<uint32_t>(bits >> 32),
+                     static_cast<uint32_t>(num)};
+  return std::mt19937(seed);
+}
+
+// A search's seed drawn from `rng` (MCTSBot takes an int).
+inline int SearchSeed(std::mt19937* rng) {
+  return static_cast<int>((*rng)() & 0x7fffffff);
+}
 
 bool AlphaZero(AlphaZeroConfig config, StopToken* stop, bool resuming);
 
