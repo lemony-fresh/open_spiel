@@ -22,9 +22,12 @@ simulations (dwarfs/trolls), the teacher at depths 5/4 with weights 0.5/0.5 at t
 the dwarfs alpha-beta at depth 2 — **from step 586 the teacher at depth 5**), buffer 458,752,
 learning rate 0.0001, bfloat16 inference, self-play's no-capture limit 100. Segments of 20
 steps, each evaluated at its stop (the previous segment's network, R6_366, hexparrot:3,
-teacher:5, the regression gates). **At the 585 stop** (~19:00 on 11-04): the evaluation, then
-the learning-rate sweep (~5 hours: F565 at 0.00003, 0.0001, 0.0003 and 0.001, two seeds each,
-scored on steps 566-585).
+teacher:5, the regression gates). **R8_585** (the first segment's network): against R7_565
+−0.72, F565 +1.40, R6_366 −3.40, teacher:5 +23.48, hexparrot:3 +48.17, plasticity 0.92 (F565
+1.07) — learning, level with R7_565. **The learning-rate sweep did not run at 585**: twin
+actors (two actors seeded alike, playing identical games: 2,650 duplicate positions) failed
+its future test; proposed: the actors' seeding fixed, the sweep at the 605 stop (~12:00 on
+11-05; F565 at 0.00003, 0.0001, 0.0003 and 0.001, two seeds each, scored on steps 566-585).
 
 **In progress: the teacher's finer evaluation** (`PLAN.md`, *The teacher's finer evaluation*):
 a threat term at the teacher's search frontier (a correction of its material scores) and two
@@ -4672,10 +4675,43 @@ the push's and the rename's tests ran (memory beside the trainer), to resume.
   Gates: blunders −0.034 (R7_565 −0.038), troll kills +3.23 (+3.25); all pass. R8 at step 573;
   the tripwire quiet at 570 (the dwarfs' prior 97 effective moves, 93% of the baseline).
 
-**Next step:** R8's first segment (566-585, from 03:11, ~16 hours), then at its stop the
-evaluation (against F565, R7_565, R6_366, hexparrot:3, teacher:5) and the learning-rate sweep
-(~5 hours); from step 586 the training opponent's dwarfs the teacher at depth 5. Meanwhile the
-finer evaluation: at a stop gate 3 (the timings: `az_threat_probe` on a
+  **21:00. R8_585** (the 585 stop, 18:30-19:46; `~/thud-runs/runR8_eval/`): against R7_565
+  −0.72 (−3.23 to +1.78), against F565 +1.40 (−1.16 to +3.96; 22 pairs won, 5 drawn, 13 lost),
+  against R6_366 −3.40 (−6.77 to −0.03; R7_565 −4.25), teacher:5 +23.48 (paired by opening
+  against F565 +1.90, −0.78 to +4.60; against R7_565 +0.30), hexparrot:3 +48.17 (against F565
+  +1.02, −1.05 to +3.30; against R7_565 +1.77, −0.10 to +3.70). Plasticity 0.92 after 700
+  batches (F565 1.07, R7_565 3.61, a fresh network 0.40); dead channels 9 in the heads, dormant
+  at τ 0.1 26 (F565 10 and 25); the policy nearer the targets of steps to 585 than F565's
+  (KL dwarfs 0.217 against 0.224, trolls 0.088 against 0.092); the dwarfs' prior nearer the
+  teacher over the segment (KL 0.697 to 0.650); gates pass. Segment: 1,460 self-play games,
+  all at the no-capture limit, the dwarfs' margin −5.0, 2,673 s a step. R8 learns: every
+  measure a little better than F565, level with R7_565 in the matches.
+  **The learning-rate sweep did not run**: its test of the future (R8's positions of steps
+  566-585, which no arm learnt) failed — 2,650 exact duplicates among the newest 438,475
+  positions against at most 0.1% allowed (R7's snapshots at 545 and 565: 114 and 53). Each
+  duplicate makes the merge reach one position further back, into R7's positions that F565
+  trained on, so the test refused rightly. **The cause: twin actors.** The duplicates are whole
+  games, each followed at once by its copy (the gap between copies is the game's length), all in
+  steps 566-~574; the actors' logs show actors 2 and 3 playing identical games from their first
+  game on (11+ games, finishing within a second of each other), and in the current segment
+  actors 0 and 2 (from 20:05). Earlier runs had them too: run R on 10-19 (actors 2 and 3, 23
+  games), R7 on 10-30 (actors 4 and 12, 15 games) — only actors 0-19 keep logs. The trainer
+  seeds each actor as upstream does, `std::mt19937 rng(absl::ToUnixNanos(absl::Now()))`
+  (`thud/az/alpha_zero.cc` 565), and every search with seed 0 (`InitAZBot`, so every actor's
+  root noise is one stream), so two actors started in the same clock tick play in lockstep
+  until something parts them; 64 threads started in a loop drew a clash in 2 of 200 trials
+  here (a one-off, `seed_clash`). The effect on learning is small (~1% of a segment's games
+  twice, for some hours); the duplicates' probe and the logs' search in
+  `~/thud-runs/dupcheck_2026-11-04/`. Proposed to the user: each actor seeded from the clock
+  and its number (`std::seed_seq`), its searches from its own generator, with a test (equal
+  clocks give distinct seeds; the control, the old seeding, equal ones); the sweep at the 605
+  stop instead, its future taken as the newest positions less the duplicates (the test: those
+  and the skipped exactly the future's count, so no position from before step 566).
+
+**Next step:** R8's second segment (586-605, from 19:46; the training opponent's dwarfs now
+the teacher at depth 5), at its stop (~12:00 on 11-05) the evaluation; with the user: the
+seeding fix and the learning-rate sweep at that stop (~5 hours, its future test corrected).
+Meanwhile the finer evaluation: at a stop gate 3 (the timings: `az_threat_probe` on a
 quiet machine, and a trainer step) and gate 4 (teacher:5 with the additions against the main
 line's network, paired with the plain teacher:5 match; the positional split at the teacher's
 temperature and a softer one); then, with the user, whether to switch it on, the merge
