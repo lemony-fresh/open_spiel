@@ -792,8 +792,10 @@ nothing; *Tests*):
    switch; the positional terms' cost shows in the trainer step), then a trainer step with the chosen teacher (`bench_trainer.sh`) — at a stop,
    not beside R8, the CPU's limit recorded. **The teacher's times at 586** (2026-11-05):
    `captures:0.25` 307 ms a dwarf position at depth 5 against plain's 115 (2.68x; KL against
-   depth 6 0.557 → 0.402), 16 against 8 ms a troll position at depth 4 (1.88x); the trainer
-   step: below.
+   depth 6 0.557 → 0.402), 16 against 8 ms a troll position at depth 4 (1.88x). **The trainer
+   step (2026-11-06): no cost visible, below the measurement's resolution** — finer 2,550 s at
+   a mean CPU limit of 71%, plain 3,504 s at 62% (a run partly on battery, 2,645 s at 77%, set
+   aside); scaled by the limit 0.84-0.90x. The limit's swings exceed the ~10% expected.
 4. **The match**: teacher:5 with the chosen additions against the main line's network on the
    40 openings, paired opening by opening with the plain teacher:5 match of the same stop; the
    network's margin against it lower beyond the noise passes. **Passed 2026-11-05 in all three
@@ -809,8 +811,8 @@ nothing; *Tests*):
    `runR8` is only read, never written. Everything on the branch's binaries in
    `~/thud-dev/build-shared/` (built 11-04 04:22 from `067ecea6`; run `thud/build_programs.sh`
    in `~/thud-dev` first, a second if nothing changed), the machine otherwise quiet, the CPU's
-   limit logged. One detached script, `~/thud-runs/gates34_2026-11-05.sh`, **running since 22:19
-   on 2026-11-05**, results in `~/thud-runs/gates34_2026-11-05/` and `progress.log`
+   limit logged. One detached script, `~/thud-runs/gates34_2026-11-05.sh`, **run from 22:19
+   on 2026-11-05 to 04:51 on 11-06**, results in `~/thud-runs/gates34_2026-11-05/` and `progress.log`
    (`gates34:`). Before it started, its parts were tested: the summaries on gate 2's probe output,
    which they reproduce; the pairing with controls — the plain match against itself gives 0 with
    80 of 80 openings alike, a seed-3 match is flagged with 0 of 80; the finer config, whose

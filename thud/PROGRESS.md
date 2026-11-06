@@ -9,9 +9,10 @@
 AlphaZero-style learning with our copy of OpenSpiel's C++ AlphaZero (`thud/az/`; `PLAN.md`,
 Phase 6), a 64 x 4 network with the 50 input planes and the convolutional policy head.
 
-**The main line: run R8** (`~/thud-runs/r8_run_2026-11-03.sh`; from 03:11 on 11-04; **stopped at
-step 586** since 21:12 on 11-04 — the learning-rate sweep, done 11-05 16:29, then the user's
-Windows reboot and gates 3 and 4 of the finer evaluation; `~/thud-runs/r8_run.stop` holds it until the gates script removes it), from **F565** — a fresh network trained offline on R7's 400/200 positions (steps 526-565), level
+**The main line: run R8** (`~/thud-runs/r8_run_2026-11-03.sh`; from 03:11 on 11-04; stopped at
+step 586 from 21:12 on 11-04 to 04:51 on 11-06 — the learning-rate sweep, the user's Windows
+reboot and gates 3 and 4 of the finer evaluation; **running again since 04:51 on 11-06**, the
+segment to 605 with the seeding fix, at step 591 by 10:17), from **F565** — a fresh network trained offline on R7's 400/200 positions (steps 526-565), level
 with R7_565 (+0.19 over 80 pairs, −1.67 to +2.04), teacher:5 +21.57 (R7_565 +23.18; paired by
 opening −1.60, −4.55 to +1.52), hexparrot:3 +47.15 (R7_565 +46.40; paired +0.75, −1.98 to
 +3.42), its plasticity much restored (random targets' loss after 700 batches 1.07; R7_565 3.61,
@@ -43,25 +44,20 @@ at a stop, gates 3 (timings) and 4 (a match); **whether to switch it on is decid
 user once both are in** (the user accepts the ~10% more compute a step estimated, since the
 teacher is tapered out later); then the merge and an arm.
 
-**Running: gates 3 and 4 of the finer evaluation** at the 586 stop, after the user's Windows
-reboot (WSL up again 22:08 on 11-05; the machine checked: mains, AC sleep never, swap 8 GB).
-`~/thud-runs/gates34_2026-11-05.sh`, detached since 22:19 (`PLAN.md`, *The teacher's finer
-evaluation*, "Gates 3 and 4 run at the 586 stop"), runs the teacher's times, then three
-teacher:5 matches against R8_585 paired with the plain one, then a trainer step plain against
-finer: ~4.5-5 hours. **a and b done** (11-05 22:29, 23:06): the teacher's search 2.68x as
-long a dwarf position with the threat term (115 → 307 ms), 1.88x a troll position (8 → 16 ms);
-**gate 4 passed in all three arms** — R8_585's margin against plain teacher:5 +23.48, against
-the threat alone −3.75 lower (−6.70 to −0.80), with the positional terms at temperature 0.25
-−5.88 (−9.67 to −2.08), at 1 −4.38 (−7.67 to −1.08); 80 of 80 openings alike in each. **c's
-plain step runs again:** the laptop was on battery 00:08-00:43 on 11-06, through most of its
-timed step, so `~/thud-runs/gate3_plain_again_2026-11-06.sh` (detached since 00:46) holds R8
-at the script's end (`r8_run.hold`, its own, removed only if untouched), moves that run to
-`bench_plain_battery` and runs gates34 again for the plain step alone (a, b and the finer step
-skipped). **Then R8 resumes by itself** (to 605 from step 587, ~04:15) unless
-`~/thud-runs/r8_run.hold` exists then. The gates' results go to the user, who decides whether to
-switch the finer evaluation on. Also running: the CPU-limit logger (restarted 22:14); the
-collapse tripwire ended at 20:45, before the reboot (no new step for 24 hours), and r8_run
-starts it again. **Upstream:** PRs #1637 (the replay
+**Gates 3 and 4 of the finer evaluation: done** (11-05 22:19 to 11-06 04:51,
+`~/thud-runs/gates34_2026-11-05.sh`; `PLAN.md`, *The teacher's finer evaluation*). The
+teacher's search 2.68x as long a dwarf position with the threat term (115 → 307 ms), 1.88x a
+troll position (8 → 16 ms). **Gate 4 passed in all three arms** — R8_585's margin against plain
+teacher:5 +23.48, against the threat alone −3.75 lower (−6.70 to −0.80), with the positional
+terms at temperature 0.25 −5.88 (−9.67 to −2.08), at 1 −4.38 (−7.67 to −1.08); 80 of 80
+openings alike in each. **Gate 3: no cost visible, but below its resolution**: one timed step
+each, finer 2,550 s at a mean CPU limit of 71%, plain 3,504 s at 62% (and 2,645 s at 77% in a
+run partly on battery, set aside); the limit's swings are larger than the ~10% expected, and
+scaled by the limit the finer step is 0.84-0.90x plain's. The finer teacher differs much from
+what R8 learnt: the dwarfs' prior on its best moves 0.07 (plain's 0.80, its tied moves a larger
+set), the KL 0.80 (0.66). **Whether to switch it on, and how, is the user's to decide.**
+Also running: the CPU-limit logger (restarted 22:14 on 11-05) and the
+collapse tripwire (started again by r8_run at 04:51). **Upstream:** PRs #1637 (the replay
 buffer's memory) and #1646 (the batch norms' lock) waiting; their CI never ran — as a
 first-time contributor's, it waits for a maintainer's approval, and #1637's runs expired after
 30 days (11-05, mailed as failed; #1646's expire ~11-17); ping ~2026-11-07, asking for the
@@ -4817,12 +4813,23 @@ the push's and the rename's tests ran (memory beside the trainer), to resume.
   (removed, R8 would resume) and touched (kept). The first start failed (the script not
   executable); started again at 00:46. R8 resumes ~1.7 hours later than planned, ~04:15.
 
-**Next step:** gate 3's result (`gates34:` and `gate3_plain_again:` in `progress.log`, ~04:15
-on 11-06), then
-R8's segment to 605 from step 587 with the seeding fix (~14 hours; the training opponent's
-dwarfs the teacher at depth 5), its evaluation at the stop. With the user: the sweep's reading,
-the gates' results and whether to switch the finer evaluation on, then the merge (everything
-off by default) and an arm. F565 and R8_585 seen with the user: R8 stays the main
+  **11-06, 00:49-04:51: gate 3's steps; R8 resumed.** The finer step 2,549.9 s (learning
+  654.8 s, self-play bound, the CPU limit 71.4% mean, least 61%, 0 samples off mains), the plain
+  rerun 3,503.6 s (784.2 s, 61.6%, least 45%), the battery run 2,645.0 s (579.2 s, 76.8%): no
+  cost visible, the machine's swings larger than the ~10% expected (scaled by the limit 0.84x
+  against the rerun, 0.90x against the battery run). The finer run's actors logged "The teacher's
+  finer evaluation: threat captures (weights 0.25,0), positional terms 0.104,-0.197" and "ties
+  positional": the settings were on (the summary's grep looked in the learner's log alone, so
+  it logged nothing). Its step's `mean_prior_on_teacher_best` for the dwarfs 0.065 (plain
+  0.80-0.81) and `mean_kl_teacher_prior` 0.80 (0.66-0.67): the finer teacher's best moves are
+  fewer, and far from R8's prior. R8 resumed at 04:51 (the rerun's step was slower than
+  expected). From ~05:00 the CPU limit held at ~45-55% (R8's steps 588-591 3,373-3,818 s, against
+  2,243-2,992 s at 71-79% in 581-585), up to ~90% only from ~10:30.
+
+**Next step:** R8's segment to 605 (running, at 591 by 10:17; ~1 hour a step at the morning's
+CPU limit), its evaluation at the stop. With the user: the sweep's reading, and with the gates'
+results whether to switch the finer evaluation on and how (R8 at 605, or an arm), then the
+merge (everything off by default). F565 and R8_585 seen with the user: R8 stays the main
 line (back to R7 only if it goes badly). Later: 800/400 (the
 GPU, or when 400/200 plateaus), tree reuse. Push the unpushed commits at a gap; ping upstream
 ~2026-11-07, asking for the CI's approval on both PRs.
