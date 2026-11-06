@@ -12,7 +12,9 @@ Phase 6), a 64 x 4 network with the 50 input planes and the convolutional policy
 **The main line: run R8** (`~/thud-runs/r8_run_2026-11-03.sh`; from 03:11 on 11-04; stopped at
 step 586 from 21:12 on 11-04 to 04:51 on 11-06 — the learning-rate sweep, the user's Windows
 reboot and gates 3 and 4 of the finer evaluation; **running again since 04:51 on 11-06**, the
-segment to 605 with the seeding fix, at step 591 by 10:17), from **F565** — a fresh network trained offline on R7's 400/200 positions (steps 526-565), level
+segment to 605 with the seeding fix, at step 591 by 10:17; **the teacher's finer evaluation on
+from step 606**: `~/thud-runs/switch_605_2026-11-06.sh`, detached since 12:25, holds R8 at the
+605 stop, switches its config and starts `r8_run_2026-11-06.sh`), from **F565** — a fresh network trained offline on R7's 400/200 positions (steps 526-565), level
 with R7_565 (+0.19 over 80 pairs, −1.67 to +2.04), teacher:5 +21.57 (R7_565 +23.18; paired by
 opening −1.60, −4.55 to +1.52), hexparrot:3 +47.15 (R7_565 +46.40; paired +0.75, −1.98 to
 +3.42), its plasticity much restored (random targets' loss after 700 batches 1.07; R7_565 3.61,
@@ -34,15 +36,17 @@ trainer's 0.0001 by the sweep's rule** — 0.00003 policy −0.0017 and value �
 the segment to 605 from step 587 with **the actors' seeding fixed** (each actor from the clock
 and its number, its searches from it), started by the gates script at its end.
 
-**In progress: the teacher's finer evaluation** (`PLAN.md`, *The teacher's finer evaluation*):
-a threat term at the teacher's search frontier (a correction of its material scores) and two
-positional terms splitting its tied moves. Built and tested on branch `teacher-terms` in the
-worktree `~/thud-dev`, **not merged**; gates 1 (the fit) and 2 (closer to the deeper search —
-`captures`, the threat's weight 0.25 with the dwarfs at the frontier, 0 with the trolls; the
-finer grid flat from 0.2 to 0.3) passed; `run_tests.sh --full` there passed (45 of 45). Next,
-at a stop, gates 3 (timings) and 4 (a match); **whether to switch it on is decided with the
-user once both are in** (the user accepts the ~10% more compute a step estimated, since the
-teacher is tapered out later); then the merge and an arm.
+**The teacher's finer evaluation: merged, on R8 from step 606** (`PLAN.md`, *The teacher's
+finer evaluation*, item 5; the user, 2026-11-06): a threat term at the teacher's search frontier
+(a correction of its material scores) and two positional terms splitting its tied moves —
+`captures` at 0.25,0, the terms 0.104,-0.197 at the teacher's temperature 0.25, for
+kickstarting's teacher only. Gates 1 (the fit), 2 (closer to the deeper search), 3 (no step cost
+visible) and 4 (a stronger teacher) passed. Merged into `thud` on 11-06 with `TeacherTies`, which
+makes `az_teacher_vs_search` and `az_relabel` rebuild the trainer's targets with the run's own
+teacher (they had used the plain one with even ties whatever the config said; no run had used
+other ties, so no result is affected). **The training opponent stays plain — to switch soon**
+(the user: in the plan; code first, then on at 625 or 645). From 605 the stop's teacher:5 match
+is against the finer teacher (the user: it replaces the plain one; R8_605 against both).
 
 **Gates 3 and 4 of the finer evaluation: done** (11-05 22:19 to 11-06 04:51,
 `~/thud-runs/gates34_2026-11-05.sh`; `PLAN.md`, *The teacher's finer evaluation*). The
@@ -53,9 +57,11 @@ terms at temperature 0.25 −5.88 (−9.67 to −2.08), at 1 −4.38 (−7.67 to
 openings alike in each. **Gate 3: no cost visible, but below its resolution**: one timed step
 each, finer 2,550 s at a mean CPU limit of 71%, plain 3,504 s at 62% (and 2,645 s at 77% in a
 run partly on battery, set aside); the limit's swings are larger than the ~10% expected, and
-scaled by the limit the finer step is 0.84-0.90x plain's. The finer teacher differs much from
-what R8 learnt: the dwarfs' prior on its best moves 0.07 (plain's 0.80, its tied moves a larger
-set), the KL 0.80 (0.66). **Whether to switch it on, and how, is the user's to decide.**
+scaled by the limit the finer step is 0.84-0.90x plain's. The finer teacher's targets differ
+moderately from what R8 learnt: the KL of R8's prior from them 0.80 for the dwarfs (plain 0.66),
+0.25 for the trolls (0.19); the dwarfs' targets ~70 effective moves (~94). (The prior's mass on
+the teacher's best moves, 0.07 against 0.80, overstates it: the plain teacher's best moves are a
+large tied set, the finer one's few.)
 Also running: the CPU-limit logger (restarted 22:14 on 11-05) and the
 collapse tripwire (started again by r8_run at 04:51). **Upstream:** PRs #1637 (the replay
 buffer's memory) and #1646 (the batch norms' lock) waiting; their CI never ran — as a
@@ -4826,10 +4832,38 @@ the push's and the rename's tests ran (memory beside the trainer), to resume.
   expected). From ~05:00 the CPU limit held at ~45-55% (R8's steps 588-591 3,373-3,818 s, against
   2,243-2,992 s at 71-79% in 581-585), up to ~90% only from ~10:30.
 
-**Next step:** R8's segment to 605 (running, at 591 by 10:17; ~1 hour a step at the morning's
-CPU limit), its evaluation at the stop. With the user: the sweep's reading, and with the gates'
-results whether to switch the finer evaluation on and how (R8 at 605, or an arm), then the
-merge (everything off by default). F565 and R8_585 seen with the user: R8 stays the main
+  **11-06, 10:35-12:25: the switch at 605 prepared.** The user: switch R8 at 605; the training
+  opponent stays plain for now, in the plan to switch soon; the stop's teacher:5 match and the
+  teacher against the search with the finer teacher in place of the plain ones (R8_605 against
+  both, the references). Claude's reading, given to the user: the teacher's weight need not rise —
+  it is in every recorded target (0.5 a side), the opponent games' 30% teach nothing of its moves,
+  and the finer targets reach the buffer at ~5% a step; and the gates' "0.07 against 0.80" had
+  overstated the disagreement (ties; the KL rises 0.66 → 0.80). Done: the branch rebased over the
+  seeding fix (no conflict); found while checking the stop's probes — `az_teacher_vs_search` and
+  `az_relabel` read the run's config but built the plain teacher with even ties, so after the
+  switch they would have measured the wrong teacher: fixed with `TeacherTies`, the trainer's tie
+  sharing in one function they share (`kickstart_test` 9, `trainer_test.sh` 17; part 9's mix
+  control moved to 17, since with part 1's `kickstart_ties=search` an all-tied position's teacher
+  is the visits — it failed once so, in a run made afresh each time). `az_teacher_stats` takes its
+  teacher from its arguments, not a run's config: unchanged. Every test passed in the worktree
+  (`run_tests.sh --full`), then `thud` fast-forwarded to the branch. `~/thud-runs/r8_run_2026-11-06.sh`,
+  a copy of R8's script (the running one untouched): the finer teacher:5 match (`FINER_TEACHER`,
+  gate 4's arguments) in place of the plain one, the teacher against the search at 605, 625 and
+  645, `_finer` when the run's config has the finer evaluation. `~/thud-runs/switch_605_2026-11-06.sh`
+  (started 12:25): `r8_run.stop` now, so R8 ends before the segment to 625; then the tests (step
+  605, the stop's end logged, the snapshot, checkpoint 605, the merged code, a plain config), the
+  plain config kept as `runR8/config_plain_605.json`, the four settings set, the copy started; it
+  logs whether the trainer's actors report the finer evaluation. Tested in a sandbox: the switch,
+  and the failures leaving R8 stopped (no merge, step 604, a config not plain) or warning (actors
+  not reporting it); the first sandbox's stand-in trainer was wrong (bash handed its last command
+  to `sleep`, dropping the name), redone with a perl stand-in.
+
+**Next step:** R8's segment to 605 (running; ~1 hour a step at the morning's CPU limit, so the
+stop ~23:00 and its evaluation to ~01:00-02:00 on 11-07), then the switch (`switch605:` in
+`progress.log`), R8_605 against the finer teacher and the finer teacher against the search, the
+segment to 625 with the finer teacher. Watch: the actors' report, the policy loss, the prior's KL
+from the teacher falling, the dwarfs' breadth (tripwire). Then the training opponent's switch
+(code, cost, on at 625 or 645). With the user: the sweep's reading (keep 0.0001). F565 and R8_585 seen with the user: R8 stays the main
 line (back to R7 only if it goes badly). Later: 800/400 (the
 GPU, or when 400/200 plateaus), tree reuse. Push the unpushed commits at a gap; ping upstream
 ~2026-11-07, asking for the CI's approval on both PRs.
