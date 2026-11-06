@@ -48,8 +48,17 @@ reboot (WSL up again 22:08 on 11-05; the machine checked: mains, AC sleep never,
 `~/thud-runs/gates34_2026-11-05.sh`, detached since 22:19 (`PLAN.md`, *The teacher's finer
 evaluation*, "Gates 3 and 4 run at the 586 stop"), runs the teacher's times, then three
 teacher:5 matches against R8_585 paired with the plain one, then a trainer step plain against
-finer: ~4.5-5 hours. **Then it resumes R8 by itself** (to 605 from step 587) unless
-`~/thud-runs/r8_run.hold` exists. The gates' results go to the user, who decides whether to
+finer: ~4.5-5 hours. **a and b done** (11-05 22:29, 23:06): the teacher's search 2.68x as
+long a dwarf position with the threat term (115 → 307 ms), 1.88x a troll position (8 → 16 ms);
+**gate 4 passed in all three arms** — R8_585's margin against plain teacher:5 +23.48, against
+the threat alone −3.75 lower (−6.70 to −0.80), with the positional terms at temperature 0.25
+−5.88 (−9.67 to −2.08), at 1 −4.38 (−7.67 to −1.08); 80 of 80 openings alike in each. **c's
+plain step runs again:** the laptop was on battery 00:08-00:43 on 11-06, through most of its
+timed step, so `~/thud-runs/gate3_plain_again_2026-11-06.sh` (detached since 00:46) holds R8
+at the script's end (`r8_run.hold`, its own, removed only if untouched), moves that run to
+`bench_plain_battery` and runs gates34 again for the plain step alone (a, b and the finer step
+skipped). **Then R8 resumes by itself** (to 605 from step 587, ~04:15) unless
+`~/thud-runs/r8_run.hold` exists then. The gates' results go to the user, who decides whether to
 switch the finer evaluation on. Also running: the CPU-limit logger (restarted 22:14); the
 collapse tripwire ended at 20:45, before the reboot (no new step for 24 hours), and r8_run
 starts it again. **Upstream:** PRs #1637 (the replay
@@ -4795,7 +4804,21 @@ the push's and the rename's tests ran (memory beside the trainer), to resume.
   `~/thud-runs/gates34_2026-11-05.sh` was written and its parts tested (`PLAN.md`, the gates'
   procedure). It started detached at 22:19 and resumes R8 itself at its end.
 
-**Next step:** the gates' results (`gates34:` in `progress.log`, ~03:00-03:30 on 11-06), then
+  **11-06, 00:43-00:50: the plain trainer step on battery, run again.** Parts a and b were
+  done (results in the status block; gate 4 passed in all three arms). The user had unplugged
+  the laptop: Windows logged power source changes at 23:13:03 and 23:13:53 (50 s, in the
+  untimed warm-up step 587) and at 00:08:28 and 00:43:25, so the plain run's timed step 588
+  (00:04:53-~00:48) ran ~35 minutes on battery (33 failed mains samples), where the Surface
+  driver lowers the power limit (a step 22% longer on 10-19). `BENCH_READY` gates only a
+  setting's start, so the run went on. Not comparable with the finer step: rerun. The rerun
+  script holds R8 at gates34's end with `r8_run.hold`, removed only if its mtime is unchanged
+  (so a hold the user makes or touches stays), moves the battery run aside and starts gates34
+  again, whose skips leave the plain step alone. Tested first in a sandbox, the hold untouched
+  (removed, R8 would resume) and touched (kept). The first start failed (the script not
+  executable); started again at 00:46. R8 resumes ~1.7 hours later than planned, ~04:15.
+
+**Next step:** gate 3's result (`gates34:` and `gate3_plain_again:` in `progress.log`, ~04:15
+on 11-06), then
 R8's segment to 605 from step 587 with the seeding fix (~14 hours; the training opponent's
 dwarfs the teacher at depth 5), its evaluation at the stop. With the user: the sweep's reading,
 the gates' results and whether to switch the finer evaluation on, then the merge (everything

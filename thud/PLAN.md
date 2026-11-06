@@ -790,10 +790,16 @@ nothing; *Tests*):
 3. **Timings** (the user, 2026-11-04): the teacher's milliseconds a position per side at its
    depths for each variant (`az_threat_probe`'s `ms`; `az_teacher_stats` has no threat
    switch; the positional terms' cost shows in the trainer step), then a trainer step with the chosen teacher (`bench_trainer.sh`) — at a stop,
-   not beside R8, the CPU's limit recorded.
+   not beside R8, the CPU's limit recorded. **The teacher's times at 586** (2026-11-05):
+   `captures:0.25` 307 ms a dwarf position at depth 5 against plain's 115 (2.68x; KL against
+   depth 6 0.557 → 0.402), 16 against 8 ms a troll position at depth 4 (1.88x); the trainer
+   step: below.
 4. **The match**: teacher:5 with the chosen additions against the main line's network on the
    40 openings, paired opening by opening with the plain teacher:5 match of the same stop; the
-   network's margin against it lower beyond the noise passes.
+   network's margin against it lower beyond the noise passes. **Passed 2026-11-05 in all three
+   arms** (R8_585 against plain teacher:5 +23.48; 80 of 80 openings alike in each): the threat
+   alone −3.75 (−6.70 to −0.80), with the positional terms at the teacher's temperature 0.25
+   −5.88 (−9.67 to −2.08; the trolls' side −4.38), at 1 −4.38 (−7.67 to −1.08).
    **Whether to switch it on is decided with the user once gates 3 and 4 are in** (the user,
    2026-11-04: ~10% more compute a step, gate 2's rough estimate, is acceptable, since the
    teacher is tapered out later).
@@ -848,6 +854,12 @@ nothing; *Tests*):
    ~/thud-runs/r8_run_2026-11-03.log 2>&1 < /dev/null &`. It builds the main repo's programs
    (with the seeding fix) and skips the 585 point and the sweep as done (`lr_sweep_565/done`).
    It also starts the collapse tripwire if that is not running, then trains steps 587-605.
+   **c's plain step again** (2026-11-06): the laptop ran on battery 00:08-00:43, through most
+   of the plain run's timed step, so `~/thud-runs/gate3_plain_again_2026-11-06.sh` (detached
+   since 00:46) holds R8 at the script's end (`r8_run.hold`, its own, removed only if
+   untouched), moves that run to `gates34_2026-11-05/bench_plain_battery`, then runs gates34
+   again: a, b and the finer step are skipped as done, the plain step reruns, the summary
+   follows, and R8 resumes as above (~04:15) unless `r8_run.hold` exists then.
 5. **Then a training arm**, with the user: the teacher's target only (the training opponent
    stays the plain teacher unless decided).
 
