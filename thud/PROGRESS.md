@@ -9,8 +9,9 @@
 AlphaZero-style learning with our copy of OpenSpiel's C++ AlphaZero (`thud/az/`; `PLAN.md`,
 Phase 6), a 64 x 4 network with the 50 input planes and the convolutional policy head.
 
-**The main line: run R8** (`~/thud-runs/r8_run_2026-11-03.sh`; from 03:11 on 11-04; stopped at
-step 586 for the learning-rate sweep, resumed after it by `r8_resume_2026-11-05.sh`), from **F565** — a fresh network trained offline on R7's 400/200 positions (steps 526-565), level
+**The main line: run R8** (`~/thud-runs/r8_run_2026-11-03.sh`; from 03:11 on 11-04; **stopped at
+step 586** since 21:12 on 11-04 — the learning-rate sweep, done 11-05 16:29, then the user's
+Windows reboot; `~/thud-runs/r8_run.stop` holds it until the user says go), from **F565** — a fresh network trained offline on R7's 400/200 positions (steps 526-565), level
 with R7_565 (+0.19 over 80 pairs, −1.67 to +2.04), teacher:5 +21.57 (R7_565 +23.18; paired by
 opening −1.60, −4.55 to +1.52), hexparrot:3 +47.15 (R7_565 +46.40; paired +0.75, −1.98 to
 +3.42), its plasticity much restored (random targets' loss after 700 batches 1.07; R7_565 3.61,
@@ -23,13 +24,14 @@ learning rate 0.0001, bfloat16 inference, self-play's no-capture limit 100. Segm
 steps, each evaluated at its stop (the previous segment's network, R6_366, hexparrot:3,
 teacher:5, the regression gates). **R8_585** (the first segment's network): against R7_565
 −0.72, F565 +1.40, R6_366 −3.40, teacher:5 +23.48, hexparrot:3 +48.17, plasticity 0.92 (F565
-1.07) — learning, level with R7_565. **The learning-rate sweep did not run at 585**: twin
-actors (two actors seeded alike, playing identical games: 2,650 duplicate positions) failed
-its future test. **R8 stopped at step 586 (21:12 on 11-04); the sweep runs from after midnight**
-once the laptop has had 15 minutes without input (`~/thud-runs/r8_resume_2026-11-05.sh`,
-detached; F565 at 0.00003, 0.0001, 0.0003 and 0.001, two seeds each, ~5 hours, scored on steps
-566-585's 435,825 distinct positions), then R8 resumes to 605 with **the actors' seeding
-fixed** (each actor from the clock and its number, its searches from it).
+1.07) — learning, level with R7_565. **The learning-rate sweep** (11-05, 03:02-16:29, the
+laptop asleep 03:20-11:14; F565 trained 640 batches on R7's 565 buffer at each rate, two seeds,
+scored on steps 566-585's 435,825 distinct positions, which none learnt): **no rate beats the
+trainer's 0.0001 by the sweep's rule** — 0.00003 policy −0.0017 and value −0.0004 against it
+(both seeds alike; the seeds' largest spread 0.0081 and 0.0047), 0.0003 +0.0151 and +0.0009,
+0.001 +0.0392 and +0.0037 (worse than F565 untrained); to be read with the user. Next for R8:
+the segment to 605 from step 587 with **the actors' seeding fixed** (each actor from the clock
+and its number, its searches from it), once the user has rebooted Windows and says go.
 
 **In progress: the teacher's finer evaluation** (`PLAN.md`, *The teacher's finer evaluation*):
 a threat term at the teacher's search frontier (a correction of its material scores) and two
@@ -41,9 +43,12 @@ at a stop, gates 3 (timings) and 4 (a match); **whether to switch it on is decid
 user once both are in** (the user accepts the ~10% more compute a step estimated, since the
 teacher is tapered out later); then the merge and an arm.
 
-**Also running:** the collapse tripwire (watching R8), the CPU-limit logger
-(`~/thud-runs/cpu_limit.log`). **Upstream:** PR #1637 (the replay buffer's memory) waiting;
-ping ~2026-11-07. Many commits on `thud` unpushed (the pre-push hook runs every test: at a gap).
+**Also running** (until the reboot; restart both after it): the collapse tripwire (watching
+R8), the CPU-limit logger (`~/thud-runs/cpu_limit.log`). **Upstream:** PRs #1637 (the replay
+buffer's memory) and #1646 (the batch norms' lock) waiting; their CI never ran — as a
+first-time contributor's, it waits for a maintainer's approval, and #1637's runs expired after
+30 days (11-05, mailed as failed; #1646's expire ~11-17); ping ~2026-11-07, asking for the
+approval too. Many commits on `thud` unpushed (the pre-push hook runs every test: at a gap).
 The machine's facts and the settings by use: `CLAUDE.md`, Environment.
 
 ## Earlier status (archived 2026-11-04; superseded by the block above)
@@ -4740,14 +4745,47 @@ the push's and the rename's tests ran (memory beside the trainer), to resume.
   mains power, then runs `r8_run_2026-11-03.sh`: its 585 point skipped but for the sweep
   (~5 hours), then the segment to 605 from step 587, built with the fix.
 
-**Next step:** the learning-rate sweep from after midnight (`r8_resume_2026-11-05.sh`, ~5
-hours), then R8's segment to 605 from step 587 with the seeding fix (~14 hours; the training
-opponent's dwarfs the teacher at depth 5), its evaluation at the stop. The sweep's reading with
-the user. Meanwhile the finer evaluation: at a stop gate 3 (the timings: `az_threat_probe` on a
+  **11-05, 03:02-16:29: the learning-rate sweep; R8 held for a Windows reboot.** `r8_resume`
+  started `r8_run` at 03:02 (935 s without input, on mains); the future's test passed (435,825
+  positions of 438,475, 2,650 duplicates skipped and counted). At ~03:15 the laptop lost mains
+  power (the Surface driver's battery limit, 55,000, from 03:15) and, on battery, went to Modern
+  Standby at 03:20, three minutes without input, until 11:14: WSL froze and resumed, nothing lost
+  (the CPU logger's gap 03:19-11:14; the processes' elapsed times short by as much). The second
+  loss of mains at night in four days (11-02 ~01:43). On waking it was on battery again (75%);
+  the user was asked to plug it in. 12:16, the user: no training after the sweep — they reboot
+  Windows themselves before it forces the postponed update: `~/thud-runs/r8_run.stop` created,
+  which `r8_run` reads only before a segment, so it ended after the sweep ("ends before the
+  segment to 605", 16:29). **The sweep** (`~/thud-runs/runR8_eval/lr_sweep_565/`), the losses on
+  the future, seeds 1 and 2:
+
+  | | policy | value |
+  |---|---|---|
+  | F565 itself | 3.7312 | 0.0084 |
+  | 0.00003 | 3.7263, 3.7262 | 0.0075, 0.0076 |
+  | 0.0001 (the trainer's) | 3.7269, 3.7290 | 0.0079, 0.0080 |
+  | 0.0003 | 3.7390, 3.7471 | 0.0085, 0.0093 |
+  | 0.001 | 3.7672, 3.7672 | 0.0140, 0.0093 |
+
+  The higher rates generalise worse: 0.0003 policy +0.0151 against 0.0001, 0.001 +0.0392 — both
+  worse than F565 untrained, and on R7's own held-out positions both best at batch 0. 0.00003
+  against 0.0001: policy −0.0017, value −0.0004, both seeds the same way, below the rule's
+  threshold (the seeds' largest spread, policy 0.0081, value 0.0047; 0.0001's own policy spread
+  0.0021). So by the rule no rate beats the trainer's: 0.0001 is not too low, and a lower rate
+  no worse. The two lower rates were still improving slightly at 640 batches on R7's held-out
+  positions (0.00003: 3.7887 → 3.7851 → 3.7847). Upstream: PR #1637's CI runs (`wheels`,
+  `build_and_test`), queued 10-06 waiting for a maintainer's approval (a first-time contributor's
+  fork), expired after 30 days at 21:48 UTC with no jobs run, mailed as failed (GitHub's docs:
+  runs awaiting approval over 30 days are dropped); #1646's are in the same state.
+
+**Next step:** after the user's Windows reboot, and once they say go: restart the CPU-limit
+logger and the collapse tripwire, remove `~/thud-runs/r8_run.stop` and start `r8_run` detached
+(its 585 point and the sweep skipped as done), R8's segment to 605 from step 587 with the seeding
+fix (~14 hours; the training opponent's dwarfs the teacher at depth 5), its evaluation at the
+stop. The sweep's reading with the user. Meanwhile the finer evaluation: at a stop gate 3 (the timings: `az_threat_probe` on a
 quiet machine, and a trainer step) and gate 4 (teacher:5 with the additions against the main
 line's network, paired with the plain teacher:5 match; the positional split at the teacher's
 temperature and a softer one); then, with the user, whether to switch it on, the merge
 (everything off by default) and an arm. F565 and R8_585 seen with the user: R8 stays the main
 line (back to R7 only if it goes badly). Later: 800/400 (the
 GPU, or when 400/200 plateaus), tree reuse. Push the unpushed commits at a gap; ping upstream
-~2026-11-07.
+~2026-11-07, asking for the CI's approval on both PRs.
