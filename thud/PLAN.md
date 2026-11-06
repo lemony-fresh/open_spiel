@@ -788,8 +788,8 @@ nothing; *Tests*):
    −0.113). **The setting for gates 3 and 4: `captures`, the weights 0.25 (dwarfs) and 0
    (trolls).** The timings (gate 3) at a stop, on a quiet machine.
 3. **Timings** (the user, 2026-11-04): the teacher's milliseconds a position per side at its
-   depths for each variant, with and without the positional terms (`az_teacher_stats
-   quick=1`), then a trainer step with the chosen teacher (`bench_trainer.sh`) — at a stop,
+   depths for each variant (`az_threat_probe`'s `ms`; `az_teacher_stats` has no threat
+   switch; the positional terms' cost shows in the trainer step), then a trainer step with the chosen teacher (`bench_trainer.sh`) — at a stop,
    not beside R8, the CPU's limit recorded.
 4. **The match**: teacher:5 with the chosen additions against the main line's network on the
    40 openings, paired opening by opening with the plain teacher:5 match of the same stop; the
@@ -797,6 +797,50 @@ nothing; *Tests*):
    **Whether to switch it on is decided with the user once gates 3 and 4 are in** (the user,
    2026-11-04: ~10% more compute a step, gate 2's rough estimate, is acceptable, since the
    teacher is tapered out later).
+
+   **Gates 3 and 4 run at the 586 stop, after the user's Windows reboot** (set 2026-11-05; the
+   user: the gates first, then R8). R8 is stopped at step 586 (`~/thud-runs/r8_run.stop`);
+   `runR8` is only read, never written. Everything on the branch's binaries in
+   `~/thud-dev/build-shared/` (built 11-04 04:22 from `067ecea6`; run `thud/build_programs.sh`
+   in `~/thud-dev` first, a second if nothing changed), the machine otherwise quiet, the CPU's
+   limit logged. One detached script, `~/thud-runs/gates34_2026-11-05.sh` (to be written after
+   the reboot), in this order (~4.5-5 hours in all):
+   - *a. The teacher's times* (~15 minutes, one core): `az_threat_probe logs=$HOME/thud-runs/runR8
+     last=8 max=150 depths=5,4 weights=0.25` on R8's own latest games — `ms` a position per
+     side for plain, `scan:0.25` and `captures:0.25`. In the trainer's searches (5/4) the dwarfs
+     are at the frontier in both, so `captures:0.25` there is the setting `0.25,0`.
+     `az_teacher_stats` has no threat switch, so it is not used. The positional terms' cost
+     shows in the trainer step (c).
+   - *b. Gate 4, the match* (~1-1.5 hours, the three at once): R8_585 (`runR8:585`) against
+     teacher:5 with `teacher_threat=captures teacher_threat_weights=0.25,0`, three arms — the
+     threat alone; with `teacher_terms=0.104,-0.197 teacher_terms_temperature=0.25` (the
+     teacher's own temperature); the same terms with `teacher_terms_temperature=1` (the softer
+     split). Every other argument as r8_run's `R8_585_vs_teacher5`, so that the openings are
+     the same: `seed=1 pairs=40 threads=40 cache=32768 untried=sibling_mean_minus_reduction
+     temperature_a=1,1 temperature_b=1.5,1 precision_a=bfloat16 precision_b=bfloat16
+     progress=300 games=..._games.jsonl`. The threads, as three at once:
+     `inference_threads=3`, `OMP_NUM_THREADS=1` (9 OpenMP threads in all; the games are the
+     same whatever the threads). Each arm is paired opening by opening with
+     `~/thud-runs/runR8_eval/R8_585_vs_teacher5.jsonl` (plain teacher:5, +23.48), per side and in
+     all, as `fresh_2026-11-03.sh` pairs its matches (the `pair` lines' `a_as_dwarfs` and
+     `a_as_trolls`, the t interval). An arm passes if the network's margin falls beyond the
+     noise (the interval below 0): a stronger teacher.
+   - *c. Gate 3's trainer step* (~3 hours: `thud/experiments/bench_trainer.sh` trains two steps
+     a setting and times the second; R8's steps take ~45 minutes): plain against finer, each
+     at the trainer's setting `64,16,3,2,4,bfloat16`, `BIN=$HOME/thud-dev/build-shared`,
+     `BENCH_READY` mains power, `BENCH_PROBE` the CPU limit counter (as
+     `bench_learner_2026-10-20.sh`). Two state folders hold copies of `runR8`'s files at 586
+     (`learner.jsonl`, `config.json`, `vpnet.pb`, `replay_buffer.data` 734 MB,
+     `checkpoint--1.pt`, `checkpoint--1-optimizer.pt`). The finer one's `config.json` adds
+     `"kickstart_ties": "positional"`, `"teacher_threat": "captures"`, `"teacher_threat_weights":
+     "0.25,0"` and `"teacher_terms_weights": "0.104,-0.197"`. The training opponent (teacher:5)
+     stays plain, as the branch builds it: `ConfigureTeacher` is applied to the kickstart
+     teacher only. The cost is the finer step's period over plain's, at equal CPU limits.
+   Then R8 resumes, whatever the gates show (the decision is the user's, later; R8 does not wait
+   for it): `rm ~/thud-runs/r8_run.stop`, then `setsid nohup ~/thud-runs/r8_run_2026-11-03.sh >>
+   ~/thud-runs/r8_run_2026-11-03.log 2>&1 < /dev/null &`. It builds the main repo's programs
+   (with the seeding fix) and skips the 585 point and the sweep as done (`lr_sweep_565/done`).
+   It also starts the collapse tripwire if that is not running, then trains steps 587-605.
 5. **Then a training arm**, with the user: the teacher's target only (the training opponent
    stays the plain teacher unless decided).
 

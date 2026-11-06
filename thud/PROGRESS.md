@@ -43,8 +43,22 @@ at a stop, gates 3 (timings) and 4 (a match); **whether to switch it on is decid
 user once both are in** (the user accepts the ~10% more compute a step estimated, since the
 teacher is tapered out later); then the merge and an arm.
 
-**Also running** (until the reboot; restart both after it): the collapse tripwire (watching
-R8), the CPU-limit logger (`~/thud-runs/cpu_limit.log`). **Upstream:** PRs #1637 (the replay
+**After the user's Windows reboot (2026-11-05; the user: the gates first, then R8):**
+1. Check the machine: `uptime -s` (WSL restarted), the session-start process listing (nothing
+   left over), `powercfg.exe /query SCHEME_CURRENT SUB_SLEEP` (AC "Sleep after" still 0: an
+   update can reset it), mains power (`BatteryStatus` 2), `free -m` (swap 8 GB, `.wslconfig`).
+2. Restart the CPU-limit logger: `setsid nohup ~/thud-runs/cpu_limit_log.sh > /dev/null 2>&1 <
+   /dev/null &`. The tripwire is not needed until R8 trains; r8_run starts it.
+3. Gates 3 and 4 of the finer evaluation, as `PLAN.md` sets them out (*The teacher's finer
+   evaluation*, "Gates 3 and 4 run at the 586 stop"): write `~/thud-runs/gates34_2026-11-05.sh`
+   (the teacher's times, three teacher:5 matches against R8_585, the trainer step plain against
+   finer; ~4.5-5 hours), test it, start it detached.
+4. Then R8 resumes to 605 (`rm ~/thud-runs/r8_run.stop`, r8_run detached: the command in
+   `PLAN.md` there), whatever the gates show. The gates' results go to the user, who decides
+   whether to switch the finer evaluation on.
+
+**Running until the reboot** (both end with it): the collapse tripwire (watching R8) and the
+CPU-limit logger (`~/thud-runs/cpu_limit.log`). **Upstream:** PRs #1637 (the replay
 buffer's memory) and #1646 (the batch norms' lock) waiting; their CI never ran — as a
 first-time contributor's, it waits for a maintainer's approval, and #1637's runs expired after
 30 days (11-05, mailed as failed; #1646's expire ~11-17); ping ~2026-11-07, asking for the
@@ -4777,15 +4791,18 @@ the push's and the rename's tests ran (memory beside the trainer), to resume.
   fork), expired after 30 days at 21:48 UTC with no jobs run, mailed as failed (GitHub's docs:
   runs awaiting approval over 30 days are dropped); #1646's are in the same state.
 
-**Next step:** after the user's Windows reboot, and once they say go: restart the CPU-limit
-logger and the collapse tripwire, remove `~/thud-runs/r8_run.stop` and start `r8_run` detached
-(its 585 point and the sweep skipped as done), R8's segment to 605 from step 587 with the seeding
-fix (~14 hours; the training opponent's dwarfs the teacher at depth 5), its evaluation at the
-stop. The sweep's reading with the user. Meanwhile the finer evaluation: at a stop gate 3 (the timings: `az_threat_probe` on a
-quiet machine, and a trainer step) and gate 4 (teacher:5 with the additions against the main
-line's network, paired with the plain teacher:5 match; the positional split at the teacher's
-temperature and a softer one); then, with the user, whether to switch it on, the merge
-(everything off by default) and an arm. F565 and R8_585 seen with the user: R8 stays the main
+  17:45, the user: the gates first, after their reboot, then R8. The procedure is in the status
+  block ("After the user's Windows reboot") and in `PLAN.md` ("Gates 3 and 4 run at the 586
+  stop"). Gate 3's timing is `az_threat_probe`'s `ms`, since `az_teacher_stats` has no threat
+  switch; the trainer step is `bench_trainer.sh`, plain against finer, ~3 hours of the ~4.5-5.
+
+**Next step:** after the user's Windows reboot, gates 3 and 4 at the 586 stop
+(`~/thud-runs/gates34_2026-11-05.sh`, to be written: the teacher's times, three teacher:5
+matches against R8_585 paired with the plain one, a trainer step plain against finer). Then
+R8's segment to 605 from step 587 with the seeding fix (~14 hours; the training opponent's
+dwarfs the teacher at depth 5), its evaluation at the stop. With the user: the sweep's reading,
+the gates' results and whether to switch the finer evaluation on, then the merge (everything
+off by default) and an arm. F565 and R8_585 seen with the user: R8 stays the main
 line (back to R7 only if it goes badly). Later: 800/400 (the
 GPU, or when 400/200 plateaus), tree reuse. Push the unpushed commits at a gap; ping upstream
 ~2026-11-07, asking for the CI's approval on both PRs.
