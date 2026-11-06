@@ -590,6 +590,17 @@ open_spiel::ActionsAndProbs TeacherTiesByTerms(const open_spiel::ActionsAndProbs
 // error on a malformed setting.
 void ConfigureTeacher(const AlphaZeroConfig& config, AlphaBetaPlayer* teacher);
 
+// Added (2026-11-06): the teacher's ties shared as the trainer shares them in a target — by
+// `visits` (the search's target over the same moves) with kickstart_ties=search
+// (`ties_by_search`; TeacherTiesBySearch), by the positional terms with a teacher that
+// ConfigureTeacher set up for kickstart_ties=positional (TeacherTiesByTerms), else
+// `teacher_policy` as it is (ties even). `teacher_policy` is TeacherPolicy of `state`. The
+// trainer and the probes that rebuild its targets (az_teacher_vs_search, az_relabel) use it.
+open_spiel::ActionsAndProbs TeacherTies(const open_spiel::ActionsAndProbs& teacher_policy,
+                                        const open_spiel::State& state,
+                                        const AlphaBetaPlayer& teacher, bool ties_by_search,
+                                        const open_spiel::ActionsAndProbs& visits);
+
 // Added: the search the trainer uses — for self-play when player >= 0 (that
 // player's simulations and the policy temperatures), for evaluation games when
 // evaluation is true (no root noise). `seed` seeds its generator (the root noise,

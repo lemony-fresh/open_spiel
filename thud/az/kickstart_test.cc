@@ -58,6 +58,11 @@
 //      0.03), evenly without terms; a threat setting reaches the player's Scores
 //      (MaterialSearch with SetThreat, the same scores; the control: kOff's differ); the three
 //      settings round-trip, an older config.json loads them off (part 4).
+//   9. (2026-11-06) TeacherTies, the trainer's tie sharing that az_teacher_vs_search and
+//      az_relabel use too: ConfigureTeacher's teacher scores as one set up by hand; with
+//      ties_by_search it gives TeacherTiesBySearch's result, with positional terms
+//      TeacherTiesByTerms's, with a plain teacher the policy unchanged — exactly (the controls:
+//      the finer teacher's differs from the plain one's, the search's sharing from the terms').
 //
 //   thud/run_tests.sh kickstart_test   # builds and runs it
 //   build-tests/bin/kickstart_test
@@ -517,6 +522,62 @@ int main(int argc, char** argv) {
       other = other || got != depth3.Scores(*s);
     }
     Check(same && other, "8. SetThreat reaches the player's Scores (control: kOff's differ)");
+  }
+
+  // 9. TeacherTies (2026-11-06): the trainer's tie sharing, which the probes use too.
+  {
+    using open_spiel::ActionsAndProbs;
+    using open_spiel::thud_az::Threat;
+    using open_spiel::thud_az::torch_az::ConfigureTeacher;
+    using open_spiel::thud_az::torch_az::TeacherTies;
+    using open_spiel::thud_az::torch_az::TeacherTiesBySearch;
+    using open_spiel::thud_az::torch_az::TeacherTiesByTerms;
+    AlphaZeroConfig finer;
+    finer.kickstart_ties = "positional";
+    finer.kickstart_temperature = 0.25;
+    finer.teacher_threat = "captures";
+    finer.teacher_threat_weights = "0.5,0.25";
+    finer.teacher_terms_weights = "0.1,-0.2";
+    AlphaBetaPlayer configured(*game, 2), by_hand(*game, 2), plain(*game, 2);
+    ConfigureTeacher(finer, &configured);
+    by_hand.SetThreat(Threat::kCaptures, {0.5, 0.25});
+    by_hand.SetPositionalTerms({0.1, -0.2}, 0.25);
+    const auto equal = [](const ActionsAndProbs& a, const ActionsAndProbs& b) {
+      return a == b;  // Exactly: the same computation.
+    };
+    bool hand_same = true, search_same = true, terms_same = true, plain_same = true,
+         differs = false, search_differs = false;
+    int n = 0;
+    std::mt19937 rng(11);
+    std::unique_ptr<State> s = game->NewInitialState();
+    for (int ply = 0; ply < 120 && !s->IsTerminal(); ++ply) {
+      const std::vector<Action> legal = s->LegalActions();
+      if (ply % 9 == 4) {
+        ++n;
+        ActionsAndProbs visits;  // A search's target: every third move visited.
+        for (size_t i = 0; i < legal.size(); ++i) {
+          visits.emplace_back(legal[i], i % 3 == 0 ? 1.0 / ((legal.size() + 2) / 3) : 0.0);
+        }
+        const ActionsAndProbs taught = TeacherPolicy(*s, configured, 0.25);
+        hand_same = hand_same && equal(taught, TeacherPolicy(*s, by_hand, 0.25));
+        const ActionsAndProbs by_search = TeacherTies(taught, *s, configured, true, visits);
+        search_same = search_same && equal(by_search, TeacherTiesBySearch(taught, visits));
+        const ActionsAndProbs tied = TeacherTies(taught, *s, configured, false, visits);
+        terms_same = terms_same && equal(tied, TeacherTiesByTerms(taught, *s, by_hand, 0.25));
+        const ActionsAndProbs plain_policy = TeacherPolicy(*s, plain, 0.25);
+        plain_same = plain_same && equal(TeacherTies(plain_policy, *s, plain, false, visits),
+                                         plain_policy);
+        differs = differs || !equal(tied, plain_policy);
+        search_differs = search_differs || !equal(by_search, tied);
+      }
+      s->ApplyAction(legal[rng() % legal.size()]);
+    }
+    Check(n > 0 && hand_same && search_same && terms_same && plain_same && differs &&
+              search_differs,
+          "9. TeacherTies: ConfigureTeacher's teacher as set by hand; by the search with "
+          "ties_by_search (TeacherTiesBySearch), by the terms with positional terms "
+          "(TeacherTiesByTerms), a plain teacher's policy as it is (controls: the finer "
+          "teacher's differs from the plain one's, the search's from the terms')");
   }
 
   // 4. The configuration.

@@ -89,8 +89,8 @@
 #      results without training (resumed from the results).
 #   9. az_teacher_vs_search (2026-10-25) on the run: its candidates' measures in range, the
 #      uniform spread's agreement and breadth as computed, the visits' gap to themselves 0;
-#      mixes= (2026-10-29): at the run's own weights a mix is the target exactly (the control:
-#      the dwarfs' mix at 0.3 is not); gumbel=1: its three candidates in range, its move all
+#      mixes= (2026-10-29): at the run's own weights a mix is the target exactly (the control,
+#      the other side's weight not, in part 17 since 2026-11-06); gumbel=1: its three candidates in range, its move all
 #      on one move; considered=1,4 gumbel_scale=0: the candidates named by the count, each
 #      move one-hot (the control: the two counts' measures differ); since 2026-10-30
 #      gumbel_sims=0,12 (the names with the budget; the control, the budgets' measures differ)
@@ -137,6 +137,12 @@
 #      (0.1,-0.2) exits 0, records the three settings in config.json, and its actors log them;
 #      the controls: a threat without weights, positional ties without terms and an unknown
 #      threat each stop the trainer at its start, before any actor.
+#  17. (2026-11-06) The probes that rebuild the trainer's targets, az_teacher_vs_search and
+#      az_relabel, on part 1's run copied with the finer settings in its config.json: they exit
+#      0 and log the settings; the teacher's policy and the target differ from the plain
+#      run's on some position while the search's visits are alike on every one (only the
+#      teacher changed); a mix at the run's own weight is the target exactly, at the other
+#      side's weight not (part 9's control, moved here); az_relabel's targets differ at the bytes.
 #
 #   thud/az/trainer_test.sh [BIN_DIR]    # default build-tests/bin
 #
@@ -499,13 +505,14 @@ for side in ("dwarfs", "trolls"):
   v = [s for s in summaries if s["side"] == side and s["candidate"] == "visits" and s["ref"] == 16]
   ok &= abs(sum(m) / len(m) - v[0]["effective_moves"][0]) < 2e-3
 # mixes= (2026-10-29): at the run's own weights (0.7 for the dwarfs, 0.3 for the trolls) a mix
-# is the target exactly; at the other side's weight it is not.
+# is the target exactly. (The control, that at the other side's weight it is not, is in part 17
+# since 2026-11-06: with this run's kickstart_ties=search the teacher's ties are shared by the
+# visits, so in an all-tied position the teacher is the visits and every mix the same.)
 def row(side, c, r):
   return [s for s in summaries if s["side"] == side and s["candidate"] == c and s["ref"] == r][0]
 for r in (16, 32):
   ok &= row("dwarfs", "mix0.70", r)["distance"] == row("dwarfs", "target", r)["distance"]
   ok &= row("trolls", "mix0.30", r)["distance"] == row("trolls", "target", r)["distance"]
-ok &= row("dwarfs", "mix0.30", 16)["distance"] != row("dwarfs", "target", 16)["distance"]
 ok &= all(s["minus_visits"]["distance"][0] == 0 for s in summaries if s["candidate"] == "visits")
 ok &= all(s["effective_moves"][0] >= 1 - 1e-9 for s in summaries)
 legal = {side: [d["legal"] for d in rows if d["side"] == side] for side in ("dwarfs", "trolls")}
@@ -819,5 +826,56 @@ for bad in "--teacher_threat=scan" "--kickstart_ties=positional" \
   check "16. the control: $bad stops the trainer at its start" \
     test "$status" -ne 0 -a ! -e "$dir/log-actor-0.txt"
 done
+
+# 17. The probes that rebuild the trainer's targets apply the run's finer evaluation.
+finer_copy=$tmp/run_finer
+cp -r "$run" "$finer_copy"
+python3 - "$finer_copy/config.json" "$finer_copy" <<'EOF'
+import json, sys
+c = json.load(open(sys.argv[1]))
+c.update(path=sys.argv[2], kickstart_ties="positional", teacher_threat="captures",
+         teacher_threat_weights="0.5,0.25", teacher_terms_weights="0.1,-0.2")
+json.dump(c, open(sys.argv[1], "w"), indent=2)
+EOF
+for which in plain finer; do
+  [ "$which" = plain ] && dir=$run || dir=$finer_copy
+  "$bin/az_teacher_vs_search" run="$dir" step=-1 refs=16 last=2 max=3 threads=1 batch=2 \
+    mixes=0.3,0.7 inference_threads=1 > "$tmp/tvs_$which.jsonl" 2> "$tmp/tvs_$which.err"
+  echo $? > "$tmp/tvs_$which.status"
+  "$bin/az_relabel" run="$dir" step=-1 out="$tmp/relabel_$which" games=6 held_out=3 deep=12,8 \
+    share=0.5 threads=1 batch=2 inference_threads=1 > "$tmp/relabel_$which.jsonl" \
+    2> "$tmp/relabel_$which.err"
+  echo $? > "$tmp/relabel_$which.status"
+done
+finer_logged() {  # Both probes exit 0 on the finer copy and log its settings.
+  local f
+  for f in tvs relabel; do
+    [ "$(cat "$tmp/${f}_finer.status")" = 0 ] || return 1
+    grep -q 'ties positional, threat captures (0.5,0.25), positional terms 0.1,-0.2' \
+      "$tmp/${f}_finer.err" || return 1
+  done
+}
+check "17. az_teacher_vs_search and az_relabel on the run with the finer settings: exit 0, and log them" \
+  finer_logged
+check "17. ... the teacher's policy and the target differ from the plain run's on some position, the search's visits alike on every one (only the teacher changed); a mix at the run's own weight the target exactly, at the other side's not (part 9's control)" \
+  python3 - "$tmp/tvs_plain.jsonl" "$tmp/tvs_finer.jsonl" <<'EOF'
+import json, sys
+rows = [[json.loads(l) for l in open(p) if '"position"' in l] for p in sys.argv[1:]]
+ok = len(rows[0]) >= 4 and len(rows[0]) == len(rows[1])
+ok &= all(a["visits_ref16"] == b["visits_ref16"] for a, b in zip(*rows))
+ok &= any(a["teacher_ref16"] != b["teacher_ref16"] for a, b in zip(*rows))
+ok &= any(a["target_ref16"] != b["target_ref16"] for a, b in zip(*rows))
+# Part 9's control, here (positional ties are never the visits): on the finer run a mix at the
+# run's own weight (0.7 dwarfs, 0.3 trolls) is the target exactly, at the other side's not.
+s = {(d["side"], d["candidate"]): d for d in map(json.loads, open(sys.argv[2]))
+     if d.get("summary") and not d.get("stability") and d.get("ref") == 16}
+for side, own, other in (("dwarfs", "mix0.70", "mix0.30"), ("trolls", "mix0.30", "mix0.70")):
+  ok &= s[(side, own)]["distance"] == s[(side, "target")]["distance"]
+  ok &= s[(side, other)]["distance"] != s[(side, "target")]["distance"]
+if not ok: print(rows[0][:1], rows[1][:1])
+sys.exit(0 if ok else 1)
+EOF
+check "17. ... az_relabel's targets differ from the plain run's (the control at the bytes)" \
+  bash -c "[ -s '$tmp/relabel_finer/all_low.data' ] && ! cmp -s '$tmp/relabel_plain/all_low.data' '$tmp/relabel_finer/all_low.data'"
 
 finish

@@ -22,7 +22,8 @@
 // settings per side, root noise included; the network at `step`) at the run's own budget and
 // at `deep` ("800,400": the dwarfs', the trolls'). Each recorded target is the trainer's —
 // (1 - w) x the root's visits + w x the teacher's policy, w per side (with kickstart_ties=search
-// the teacher's ties shared by the visits), over the root's children — and the value the
+// the teacher's ties shared by the visits; with the run's finer evaluation, since 2026-11-06),
+// over the root's children — and the value the
 // game's result for player 0, as the trainer records it. Writes into OUT:
 //   all_low.data    every position with its low target (the control: the trainer's own)
 //   all_deep.data   every position with its deep target
@@ -166,13 +167,15 @@ ActionsAndProbs ChildVisits(const SearchNode& root) {
   return visits;
 }
 
-// The recorded target, as PlayGame mixes it: (1 - w) x target + w x the teacher's policy
-// (its ties shared by the target's own probabilities with kickstart_ties=search).
+// The recorded target, as PlayGame mixes it: (1 - w) x target + w x the teacher's policy,
+// its ties shared as the run shares them (TeacherTies: by the target's own probabilities with
+// kickstart_ties=search, by the positional terms with kickstart_ties=positional).
 ActionsAndProbs Recorded(ActionsAndProbs target, const ActionsAndProbs& teacher_policy,
-                         double weight, bool ties_by_search) {
+                         double weight, const State& state, const AlphaBetaPlayer& player,
+                         bool ties_by_search) {
   if (weight <= 0) return target;
-  ActionsAndProbs teacher = ties_by_search ? az::TeacherTiesBySearch(teacher_policy, target)
-                                           : teacher_policy;
+  const ActionsAndProbs teacher =
+      az::TeacherTies(teacher_policy, state, player, ties_by_search, target);
   std::map<Action, double> taught(teacher.begin(), teacher.end());
   for (auto& [a, p] : target) p = (1 - weight) * p + weight * taught[a];
   return target;
@@ -246,7 +249,10 @@ void SelfTest() {
             near(tied.agrees, 0.25) && near(tied.distance, 0.5);
   ok &= near(Surprise({{1, 0.5}, {2, 0.5}, {3, 0}}, {{1, 0.5}, {2, 0.5}, {3, 0}}), 0);
   ok &= near(Surprise({{1, 1}}, {{1, 0.5}, {2, 0.5}}), std::log(2.0));
-  const ActionsAndProbs mixed = Recorded({{1, 1}, {2, 0}}, {{1, 0}, {2, 1}}, 0.3, false);
+  const std::shared_ptr<const open_spiel::Game> game = open_spiel::LoadGame("thud");
+  const AlphaBetaPlayer plain(*game, 1);  // No positional terms: the teacher's ties as they are.
+  const ActionsAndProbs mixed = Recorded({{1, 1}, {2, 0}}, {{1, 0}, {2, 1}}, 0.3,
+                                         *game->NewInitialState(), plain, false);
   ok &= near(mixed[0].second, 0.7) && near(mixed[1].second, 0.3);
   if (!ok) open_spiel::SpielFatalError("az_relabel: the self-test failed");
 }
@@ -299,7 +305,10 @@ int main(int argc, char** argv) {
   }
   std::shared_ptr<const open_spiel::Game> game = open_spiel::LoadGame(config.game);
   const std::vector<double> weights = az::KickstartWeights(config);
-  const AlphaBetaPlayer teacher(*game, az::KickstartDepths(config));
+  AlphaBetaPlayer teacher(*game, az::KickstartDepths(config));
+  // The run's finer evaluation, as its trainer sets it (2026-11-06; before, the plain teacher
+  // whatever the run's config said).
+  az::ConfigureTeacher(config, &teacher);
   const bool ties_by_search = config.kickstart_ties == "search";
   std::filesystem::create_directories(out);
 
@@ -458,10 +467,13 @@ int main(int argc, char** argv) {
   std::cerr << absl::StrFormat(
                    "az_relabel: %s step %d, %d games (%d held out), %d positions; the low "
                    "budget the run's own, the deep %d, %d; the teacher's depths %d, %d, weights "
-                   "%g, %g, ties %s; precision %s",
+                   "%g, %g, ties %s, threat %s (%s), positional terms %s; precision %s",
                    run, step, games.size(), (games.size() + held_out - 1) / held_out,
                    positions.size(), deep[0], deep[1], teacher.depth(0), teacher.depth(1),
-                   weights[0], weights[1], config.kickstart_ties, config.inference_precision)
+                   weights[0], weights[1], config.kickstart_ties, config.teacher_threat,
+                   config.teacher_threat_weights,
+                   config.kickstart_ties == "positional" ? config.teacher_terms_weights : "off",
+                   config.inference_precision)
             << std::endl;
   {
     std::atomic<int> next{0}, done{0};
@@ -485,10 +497,12 @@ int main(int argc, char** argv) {
           const double w = p < weights.size() ? weights[p] : config.kickstart_weight;
           const std::vector<float> observation = state.ObservationTensor();
           const std::vector<Action> legal = state.LegalActions();
-          pos.low = {legal, observation, Recorded(low_visits, teacher_policy, w, ties_by_search),
+          pos.low = {legal, observation,
+                     Recorded(low_visits, teacher_policy, w, state, teacher, ties_by_search),
                      pos.value};
           pos.deep = {legal, observation,
-                      Recorded(deep_visits, teacher_policy, w, ties_by_search), pos.value};
+                      Recorded(deep_visits, teacher_policy, w, state, teacher, ties_by_search),
+                      pos.value};
           pos.change = Distance(pos.low.policy, pos.deep.policy);
           pos.state.reset();  // Its memory: ~40,000 positions.
           const int d = ++done;

@@ -28,7 +28,9 @@
 //            dwarfs, who search without root noise since run N's recipe);
 //   completed_q  (2026-10-29) the completed-Q target of the trainer's own search (Gumbel
 //            AlphaZero's, CompletedQTarget: from the root's values, not its visit counts);
-//   teacher  the teacher's policy (TeacherPolicy at the run's depths per side);
+//   teacher  the teacher's policy (TeacherPolicy at the run's depths per side), with the
+//            run's finer evaluation and its ties shared as the trainer shares them
+//            (ConfigureTeacher, TeacherTies; since 2026-11-06);
 //   target   what the trainer records: (1 - w) x the first visits + w x teacher, w per side;
 //   cq_target  (2026-10-29) what it would record with --policy_target=completed_q:
 //            (1 - w) x completed_q + w x teacher;
@@ -335,7 +337,11 @@ int main(int argc, char** argv) {
   namespace az = open_spiel::thud_az::torch_az;
   if (!depths_arg.empty()) config.player_kickstart_depth = depths_arg;
   const std::vector<double> weights = az::KickstartWeights(config);
-  const AlphaBetaPlayer teacher(*open_spiel::LoadGame(config.game), az::KickstartDepths(config));
+  AlphaBetaPlayer teacher(*open_spiel::LoadGame(config.game), az::KickstartDepths(config));
+  // The run's finer evaluation and ties, as its trainer sets them (2026-11-06): before, this
+  // probe's teacher was the plain one with even ties whatever the run's config said.
+  az::ConfigureTeacher(config, &teacher);
+  const bool ties_by_search = config.kickstart_ties == "search";
   std::shared_ptr<const open_spiel::Game> game = open_spiel::LoadGame(config.game);
   const std::string precision = precision_arg.empty() ? config.inference_precision : precision_arg;
   // The budgets: the trainer's own first (as its config sets it per side), then the others.
@@ -371,9 +377,15 @@ int main(int argc, char** argv) {
     for (const char* suffix : {"", "_target", "_move"}) candidates.push_back(name + suffix);
   }
   std::cerr << absl::StrFormat("az_teacher_vs_search: %s step %d, game %s, the teacher's depths %d, %d, "
-                               "weights %g, %g, temperature %g; precision %s",
+                               "weights %g, %g, temperature %g, ties %s, threat %s (%s), positional "
+                               "terms %s; precision %s",
                                run, step, config.game, teacher.depth(0), teacher.depth(1),
-                               weights[0], weights[1], config.kickstart_temperature, precision)
+                               weights[0], weights[1], config.kickstart_temperature,
+                               config.kickstart_ties, config.teacher_threat,
+                               config.teacher_threat_weights,
+                               config.kickstart_ties == "positional" ? config.teacher_terms_weights
+                                                                     : "off",
+                               precision)
             << std::endl;
 
   // The positions: each actor's last games, an even sample a side.
@@ -506,7 +518,13 @@ int main(int argc, char** argv) {
             }
           }
           Policy teacher_policy, target, uniform;
-          for (const auto& [a, q] : az::TeacherPolicy(state, teacher, config.kickstart_temperature)) {
+          // The teacher's policy as the trainer mixes it into the target: its ties shared as
+          // the run shares them (by the run's own budget's visits with kickstart_ties=search,
+          // so the other budgets' and the Gumbel targets use those too).
+          for (const auto& [a, q] : az::TeacherTies(
+                   az::TeacherPolicy(state, teacher, config.kickstart_temperature), state,
+                   teacher, ties_by_search,
+                   open_spiel::ActionsAndProbs(visits[0].begin(), visits[0].end()))) {
             teacher_policy[a] = q;
           }
           const std::vector<Action> legal = state.LegalActions();

@@ -270,14 +270,11 @@ Trajectory PlayGame(Logger* logger, int game_num, const open_spiel::Game& game,
         open_spiel::ActionsAndProbs taught_policy;  // Our change: for the instrumentation.
         if (teacher != nullptr && weight > 0) {
           std::unordered_map<open_spiel::Action, double> taught;
-          open_spiel::ActionsAndProbs teacher_policy =
-              TeacherPolicy(*state, *teacher, teacher_temperature);
-          if (teacher_ties_by_search) {  // Our change: kickstart_ties=search.
-            teacher_policy = TeacherTiesBySearch(teacher_policy, target);
-          } else if (teacher->has_positional_terms()) {  // kickstart_ties=positional.
-            teacher_policy = TeacherTiesByTerms(teacher_policy, *state, *teacher,
-                                                teacher->terms_temperature());
-          }
+          // Its ties shared by the search (kickstart_ties=search), by the positional terms
+          // (kickstart_ties=positional) or evenly: TeacherTies, as the probes share them.
+          const open_spiel::ActionsAndProbs teacher_policy =
+              TeacherTies(TeacherPolicy(*state, *teacher, teacher_temperature), *state,
+                          *teacher, teacher_ties_by_search, target);
           taught_policy = teacher_policy;
           for (const auto& [a, p] : teacher_policy) taught[a] = p;
           for (auto& [a, p] : target) {
@@ -445,6 +442,17 @@ open_spiel::ActionsAndProbs TeacherTiesByTerms(const open_spiel::ActionsAndProbs
                         total * std::exp((terms[i] - top) / temperature) / sums[p]);
   }
   return shared;
+}
+
+open_spiel::ActionsAndProbs TeacherTies(const open_spiel::ActionsAndProbs& teacher_policy,
+                                        const open_spiel::State& state,
+                                        const AlphaBetaPlayer& teacher, bool ties_by_search,
+                                        const open_spiel::ActionsAndProbs& visits) {
+  if (ties_by_search) return TeacherTiesBySearch(teacher_policy, visits);
+  if (teacher.has_positional_terms()) {
+    return TeacherTiesByTerms(teacher_policy, state, teacher, teacher.terms_temperature());
+  }
+  return teacher_policy;
 }
 
 void ConfigureTeacher(const AlphaZeroConfig& config, AlphaBetaPlayer* teacher) {

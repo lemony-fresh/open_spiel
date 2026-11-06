@@ -331,7 +331,12 @@ as `vs_alphabeta`), `--kickstart_weight`, `--kickstart_depth` and
 a softmax of alpha-beta's move scores, a teacher; actors log the settings),
 `--kickstart_ties=even|search` (2026-10-23: `search` shares each group of moves the teacher
 scores alike by the search's visits within it, the groups' totals unchanged; `even`, the
-default, as before), `--kickstart_root_margin` (2026-10-27: the teacher's root window — moves
+default, as before), `--teacher_threat=off|scan|captures` with `--teacher_threat_weights=WD,WT`
+and `--kickstart_ties=positional` with `--teacher_terms_weights=REACH,PAIRS` (2026-11-04, merged
+2026-11-06: the teacher's finer evaluation — a threat term in its search, the positional terms
+sharing its ties, `thud/az/teacher_terms.h`; off by default; R8 from step 606 at `captures`
+0.25,0 and 0.104,-0.197; kickstarting's teacher only, the training opponent plain; the probes
+that rebuild the trainer's targets share its ties through `TeacherTies`), `--kickstart_root_margin` (2026-10-27: the teacher's root window — moves
 that many points below the best get a bound; 0, the default, every score exact; measured too
 small a gain at 3 to use; the teacher as a player, the training opponent and `az_match
 b=teacher:N`, uses 1, which is exact for its choice: 1.3-1.5x at depth 5), `--policy_target=visits|completed_q`
@@ -382,6 +387,7 @@ extra arguments, as its header says), `untried_move_test`, `conv_policy_test`,
 `grow_test` (Net2Net, on small networks), `thread_count_test` (the thread counts per thread),
 `completed_q_test` (2026-10-29: the completed-Q target against mctx and its wiring in the trainer),
 `gumbel_search_test` (2026-10-29: the Gumbel search's schedule and rules against mctx, its searches),
+`threat_search_test` and `teacher_terms_test` (2026-11-04: the teacher's threat term and positional terms; with `teacher_terms_test.py`, `teacher_terms_cross_test.py` and `terms_fit_test.py` in `thud/experiments/`),
 `teacher_identity_test` (2026-10-23: the faster teacher computes exactly what it did, since 2026-10-24 with its transposition table; `ThudState::UndoAction` and `BoardHash` are tested in `thud_test`),
 `make_test_network` (small untrained networks for the tests), and from
 `thud/experiments/`
@@ -389,7 +395,7 @@ extra arguments, as its header says), `untried_move_test`, `conv_policy_test`,
 `b=hexparrot:N`, through `hexparrot_player.py`, `b=alphabeta:N`, `b=mcts:N`, since 2026-10-25
 `b=teacher:N` — kickstarting's teacher as a player, a move drawn among its best-scored; since
 2026-10-13 self-play's root noise per side and sampled plies, `noise=`, `sample_plies=`,
-and the teacher in one network's prior, `teacher_mix_a=`; since 2026-10-28 `side_sims=D,T`, every search by the side it plays, as the trainer's player_simulations; since 2026-10-29 `gumbel_a=M`, `gumbel_b=M`, a network searching as `--gumbel_search` does over M sampled actions, `gumbel_scale_a=`, `gumbel_scale_b=` its noise; since 2026-10-30 `side_sims_a=D,T`, `side_sims_b=D,T`, each network its own budgets by side), `az_forgetting`, `az_merge_buffers`, `az_target_quality`, `az_head_probe`,
+and the teacher in one network's prior, `teacher_mix_a=`; since 2026-10-28 `side_sims=D,T`, every search by the side it plays, as the trainer's player_simulations; since 2026-10-29 `gumbel_a=M`, `gumbel_b=M`, a network searching as `--gumbel_search` does over M sampled actions, `gumbel_scale_a=`, `gumbel_scale_b=` its noise; since 2026-10-30 `side_sims_a=D,T`, `side_sims_b=D,T`, each network its own budgets by side; since 2026-11-04 `teacher_threat=`, `teacher_threat_weights=`, `teacher_terms=`, `teacher_terms_temperature=`: b=teacher:N's finer evaluation), `az_threat_probe` (2026-11-04: the teacher's milliseconds and its KL against a deeper search per threat setting, on a run's games), `az_forgetting`, `az_merge_buffers`, `az_target_quality`, `az_head_probe`,
 `az_reference_pilot`, `az_noise_probe`, `az_search_cost`, `az_blunder_probe`,
 `az_capture_targets`, `az_teacher_vs_search` (2026-10-25: the trainer's search's visits at
 several budgets, the teacher's policy and the recorded target, each against the network's own
