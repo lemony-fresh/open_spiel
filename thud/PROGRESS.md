@@ -11,7 +11,7 @@ Phase 6), a 64 x 4 network with the 50 input planes and the convolutional policy
 
 **The main line: run R8** (`~/thud-runs/r8_run_2026-11-03.sh`; from 03:11 on 11-04; **stopped at
 step 586** since 21:12 on 11-04 — the learning-rate sweep, done 11-05 16:29, then the user's
-Windows reboot; `~/thud-runs/r8_run.stop` holds it until the user says go), from **F565** — a fresh network trained offline on R7's 400/200 positions (steps 526-565), level
+Windows reboot and gates 3 and 4 of the finer evaluation; `~/thud-runs/r8_run.stop` holds it until the gates script removes it), from **F565** — a fresh network trained offline on R7's 400/200 positions (steps 526-565), level
 with R7_565 (+0.19 over 80 pairs, −1.67 to +2.04), teacher:5 +21.57 (R7_565 +23.18; paired by
 opening −1.60, −4.55 to +1.52), hexparrot:3 +47.15 (R7_565 +46.40; paired +0.75, −1.98 to
 +3.42), its plasticity much restored (random targets' loss after 700 batches 1.07; R7_565 3.61,
@@ -31,7 +31,7 @@ trainer's 0.0001 by the sweep's rule** — 0.00003 policy −0.0017 and value �
 (both seeds alike; the seeds' largest spread 0.0081 and 0.0047), 0.0003 +0.0151 and +0.0009,
 0.001 +0.0392 and +0.0037 (worse than F565 untrained); to be read with the user. Next for R8:
 the segment to 605 from step 587 with **the actors' seeding fixed** (each actor from the clock
-and its number, its searches from it), once the user has rebooted Windows and says go.
+and its number, its searches from it), started by the gates script at its end.
 
 **In progress: the teacher's finer evaluation** (`PLAN.md`, *The teacher's finer evaluation*):
 a threat term at the teacher's search frontier (a correction of its material scores) and two
@@ -43,22 +43,16 @@ at a stop, gates 3 (timings) and 4 (a match); **whether to switch it on is decid
 user once both are in** (the user accepts the ~10% more compute a step estimated, since the
 teacher is tapered out later); then the merge and an arm.
 
-**After the user's Windows reboot (2026-11-05; the user: the gates first, then R8):**
-1. Check the machine: `uptime -s` (WSL restarted), the session-start process listing (nothing
-   left over), `powercfg.exe /query SCHEME_CURRENT SUB_SLEEP` (AC "Sleep after" still 0: an
-   update can reset it), mains power (`BatteryStatus` 2), `free -m` (swap 8 GB, `.wslconfig`).
-2. Restart the CPU-limit logger: `setsid nohup ~/thud-runs/cpu_limit_log.sh > /dev/null 2>&1 <
-   /dev/null &`. The tripwire is not needed until R8 trains; r8_run starts it.
-3. Gates 3 and 4 of the finer evaluation, as `PLAN.md` sets them out (*The teacher's finer
-   evaluation*, "Gates 3 and 4 run at the 586 stop"): write `~/thud-runs/gates34_2026-11-05.sh`
-   (the teacher's times, three teacher:5 matches against R8_585, the trainer step plain against
-   finer; ~4.5-5 hours), test it, start it detached.
-4. Then R8 resumes to 605 (`rm ~/thud-runs/r8_run.stop`, r8_run detached: the command in
-   `PLAN.md` there), whatever the gates show. The gates' results go to the user, who decides
-   whether to switch the finer evaluation on.
-
-**Running until the reboot** (both end with it): the collapse tripwire (watching R8) and the
-CPU-limit logger (`~/thud-runs/cpu_limit.log`). **Upstream:** PRs #1637 (the replay
+**Running: gates 3 and 4 of the finer evaluation** at the 586 stop, after the user's Windows
+reboot (WSL up again 22:08 on 11-05; the machine checked: mains, AC sleep never, swap 8 GB).
+`~/thud-runs/gates34_2026-11-05.sh`, detached since 22:19 (`PLAN.md`, *The teacher's finer
+evaluation*, "Gates 3 and 4 run at the 586 stop"), runs the teacher's times, then three
+teacher:5 matches against R8_585 paired with the plain one, then a trainer step plain against
+finer: ~4.5-5 hours. **Then it resumes R8 by itself** (to 605 from step 587) unless
+`~/thud-runs/r8_run.hold` exists. The gates' results go to the user, who decides whether to
+switch the finer evaluation on. Also running: the CPU-limit logger (restarted 22:14); the
+collapse tripwire ended at 20:45, before the reboot (no new step for 24 hours), and r8_run
+starts it again. **Upstream:** PRs #1637 (the replay
 buffer's memory) and #1646 (the batch norms' lock) waiting; their CI never ran — as a
 first-time contributor's, it waits for a maintainer's approval, and #1637's runs expired after
 30 days (11-05, mailed as failed; #1646's expire ~11-17); ping ~2026-11-07, asking for the
@@ -4796,9 +4790,12 @@ the push's and the rename's tests ran (memory beside the trainer), to resume.
   stop"). Gate 3's timing is `az_threat_probe`'s `ms`, since `az_teacher_stats` has no threat
   switch; the trainer step is `bench_trainer.sh`, plain against finer, ~3 hours of the ~4.5-5.
 
-**Next step:** after the user's Windows reboot, gates 3 and 4 at the 586 stop
-(`~/thud-runs/gates34_2026-11-05.sh`, to be written: the teacher's times, three teacher:5
-matches against R8_585 paired with the plain one, a trainer step plain against finer). Then
+  **22:08-22:19: after the reboot, the gates started.** The machine checks passed, the
+  CPU-limit logger was restarted, and the branch's programs were up to date.
+  `~/thud-runs/gates34_2026-11-05.sh` was written and its parts tested (`PLAN.md`, the gates'
+  procedure). It started detached at 22:19 and resumes R8 itself at its end.
+
+**Next step:** the gates' results (`gates34:` in `progress.log`, ~03:00-03:30 on 11-06), then
 R8's segment to 605 from step 587 with the seeding fix (~14 hours; the training opponent's
 dwarfs the teacher at depth 5), its evaluation at the stop. With the user: the sweep's reading,
 the gates' results and whether to switch the finer evaluation on, then the merge (everything

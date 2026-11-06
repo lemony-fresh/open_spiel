@@ -803,8 +803,14 @@ nothing; *Tests*):
    `runR8` is only read, never written. Everything on the branch's binaries in
    `~/thud-dev/build-shared/` (built 11-04 04:22 from `067ecea6`; run `thud/build_programs.sh`
    in `~/thud-dev` first, a second if nothing changed), the machine otherwise quiet, the CPU's
-   limit logged. One detached script, `~/thud-runs/gates34_2026-11-05.sh` (to be written after
-   the reboot), in this order (~4.5-5 hours in all):
+   limit logged. One detached script, `~/thud-runs/gates34_2026-11-05.sh`, **running since 22:19
+   on 2026-11-05**, results in `~/thud-runs/gates34_2026-11-05/` and `progress.log`
+   (`gates34:`). Before it started, its parts were tested: the summaries on gate 2's probe output,
+   which they reproduce; the pairing with controls — the plain match against itself gives 0 with
+   80 of 80 openings alike, a seed-3 match is flagged with 0 of 80; the finer config, whose
+   guard refuses a config that is not plain; and a short run of `az_match` and `az_threat_probe`
+   with the exact arguments (`az_match` rejects unknown arguments). It runs in this order
+   (~4.5-5 hours in all):
    - *a. The teacher's times* (~15 minutes, one core): `az_threat_probe logs=$HOME/thud-runs/runR8
      last=8 max=150 depths=5,4 weights=0.25` on R8's own latest games — `ms` a position per
      side for plain, `scan:0.25` and `captures:0.25`. In the trainer's searches (5/4) the dwarfs
@@ -837,7 +843,8 @@ nothing; *Tests*):
      stays plain, as the branch builds it: `ConfigureTeacher` is applied to the kickstart
      teacher only. The cost is the finer step's period over plain's, at equal CPU limits.
    Then R8 resumes, whatever the gates show (the decision is the user's, later; R8 does not wait
-   for it): `rm ~/thud-runs/r8_run.stop`, then `setsid nohup ~/thud-runs/r8_run_2026-11-03.sh >>
+   for it). The script does it itself unless `~/thud-runs/r8_run.hold` exists: `rm
+   ~/thud-runs/r8_run.stop`, then `setsid nohup ~/thud-runs/r8_run_2026-11-03.sh >>
    ~/thud-runs/r8_run_2026-11-03.log 2>&1 < /dev/null &`. It builds the main repo's programs
    (with the seeding fix) and skips the 585 point and the sweep as done (`lr_sweep_565/done`).
    It also starts the collapse tripwire if that is not running, then trains steps 587-605.
