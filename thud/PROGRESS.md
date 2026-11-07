@@ -9,12 +9,13 @@
 AlphaZero-style learning with our copy of OpenSpiel's C++ AlphaZero (`thud/az/`; `PLAN.md`,
 Phase 6), a 64 x 4 network with the 50 input planes and the convolutional policy head.
 
-**The main line: run R8** (`~/thud-runs/r8_run_2026-11-03.sh`; from 03:11 on 11-04; stopped at
+**The main line: run R8** (`~/thud-runs/r8_run_2026-11-03.sh` to step 605, `r8_run_2026-11-06.sh`
+since; from 03:11 on 11-04; stopped at
 step 586 from 21:12 on 11-04 to 04:51 on 11-06 — the learning-rate sweep, the user's Windows
 reboot and gates 3 and 4 of the finer evaluation; **running again since 04:51 on 11-06**, the
-segment to 605 with the seeding fix, at step 591 by 10:17; **the teacher's finer evaluation on
-from step 606**: `~/thud-runs/switch_605_2026-11-06.sh`, detached since 12:25, holds R8 at the
-605 stop, switches its config and starts `r8_run_2026-11-06.sh`), from **F565** — a fresh network trained offline on R7's 400/200 positions (steps 526-565), level
+segment to 605 with the seeding fix; **the teacher's finer evaluation on from step 606**,
+switched at 21:13 on 11-06 by `~/thud-runs/switch_605_2026-11-06.sh`; the segment to 625 since
+21:54, at step 623 by 11:19 on 11-07), from **F565** — a fresh network trained offline on R7's 400/200 positions (steps 526-565), level
 with R7_565 (+0.19 over 80 pairs, −1.67 to +2.04), teacher:5 +21.57 (R7_565 +23.18; paired by
 opening −1.60, −4.55 to +1.52), hexparrot:3 +47.15 (R7_565 +46.40; paired +0.75, −1.98 to
 +3.42), its plasticity much restored (random targets' loss after 700 batches 1.07; R7_565 3.61,
@@ -32,9 +33,11 @@ laptop asleep 03:20-11:14; F565 trained 640 batches on R7's 565 buffer at each r
 scored on steps 566-585's 435,825 distinct positions, which none learnt): **no rate beats the
 trainer's 0.0001 by the sweep's rule** — 0.00003 policy −0.0017 and value −0.0004 against it
 (both seeds alike; the seeds' largest spread 0.0081 and 0.0047), 0.0003 +0.0151 and +0.0009,
-0.001 +0.0392 and +0.0037 (worse than F565 untrained); to be read with the user. Next for R8:
-the segment to 605 from step 587 with **the actors' seeding fixed** (each actor from the clock
-and its number, its searches from it), started by the gates script at its end.
+0.001 +0.0392 and +0.0037 (worse than F565 untrained); to be read with the user. **R8_605**
+(steps 586-605, the actors' seeding fixed from 587; its stop 20:00-21:13 on 11-06): against
+R8_585 +1.98 (−1.14 to +5.09), R7_565 −1.38, R6_366 −3.58, plain teacher:5 +20.40 (R8_585
++23.48), hexparrot:3 +47.05 (+48.17), plasticity 1.06 (0.92); against the finer teacher:5 +14.95
+(R8_585 +17.60, gate 4's figure again exactly: the merged code plays the gated teacher).
 
 **The teacher's finer evaluation: merged, on R8 from step 606** (`PLAN.md`, *The teacher's
 finer evaluation*, item 5; the user, 2026-11-06): a threat term at the teacher's search frontier
@@ -47,6 +50,18 @@ teacher (they had used the plain one with even ties whatever the config said; no
 other ties, so no result is affected). **The training opponent stays plain — to switch soon**
 (the user: in the plan; code first, then on at 625 or 645). From 605 the stop's teacher:5 match
 is against the finer teacher (the user: it replaces the plain one; R8_605 against both).
+**Since the switch** (steps 606-623): no cost in the step at equal CPU limits (scaled to full
+power 1,875 s a step against 1,887 in 592-605; the network sets self-play's pace — the inference
+batches full before and after, 15.99 of 16 — and the teacher runs on the actors' threads,
+plausibly in the cores the learner leaves idle between its learning phases); the dwarfs' prior's
+KL from the teacher 0.82 at 606 → 0.58 at 623 (the trolls' 0.26 → 0.21; not comparable with the
+plain era's 0.62, another teacher's distribution); the dwarfs' targets ~65 effective moves, flat
+from step 615, their prior 108 → 74 following; the policy loss down (the dwarfs' 4.39 → 4.22);
+the dwarfs' margin ~−5.3, games ~197 plies (~220 in 600-605). The finer teacher against R8_605's
+own long search (`teacher_vs_search_R8_605_finer`, the reference): its target further from the
+search than the plain one's (the dwarfs' distance 0.247 against 0.204, agreeing 0.40 against
+0.60; the trolls' 0.174 against 0.152) — R8's search learnt from the plain teacher; the matches
+at 625 decide.
 
 **Gates 3 and 4 of the finer evaluation: done** (11-05 22:19 to 11-06 04:51,
 `~/thud-runs/gates34_2026-11-05.sh`; `PLAN.md`, *The teacher's finer evaluation*). The
@@ -63,7 +78,11 @@ moderately from what R8 learnt: the KL of R8's prior from them 0.80 for the dwar
 the teacher's best moves, 0.07 against 0.80, overstates it: the plain teacher's best moves are a
 large tied set, the finer one's few.)
 Also running: the CPU-limit logger (restarted 22:14 on 11-05) and the
-collapse tripwire (started again by r8_run at 04:51). **Upstream:** PRs #1637 (the replay
+collapse tripwire, **since 11:31 on 11-07 with a new baseline** (steps 616-623, after the finer
+targets settled: the dwarfs' prior 78 effective moves, margin −5.3, games 195 plies; the user
+agreed; `PLAN.md`, item 5's watch list). **After a WSL end, r8_run's start would start it with
+R7's old baseline: replace that one (by PID) with `python3 ~/thud-runs/collapse_tripwire.py watch
+~/thud-runs/runR8 624 --baseline 8`, detached.** **Upstream:** PRs #1637 (the replay
 buffer's memory) and #1646 (the batch norms' lock) waiting; their CI never ran — as a
 first-time contributor's, it waits for a maintainer's approval, and #1637's runs expired after
 30 days (11-05, mailed as failed; #1646's expire ~11-17); ping ~2026-11-07, asking for the
@@ -4858,12 +4877,27 @@ the push's and the rename's tests ran (memory beside the trainer), to resume.
   not reporting it); the first sandbox's stand-in trainer was wrong (bash handed its last command
   to `sleep`, dropping the name), redone with a perl stand-in.
 
-**Next step:** R8's segment to 605 (running; ~1 hour a step at the morning's CPU limit, so the
-stop ~23:00 and its evaluation to ~01:00-02:00 on 11-07), then the switch (`switch605:` in
-`progress.log`), R8_605 against the finer teacher and the finer teacher against the search, the
-segment to 625 with the finer teacher. Watch: the actors' report, the policy loss, the prior's KL
-from the teacher falling, the dwarfs' breadth (tripwire). Then the training opponent's switch
-(code, cost, on at 625 or 645). With the user: the sweep's reading (keep 0.0001). F565 and R8_585 seen with the user: R8 stays the main
+  **11-07, 11:23-11:45: the switch done; the tripwire's new baseline.** The switch ran as
+  planned: step 605 at 20:00, the plain stop's evaluation to 21:13 (results in the status
+  block), `config.json` switched at 21:13:42 (the plain one kept), `r8_run_2026-11-06.sh` built
+  and played R8_605 against the finer teacher:5 (+14.95) and the finer teacher against the
+  search, the segment to 625 from 21:54, and at 21:54:42 the actors reported the finer
+  evaluation. Not planned: the copy also played R8_585 against the finer teacher (its loop fills
+  in what an earlier stop lacks; ~15 minutes): +17.60, gate 4's figure exactly. No pause, sleep
+  or loss of mains since (WSL up since 11-05 22:14). The user's questions: the teacher's extra
+  time is not visible in the step (status block: the network sets self-play's pace); the
+  dwarfs' KL from the teacher, now below the plain era's, shows the network taking in the new
+  teacher, not its quality (another distribution; the matches decide); the tripwire — the user
+  agreed to a new baseline; not after 625 but at once, since the targets have been flat since
+  step 615 (`collapse_tripwire.py replay` with 616-623: 78 effective moves, −5.3, 195 plies; the
+  old process ended by its PID, the new one started detached).
+
+**Next step:** R8's segment to 625 with the finer teacher (running; ~43 minutes a step at a CPU
+limit of ~71%, so step 625 ~12:45 on 11-07), its evaluation (~1.5 hours): R8_625 against R8_605
+— the switch's first result — against the finer teacher:5 (R8_605 +14.95), and the finer teacher
+against the search. Watch: the dwarfs' prior settling near its targets (~65 effective moves),
+the tripwire. Then the training opponent's switch (code, a test and its cost — not started; on
+at a stop after R8_625's evaluation). With the user: the sweep's reading (keep 0.0001). F565 and R8_585 seen with the user: R8 stays the main
 line (back to R7 only if it goes badly). Later: 800/400 (the
 GPU, or when 400/200 plateaus), tree reuse. Push the unpushed commits at a gap; ping upstream
 ~2026-11-07, asking for the CI's approval on both PRs.

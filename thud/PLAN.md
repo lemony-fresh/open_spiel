@@ -796,6 +796,10 @@ nothing; *Tests*):
    step (2026-11-06): no cost visible, below the measurement's resolution** — finer 2,550 s at
    a mean CPU limit of 71%, plain 3,504 s at 62% (a run partly on battery, 2,645 s at 77%, set
    aside); scaled by the limit 0.84-0.90x. The limit's swings exceed the ~10% expected.
+   **Confirmed on R8 after the switch** (2026-11-07): steps 607-623 at the CPU limit of
+   592-605 take as long (scaled to full power 1,875 s against 1,887; the inference batches full
+   before and after, 15.99 of 16: the network sets self-play's pace). Not so on a machine where
+   the network is cheap (a GPU): there the teacher's 2.68x a dwarf position would likely show.
 4. **The match**: teacher:5 with the chosen additions against the main line's network on the
    40 openings, paired opening by opening with the plain teacher:5 match of the same stop; the
    network's margin against it lower beyond the noise passes. **Passed 2026-11-05 in all three
@@ -882,13 +886,20 @@ nothing; *Tests*):
    +17.60 in gate 4), and the teacher against the search applies the run's own teacher — its
    finer evaluation and its ties (`TeacherTies`, below) — at 605 (beside the plain one), 625
    and 645 (files `teacher_vs_search_R8_N_finer`).
-   **What to watch after the switch**: the policy loss up at first (the targets change); the
-   prior's KL from the teacher falling (with the finer teacher 0.80 for the dwarfs and 0.25 for
-   the trolls at step 587 in gate 3's step; step 606's the reference); the dwarfs' targets
-   narrower (~94 → ~70 effective moves in gate 3's step), their prior following — the tripwire's
-   alert is below 62 effective moves (60% of its baseline 104), its stop below 36 with the
-   dwarfs' margin 5 points down; the finer targets reach the buffer at ~5% a step (half of it
-   by ~615, nearly all by ~625).
+   **What to watch after the switch**: the policy loss (expected up at first; in fact down, the
+   dwarfs' 4.39 → 4.22 by step 623, the narrower targets easier to fit); the prior's KL from the
+   teacher falling (with the finer teacher 0.80 for the dwarfs and 0.25 for the trolls at step
+   587 in gate 3's step; 0.82 and 0.26 at 606, 0.58 and 0.21 by 623 — not comparable with the
+   plain teacher's 0.62, another distribution); the dwarfs' targets narrower (~95 → ~65
+   effective moves, flat from step 615), their prior following (108 → 74 by 623); the finer
+   targets reach the buffer at ~5% a step (half of it by ~615, all by ~626). **The tripwire
+   restarted with a new baseline** (2026-11-07, 11:31, the user agreed; its notes: after a
+   deliberate change that narrows the prior): steps 616-623, after the targets settled — the
+   dwarfs' prior 78 effective moves, margin −5.3, games 195 plies; its alert below 47 effective
+   moves or a margin below −10.3, its stop below 27 with that margin, or below 12. (R7's baseline
+   475-494, 104 and −1.2, would have alerted near the new levels: at 62 effective moves and a
+   margin of −6.2.) After a WSL end, `r8_run`'s start would start it with R7's baseline again:
+   replace it (by PID) with `collapse_tripwire.py watch ~/thud-runs/runR8 624 --baseline 8`.
    **Not switched yet: the training opponent** (the teacher at depth 5 on 30% of the positions;
    `ConfigureTeacher` sets up kickstarting's teacher only). **To switch soon** (the user,
    2026-11-06): a setting for the opponent's evaluation in the trainer (code and a test), its cost
