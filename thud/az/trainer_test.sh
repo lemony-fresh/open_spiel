@@ -143,6 +143,14 @@
 #      run's on some position while the search's visits are alike on every one (only the
 #      teacher changed); a mix at the run's own weight is the target exactly, at the other
 #      side's weight not (part 9's control, moved here); az_relabel's targets differ at the bytes.
+#  18. (2026-11-07) The training opponent's finer evaluation (--alphabeta_finer; its parts:
+#      alphabeta_training_test 10): runs with the teacher opponent finer and plain exit 0,
+#      config.json records the setting, the finer run's actors log it (the plain run's not),
+#      and both runs' games against the opponent are each followed by its choices' line;
+#      controls: with the search mode, or the teacher's finer evaluation off, the setting stops
+#      the trainer at its start. az_opponent_probe on the runs' games (also sanitized) exits 0,
+#      the plain draw even, the finer one's within its ties and unlike the plain one somewhere;
+#      control: with the finer evaluation off both settings choose alike.
 #
 #   thud/az/trainer_test.sh [BIN_DIR]    # default build-tests/bin
 #
@@ -521,7 +529,9 @@ ok &= all(abs(s["effective_moves"][0] - sum(legal[s["side"]]) / len(legal[s["sid
 if not ok: print(lines[:3], summaries[:2])
 sys.exit(0 if ok else 1)
 EOF
-"$bin/az_teacher_vs_search" run="$run" step=-1 refs=16 last=2 max=3 threads=2 batch=2 gumbel=1 \
+# max=6 (2026-11-07; 3 before): with 3 positions a side the controls below once found every
+# position alike (the run's games are drawn afresh each time since the actors' seeding fix).
+"$bin/az_teacher_vs_search" run="$run" step=-1 refs=16 last=2 max=6 threads=2 batch=2 gumbel=1 \
   considered=1,4 gumbel_scale=0 gumbel_sims=0,12 inference_threads=1 > "$tmp/considered.jsonl" \
   2> "$tmp/considered.err"
 check "9. considered=1,4 gumbel_scale=0 gumbel_sims=0,12: exits 0, the candidates named by the count and the budget, each move one-hot; the controls: the counts' measures differ, and the budgets'" \
@@ -877,5 +887,100 @@ sys.exit(0 if ok else 1)
 EOF
 check "17. ... az_relabel's targets differ from the plain run's (the control at the bytes)" \
   bash -c "[ -s '$tmp/relabel_finer/all_low.data' ] && ! cmp -s '$tmp/relabel_plain/all_low.data' '$tmp/relabel_finer/all_low.data'"
+
+# 18. The training opponent's finer evaluation (2026-11-07, --alphabeta_finer) and
+# az_opponent_probe on a run's games against the opponent.
+finer_flags="--teacher_threat=captures --teacher_threat_weights=0.5,0.25 --kickstart_ties=positional --teacher_terms_weights=0.1,-0.2"
+opponent_flags="--alphabeta_share=0.5 --alphabeta_depth=2 --alphabeta_player=teacher --max_steps=3"
+for which in on off; do
+  dir=$tmp/opponent_$which
+  "$bin/make_test_network" dir="$dir" nn_model=resnet_conv_policy input_planes=1 nn_width=8 \
+    nn_depth=1 checkpoints=1 > /dev/null 2>&1 || { echo "FAIL make_test_network (18)"; exit 1; }
+  extra=""
+  [ "$which" = on ] && extra=--alphabeta_finer
+  # shellcheck disable=SC2086
+  finer_run "$dir" "$tmp/opponent_$which.log" $finer_flags $opponent_flags $extra
+  echo $? > "$tmp/opponent_$which.status"
+done
+check "18. runs with the teacher opponent finer and plain exit 0" \
+  test "$(cat "$tmp/opponent_on.status")$(cat "$tmp/opponent_off.status")" = 00
+check "18. ... config.json records alphabeta_finer (true, and false without the flag)" \
+  python3 -c '
+import json, sys
+on, off = (json.load(open(p)).get("alphabeta_finer") for p in sys.argv[1:])
+sys.exit(0 if on is True and off is False else 1)' "$tmp/opponent_on/config.json" \
+  "$tmp/opponent_off/config.json"
+opponent_logged() {  # The finer run's actors report the opponent's finer evaluation; the plain run's not.
+  grep -q "The training opponent's finer evaluation: threat captures (weights 0.5,0.25), positional terms 0.1,-0.2" \
+    "$tmp/opponent_on/log-actor-0.txt" || return 1
+  ! cat "$tmp/opponent_off"/log-actor-*.txt | grep -q "training opponent's finer"
+}
+check "18. ... the finer run's actors log the opponent's finer evaluation, the plain run's not (the control)" \
+  opponent_logged
+check "18. ... both runs play games against it, each game followed by its choices' line" \
+  python3 -c '
+import glob, sys
+ok = True
+for d in sys.argv[1:]:
+  lines = [l for p in glob.glob(d + "/log-actor-*.txt") for l in open(p)]
+  games = sum("Opponent: alphabeta:2 as " in l and "Actions: " in l for l in lines)
+  choices = sum("the opponent'"'"'s choices: " in l for l in lines)
+  ok &= games > 0 and choices == games
+sys.exit(0 if ok else 1)' "$tmp/opponent_on" "$tmp/opponent_off"
+for bad in "--alphabeta_player=search,teacher" \
+           "--teacher_threat=off --teacher_threat_weights= --kickstart_ties=even --teacher_terms_weights="; do
+  dir=$tmp/opponent_bad_$(echo "$bad" | tr -c 'a-z0-9' '_' | cut -c1-40)
+  "$bin/make_test_network" dir="$dir" nn_model=resnet_conv_policy input_planes=1 nn_width=8 \
+    nn_depth=1 checkpoints=1 > /dev/null 2>&1
+  # shellcheck disable=SC2086
+  finer_run "$dir" "$dir.log" $finer_flags $opponent_flags --alphabeta_finer $bad
+  status=$?
+  check "18. the control: --alphabeta_finer with $bad stops the trainer at its start" \
+    test "$status" -ne 0 -a ! -e "$dir/log-actor-0.txt"
+done
+# The probe on both runs' games (each actor's first opponent game has it as the trolls, so
+# pooled for games of both sides).
+probe_logs=$tmp/probe_logs
+mkdir -p "$probe_logs"
+n=0
+for f in "$tmp"/opponent_on/log-actor-*.txt "$tmp"/opponent_off/log-actor-*.txt; do
+  cp "$f" "$probe_logs/log-actor-$n.txt"
+  n=$((n + 1))
+done
+probe_settings="teacher_threat=captures teacher_threat_weights=0.5,0.25 teacher_terms=0.1,-0.2 teacher_terms_temperature=0.25"
+# shellcheck disable=SC2086
+"$bin/az_opponent_probe" logs="$probe_logs" last=20 max=40 depths=2,2 $probe_settings \
+  > "$tmp/probe.jsonl" 2> "$tmp/probe.err"
+echo $? > "$tmp/probe.status"
+"$bin/az_opponent_probe" logs="$probe_logs" last=20 max=40 depths=2,2 teacher_threat=off \
+  teacher_threat_weights= teacher_terms= > "$tmp/probe_same.jsonl" 2> "$tmp/probe_same.err"
+echo $? >> "$tmp/probe.status"
+# shellcheck disable=SC2086
+"$bin/sanitized/az_opponent_probe" logs="$probe_logs" last=20 max=6 depths=2,2 \
+  $probe_settings > /dev/null 2> "$tmp/probe_sanitized.err"
+echo $? >> "$tmp/probe.status"
+check "18. az_opponent_probe on the runs' games: exit 0 (also sanitized); per side the plain draw even, the finer one's within its ties, and the finer opponent unlike the plain one somewhere" \
+  python3 -c '
+import json, sys
+rows = [json.loads(l) for l in open(sys.argv[1])]
+ok = open(sys.argv[2]).read().split() == ["0", "0", "0"] and len(rows) == 6
+by = {(d["side"], d.get("setting", "comparison")): d for d in rows}
+differs = False
+for side in ("dwarfs", "trolls"):
+  p, f, c = by[(side, "plain")], by[(side, "finer")], by[(side, "comparison")]
+  ok &= p["positions"] > 10 and p["effective_mean"] == p["tied_mean"]
+  ok &= f["effective_mean"] <= f["tied_mean"] + 1e-9
+  ok &= c["ms_ratio"][0] > 0 and 0 <= c["finer_in_plain_best"] <= 1
+  differs |= c["effective_difference"][0] != 0 or f["tied_mean"] != p["tied_mean"]
+ok &= differs
+if not ok: print(rows)
+sys.exit(0 if ok else 1)' "$tmp/probe.jsonl" "$tmp/probe.status"
+check "18. ... the control: with the finer evaluation off both settings choose alike (no difference; the finer move always among the plain one's best)" \
+  python3 -c '
+import json, sys
+c = [d for d in map(json.loads, open(sys.argv[1])) if "comparison" in d]
+ok = len(c) == 2 and all(d["effective_difference"] == [0, 0, 0] and d["finer_in_plain_best"] == 1
+                         for d in c)
+sys.exit(0 if ok else 1)' "$tmp/probe_same.jsonl"
 
 finish

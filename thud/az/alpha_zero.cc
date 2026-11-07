@@ -189,6 +189,10 @@ Trajectory PlayGame(Logger* logger, int game_num, const open_spiel::Game& game,
                     bool completed_q_target, const StopToken* stop) {
   std::unique_ptr<open_spiel::State> state = game.NewInitialState();
   std::vector<std::string> history;
+  // Our change (2026-11-07): how many moves the opponent chose among (AlphaBetaPlayer::Choice),
+  // summed over its moves; logged when it plays as the teacher.
+  int opponent_moves = 0, opponent_single = 0;
+  double opponent_tied = 0, opponent_effective = 0;
   Trajectory trajectory;
   if (opponent != nullptr) trajectory.opponent = opponent_player;
 
@@ -209,7 +213,14 @@ Trajectory PlayGame(Logger* logger, int game_num, const open_spiel::Game& game,
     } else if (opponent != nullptr && state->CurrentPlayer() == opponent_player) {
       // Our change (training against alpha-beta): its move, not recorded as a
       // position; the cut-off below needs a search's value, so it waits for ours.
-      const open_spiel::Action action = opponent->Choose(*state);
+      AlphaBetaPlayer::Choice choice;
+      const open_spiel::Action action = opponent->Choose(*state, &choice);
+      if (opponent->mode() == AlphaBetaPlayer::Mode::kTeacher) {
+        ++opponent_moves;
+        opponent_single += choice.tied == 1;
+        opponent_tied += choice.tied;
+        opponent_effective += choice.effective;
+      }
       std::string action_str = state->ActionToString(opponent_player, action);
       history.push_back(action_str);
       state->ApplyAction(action);
@@ -361,6 +372,14 @@ Trajectory PlayGame(Logger* logger, int game_num, const open_spiel::Game& game,
                                                                       : "trolls",
                                    ";"),
                 absl::StrJoin(history, " "));
+  // Our change (2026-11-07): a line of its own, which the parsers of the game lines skip (they
+  // read lines with "Actions: ").
+  if (opponent_moves > 0) {
+    logger->Print("Game %d: the opponent's choices: %d moves, tied for its best %.2f a move, "
+                  "its draw %.2f effective, a single move in %.1f%%",
+                  game_num, opponent_moves, opponent_tied / opponent_moves,
+                  opponent_effective / opponent_moves, 100.0 * opponent_single / opponent_moves);
+  }
   return trajectory;
 }
 
@@ -544,6 +563,27 @@ AlphaBetaPlayer::Mode AlphaBetaMode(const AlphaZeroConfig& config, open_spiel::P
                                                              : AlphaBetaPlayer::Mode::kSearch;
 }
 
+std::unique_ptr<AlphaBetaPlayer> MakeOpponent(const AlphaZeroConfig& config,
+                                              const open_spiel::Game& game,
+                                              open_spiel::Player player) {
+  auto opponent = std::make_unique<AlphaBetaPlayer>(game, AlphaBetaDepth(config, player));
+  opponent->SetMode(AlphaBetaMode(config, player));
+  if (config.alphabeta_finer) {
+    for (int p = 0; p < 2; ++p) {
+      if (AlphaBetaMode(config, p) != AlphaBetaPlayer::Mode::kTeacher) {
+        SpielFatalError("alphabeta_finer needs alphabeta_player=teacher for both sides: the "
+                        "search mode has no finer evaluation");
+      }
+    }
+    if (config.teacher_threat == "off" && config.kickstart_ties != "positional") {
+      SpielFatalError("alphabeta_finer: the teacher's finer evaluation is off (teacher_threat "
+                      "off, kickstart_ties not positional), so there is nothing to apply");
+    }
+    ConfigureTeacher(config, opponent.get());
+  }
+  return opponent;
+}
+
 int AlphaBetaDepth(const AlphaZeroConfig& config, open_spiel::Player player) {
   const std::vector<double> depths = PerPlayerValues(config.alphabeta_depth);
   SPIEL_CHECK_TRUE(depths.size() == 1 || depths.size() == 2);
@@ -657,14 +697,20 @@ void actor(const open_spiel::Game& game, const AlphaZeroConfig& config, int num,
     auto name = [](AlphaBetaPlayer::Mode m) {
       return m == AlphaBetaPlayer::Mode::kTeacher ? "teacher" : "search";
     };
-    for (int p = 0; p < 2; ++p) {
-      alphabeta[p] = std::make_unique<AlphaBetaPlayer>(game, AlphaBetaDepth(config, p));
-      alphabeta[p]->SetMode(AlphaBetaMode(config, p));
-    }
+    // Since 2026-11-07 MakeOpponent: the same opponent, and with alphabeta_finer the
+    // teacher's finer evaluation.
+    for (int p = 0; p < 2; ++p) alphabeta[p] = MakeOpponent(config, game, p);
     logger->Print("Training against alpha-beta: share %g; as the dwarfs the %s at depth %d, as "
                   "the trolls the %s at depth %d",
                   config.alphabeta_share, name(AlphaBetaMode(config, 0)), AlphaBetaDepth(config, 0),
                   name(AlphaBetaMode(config, 1)), AlphaBetaDepth(config, 1));
+    if (config.alphabeta_finer) {
+      logger->Print("The training opponent's finer evaluation: threat %s (weights %s), "
+                    "positional terms %s",
+                    config.teacher_threat, config.teacher_threat_weights,
+                    config.kickstart_ties == "positional" ? config.teacher_terms_weights
+                                                          : "off");
+    }
   }
   int alphabeta_games = 0;
   int64_t positions = 0, alphabeta_positions = 0;

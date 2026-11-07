@@ -75,8 +75,19 @@ class AlphaBetaPlayer {
   void SetMode(Mode mode) { mode_ = mode; }
   Mode mode() const { return mode_; }
 
-  Action Choose(const State& state) const {
-    if (mode_ == Mode::kTeacher) return ChooseByScores(state);
+  // Our change (2026-11-07): how many moves Mode::kTeacher's move was chosen among — the moves
+  // tied for its best score, and the effective number of its draw among them (the exp of the
+  // draw's entropy: the tied count when the draw is even, fewer with positional terms). The
+  // trainer logs the training opponent's (thud/PLAN.md, *The teacher's finer evaluation*:
+  // the finer opponent's ties fewer, so its games less varied).
+  struct Choice {
+    int tied = 0;
+    double effective = 0;
+  };
+
+  // With `choice`, Mode::kTeacher's choice set there; Mode::kSearch's leaves it untouched.
+  Action Choose(const State& state, Choice* choice = nullptr) const {
+    if (mode_ == Mode::kTeacher) return ChooseByScores(state, choice);
     const Player me = state.CurrentPlayer();
     const uint64_t root_hash = HistoryHash(mix(seed_), state, 0);
     const size_t root_length = state.FullHistory().size();
@@ -94,8 +105,9 @@ class AlphaBetaPlayer {
   // tied for the best — and the move drawn — are those of exact scores.
   // Our change (2026-11-04): with positional terms (SetPositionalTerms) the move is drawn
   // among the best by the terms' softmax (TermsScores over the temperature), by the same
-  // hash; without them evenly, as before.
-  Action ChooseByScores(const State& state) const {
+  // hash; without them evenly, as before. With `choice`, how many moves it chose among
+  // (Choice); the move is the same either way.
+  Action ChooseByScores(const State& state, Choice* choice = nullptr) const {
     const std::vector<Action> legal = state.LegalActions();
     const std::vector<double> scores = Scores(state, /*margin=*/1);
     const double best = *std::max_element(scores.begin(), scores.end());
@@ -108,6 +120,8 @@ class AlphaBetaPlayer {
       }
     }
     const uint64_t hash = mix(HistoryHash(mix(seed_), state, 0));
+    if (choice != nullptr) *choice = {static_cast<int>(tied.size()),
+                                      static_cast<double>(tied.size())};
     if (!has_positional_terms() || tied.size() == 1) return tied[hash % tied.size()];
     const std::vector<double> terms = TermsScores(state);
     double top = -std::numeric_limits<double>::infinity();
@@ -117,6 +131,13 @@ class AlphaBetaPlayer {
     for (size_t i : tied_index) {
       weights.push_back(std::exp((terms[i] - top) / terms_temperature_));
       sum += weights.back();
+    }
+    if (choice != nullptr) {
+      double entropy = 0;
+      for (double w : weights) {
+        if (w > 0) entropy -= w / sum * std::log(w / sum);
+      }
+      choice->effective = std::exp(entropy);
     }
     double u = (hash >> 11) * 0x1.0p-53 * sum;  // [0, sum)
     for (size_t k = 0; k < tied.size(); ++k) {

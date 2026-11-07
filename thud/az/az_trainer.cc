@@ -91,6 +91,10 @@ ABSL_FLAG(std::string, alphabeta_player, "search",
           "values at its leaves, or \"teacher\", kickstarting's teacher as a player (its fast "
           "search, a move drawn among those it scores best); per player it plays, comma-"
           "separated (\"search,teacher\": the teacher as the trolls), one value for both.");
+ABSL_FLAG(bool, alphabeta_finer, false,
+          "The training opponent with kickstarting's teacher's finer evaluation (teacher_threat, "
+          "teacher_threat_weights, and with kickstart_ties=positional teacher_terms_weights); "
+          "needs alphabeta_player=teacher.");
 ABSL_FLAG(double, kickstart_weight, 0,
           "Kickstarting: each recorded position's policy target is (1 - w) x the "
           "search's visits + w x a teacher's (alpha-beta's move scores, softmax); 0: "
@@ -282,6 +286,7 @@ int main(int argc, char** argv) {
     config.player_policy_epsilon = absl::GetFlag(FLAGS_player_policy_epsilon);
     config.alphabeta_depth = absl::GetFlag(FLAGS_alphabeta_depth);
     config.alphabeta_player = absl::GetFlag(FLAGS_alphabeta_player);
+    config.alphabeta_finer = absl::GetFlag(FLAGS_alphabeta_finer);
 
     config.kickstart_weight = absl::GetFlag(FLAGS_kickstart_weight);
     config.player_kickstart_weight = absl::GetFlag(FLAGS_player_kickstart_weight);
@@ -339,6 +344,12 @@ int main(int argc, char** argv) {
     config.evaluators = absl::GetFlag(FLAGS_evaluators);
     config.eval_levels = absl::GetFlag(FLAGS_eval_levels);
     config.max_steps = absl::GetFlag(FLAGS_max_steps);
+  }
+  {  // Our change (2026-11-07): stops here, not in an actor, on a training opponent that
+     // cannot be built (alphabeta_finer without the teacher mode or the teacher's finer
+     // evaluation) — for a fresh run and for a config.json alike.
+    std::shared_ptr<const open_spiel::Game> game = open_spiel::LoadGame(config.game);
+    for (int p = 0; p < 2; ++p) open_spiel::thud_az::torch_az::MakeOpponent(config, *game, p);
   }
 
   return !AlphaZero(config, &stop_token, resuming);

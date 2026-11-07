@@ -52,7 +52,7 @@ EXPERIMENT_PROGRAMS := az_match az_forgetting az_merge_buffers az_target_quality
   az_capture_targets az_teacher_stats az_feature_probe az_long_capture_probe \
   az_input_plane_trace az_risk_probe az_dwarf_value_probe az_unsafe_targets az_dormant_probe \
   az_plasticity az_precision_probe az_teacher_vs_search az_relabel
-PLAIN_PROGRAMS := az_buffer_truncate az_threat_probe
+PLAIN_PROGRAMS := az_buffer_truncate az_threat_probe az_opponent_probe
 
 ALL := $(addprefix $(LIB)/,$(AZ_PROGRAMS) $(EXPERIMENT_PROGRAMS) $(PLAIN_PROGRAMS))
 

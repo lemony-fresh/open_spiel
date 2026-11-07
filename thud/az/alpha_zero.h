@@ -161,6 +161,14 @@ struct AlphaZeroConfig {
   // teacher as the trolls; the user: level up our dwarfs first), one value for both
   // (AlphaBetaMode below).
   std::string alphabeta_player = "search";
+  // Added (2026-11-07; thud/PLAN.md, *The teacher's finer evaluation*): the training opponent
+  // with kickstarting's teacher's finer evaluation (ConfigureTeacher: teacher_threat,
+  // teacher_threat_weights and, with kickstart_ties=positional, teacher_terms_weights at
+  // kickstart_temperature) — its threat term in its search, its move drawn among its best by
+  // the positional terms. false, the default: the opponent's plain material search, as before.
+  // Needs alphabeta_player=teacher for both sides and the teacher's finer evaluation on
+  // (MakeOpponent).
+  bool alphabeta_finer = false;
   // Added (thud/PLAN.md, kickstarting; Schmitt et al., "Kickstarting deep
   // reinforcement learning", 2018): every recorded position's policy target becomes
   // (1 - kickstart_weight) x the search's visits + kickstart_weight x a teacher's —
@@ -274,6 +282,7 @@ struct AlphaZeroConfig {
         {"alphabeta_share", alphabeta_share},
         {"alphabeta_depth", alphabeta_depth},
         {"alphabeta_player", alphabeta_player},
+        {"alphabeta_finer", alphabeta_finer},
         {"kickstart_weight", kickstart_weight},
         {"player_kickstart_weight", player_kickstart_weight},
         {"kickstart_depth", kickstart_depth},
@@ -399,6 +408,9 @@ struct AlphaZeroConfig {
     alphabeta_player = config_json.count("alphabeta_player")
                            ? config_json.at("alphabeta_player").GetString()
                            : "search";
+    alphabeta_finer = config_json.count("alphabeta_finer")
+                          ? config_json.at("alphabeta_finer").GetBool()
+                          : false;
     // A run from before kickstarting trained on the visits alone.
     kickstart_weight = config_json.count("kickstart_weight")
                            ? config_json.at("kickstart_weight").GetDouble()
@@ -465,6 +477,15 @@ int AlphaBetaDepth(const AlphaZeroConfig& config, open_spiel::Player player);
 // entry for that player, or its one value for both. Stops on more than two entries or one
 // other than "search" and "teacher".
 AlphaBetaPlayer::Mode AlphaBetaMode(const AlphaZeroConfig& config, open_spiel::Player player);
+
+// Added (2026-11-07): the training opponent that plays `player` — AlphaBetaDepth's depth,
+// AlphaBetaMode's mode and, with config.alphabeta_finer, the teacher's finer evaluation
+// (ConfigureTeacher). Stops with a fatal error if alphabeta_finer is set but a side's mode is
+// not "teacher" (the search mode has no threat term or terms) or the teacher's finer
+// evaluation is off (nothing to apply).
+std::unique_ptr<AlphaBetaPlayer> MakeOpponent(const AlphaZeroConfig& config,
+                                              const open_spiel::Game& game,
+                                              open_spiel::Player player);
 
 // The teacher's depth per player to move: config.player_kickstart_depth's entries, or
 // config.kickstart_depth for both where it is empty. Stops on more than two entries or a

@@ -43,6 +43,18 @@
 //      other moves somewhere (its choice among tied moves is the seed's). alphabeta_player
 //      round-trips; an older config.json loads with "search"; per side (AlphaBetaMode),
 //      "search,teacher" is the search as the dwarfs and the teacher as the trolls.
+//  10. (2026-11-07) The opponent's finer evaluation (alphabeta_finer, MakeOpponent): with it
+//      off, MakeOpponent's opponent chooses as one built by hand without it, though the
+//      teacher's finer evaluation is on; with it on, as one given the threat term and the
+//      positional terms by hand — the same moves and the same Choice on the positions of a
+//      game, as the dwarfs and as the trolls. Choice: the plain opponent's draw is even
+//      (effective = tied), the finer one's at most its tied count and below it somewhere, its
+//      move among those it scores best. Controls: the finer opponent chooses otherwise than
+//      the plain one somewhere; its draw is uneven somewhere. alphabeta_finer round-trips, an
+//      older config.json loads without it. PlayGame logs the teacher opponent's choices on a
+//      line of their own ("Game N: the opponent's choices: ..."), its moves counted and its
+//      means those of Choice over them; the game line stays as before (its parsers read it);
+//      control: the search opponent's game logs no such line.
 //
 //   thud/run_tests.sh alphabeta_training_test   # builds and runs it
 //   build-tests/bin/alphabeta_training_test
@@ -106,6 +118,7 @@ class Capture : public open_spiel::Logger {
 struct Game {
   Trajectory trajectory;
   std::string line;                // The logged game line.
+  std::string choices;             // The opponent's choices' line, if logged (2026-11-07).
   std::vector<std::string> moves;  // Every move, as logged.
 };
 
@@ -125,7 +138,10 @@ Game Play(const open_spiel::Game& game, const AlphaBetaPlayer* opponent, Player 
                                /*temperature_drop=*/10, /*cutoff_value=*/2,
                                /*verbose=*/false, /*prior_source=*/nullptr,
                                /*pruning_k=*/0, /*uct_c=*/2, opponent, side);
-  result.line = logger.lines.back();
+  for (const std::string& line : logger.lines) {
+    if (absl::StrContains(line, "Actions: ")) result.line = line;
+    if (absl::StrContains(line, "the opponent's choices: ")) result.choices = line;
+  }
   const std::string actions = result.line.substr(result.line.find("Actions: ") + 9);
   result.moves = absl::StrSplit(actions, ' ', absl::SkipEmpty());
   return result;
@@ -416,6 +432,125 @@ int main() {
               AlphaBetaMode(from_old, 1) == Mode::kSearch,
           "9. the mode per side: \"search,teacher\" the search as the dwarfs and the teacher as "
           "the trolls; \"teacher\" both; the default the search");
+  }
+
+  // 10. The opponent's finer evaluation.
+  {
+    using open_spiel::thud_az::Threat;
+    using open_spiel::thud_az::torch_az::MakeOpponent;
+    using Choice = AlphaBetaPlayer::Choice;
+    AlphaZeroConfig finer = config;
+    finer.alphabeta_player = "teacher";
+    finer.alphabeta_depth = "2";
+    finer.kickstart_ties = "positional";
+    finer.kickstart_temperature = 0.25;
+    finer.teacher_threat = "captures";
+    finer.teacher_threat_weights = "0.5,0.25";
+    finer.teacher_terms_weights = "0.1,-0.2";
+    AlphaZeroConfig off = finer;  // The teacher finer, the opponent plain.
+    finer.alphabeta_finer = true;
+    AlphaBetaPlayer plain(*game, 2), by_hand(*game, 2);
+    by_hand.SetThreat(Threat::kCaptures, {0.5, 0.25});
+    by_hand.SetPositionalTerms({0.1, -0.2}, 0.25);
+    std::unique_ptr<AlphaBetaPlayer> made_off[2], made_on[2];
+    for (int p = 0; p < 2; ++p) {
+      made_off[p] = MakeOpponent(off, *game, p);
+      made_on[p] = MakeOpponent(finer, *game, p);
+      made_off[p]->NewGame(kSeed);
+      made_on[p]->NewGame(kSeed);
+    }
+    for (AlphaBetaPlayer* a : {&plain, &by_hand}) {
+      a->SetMode(AlphaBetaPlayer::Mode::kTeacher);
+      a->NewGame(kSeed);
+    }
+    const auto same = [](const Choice& a, const Choice& b) {
+      return a.tied == b.tied && a.effective == b.effective;
+    };
+    bool off_same = true, on_same = true, plain_even = true, finer_within = true,
+         finer_best = true, differs = false, uneven = false;
+    int positions[2] = {0, 0};
+    std::mt19937 rng(kSeed);
+    std::unique_ptr<State> s = game->NewInitialState();
+    for (int ply = 0; ply < 160 && !s->IsTerminal(); ++ply) {
+      const std::vector<Action> legal = s->LegalActions();
+      if (ply % 7 == 3) {
+        const Player p = s->CurrentPlayer();
+        ++positions[p];
+        Choice c_plain, c_hand, c_off, c_on;
+        const Action a_plain = plain.Choose(*s, &c_plain);
+        const Action a_hand = by_hand.Choose(*s, &c_hand);
+        off_same = off_same && made_off[p]->Choose(*s, &c_off) == a_plain && same(c_off, c_plain);
+        on_same = on_same && made_on[p]->Choose(*s, &c_on) == a_hand && same(c_on, c_hand);
+        plain_even = plain_even && c_plain.tied >= 1 && c_plain.effective == c_plain.tied;
+        finer_within = finer_within && c_hand.effective >= 1 - 1e-9 &&
+                       c_hand.effective <= c_hand.tied + 1e-9;
+        uneven = uneven || c_hand.effective < c_hand.tied - 1e-6;
+        differs = differs || a_hand != a_plain || c_hand.tied != c_plain.tied;
+        const std::vector<double> scores = by_hand.Scores(*s);  // Every score exact.
+        const double top = *std::max_element(scores.begin(), scores.end());
+        const size_t i = std::find(legal.begin(), legal.end(), a_hand) - legal.begin();
+        finer_best = finer_best && i < legal.size() && scores[i] == top;
+      }
+      s->ApplyAction(legal[rng() % legal.size()]);
+    }
+    std::cout << "  " << positions[0] << " dwarf and " << positions[1] << " troll positions"
+              << std::endl;
+    Check(positions[0] > 5 && positions[1] > 5 && off_same && on_same,
+          "10. MakeOpponent: with alphabeta_finer off it chooses as a plain opponent built by "
+          "hand (the teacher's finer evaluation on), with it on as one given the threat term "
+          "and the positional terms by hand — the same moves and Choice, both sides");
+    Check(plain_even && finer_within && finer_best,
+          "10. Choice: the plain draw even (effective = tied), the finer one's at most its tied "
+          "count, its move among those it scores best");
+    Check(differs && uneven,
+          "10. controls: the finer opponent chooses otherwise than the plain one somewhere, and "
+          "its draw is uneven somewhere");
+    AlphaZeroConfig back;
+    back.FromJson(finer.ToJson());
+    open_spiel::json::Object older = finer.ToJson();
+    older.erase("alphabeta_finer");
+    AlphaZeroConfig from_older;
+    from_older.FromJson(older);
+    Check(back.alphabeta_finer && !from_older.alphabeta_finer && !config.alphabeta_finer,
+          "10. alphabeta_finer round-trips; an older config.json loads with false, the default");
+
+    // PlayGame's log of the teacher opponent's choices (as the trolls, depth 1: fast).
+    AlphaBetaPlayer teacher(*game, 1);
+    teacher.SetMode(AlphaBetaPlayer::Mode::kTeacher);
+    teacher.NewGame(kSeed);
+    const Game g = Play(*game, &teacher, /*side=*/1, kSeed);
+    std::unique_ptr<State> replay = game->NewInitialState();
+    int moves = 0, single = 0;
+    double tied = 0, effective = 0;
+    for (const std::string& move : g.moves) {
+      Action played = open_spiel::kInvalidAction;
+      for (Action a : replay->LegalActions()) {
+        if (replay->ActionToString(a) == move) played = a;
+      }
+      if (played == open_spiel::kInvalidAction) break;
+      if (replay->CurrentPlayer() == 1) {
+        Choice c;
+        teacher.Choose(*replay, &c);
+        ++moves;
+        single += c.tied == 1;
+        tied += c.tied;
+        effective += c.effective;
+      }
+      replay->ApplyAction(played);
+    }
+    char expected[256];
+    std::snprintf(expected, sizeof(expected),
+                  "Game 1: the opponent's choices: %d moves, tied for its best %.2f a move, its "
+                  "draw %.2f effective, a single move in %.1f%%",
+                  moves, tied / moves, effective / moves, 100.0 * single / moves);
+    std::cout << "  " << g.choices << std::endl;
+    Check(moves > 10 && g.choices == expected &&
+              absl::StrContains(g.line, "; Opponent: alphabeta:1 as trolls; Actions: ") &&
+              !absl::StrContains(g.choices, "Actions: "),
+          "10. PlayGame logs the teacher opponent's choices on a line of their own, its moves "
+          "and its means those of Choice; the game line as before");
+    Check(vs_trolls.choices.empty(),
+          "10. control: the search opponent's game logs no choices");
   }
 
   std::cout << (failures == 0 ? "ALL PASSED" : "FAILURES: " + std::to_string(failures))

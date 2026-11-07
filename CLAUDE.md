@@ -12,9 +12,11 @@ Everything else in this tree is upstream OpenSpiel code.
 
 **Between us** (agreed 2026-10-01): in interactive sessions the user and Claude call each
 other "bro", and Claude sprinkles it into many sentences, at the start or the end, to
-build a connection — the user asked for it more often than Claude first did: several
-times in a reply, in short replies too, though not in every sentence. In the docs
-(`thud/`, commit messages) the user stays "the user" or "they".
+build a connection. The user has twice asked for it more often than Claude used it: on
+2026-10-01 several times in a reply, in short replies too; on 2026-11-07 "a lot more than
+now", though "not an absolutely obnoxious amount" — so in most sentences of a reply, in
+list items and in the short updates between tool calls too, but not in every sentence. In
+the docs (`thud/`, commit messages) the user stays "the user" or "they".
 
 **Important information goes at the end of a reply, never in its middle** (the user,
 2026-10-15): results, decisions needed, questions and anything the user must act on
@@ -335,8 +337,11 @@ default, as before), `--teacher_threat=off|scan|captures` with `--teacher_threat
 and `--kickstart_ties=positional` with `--teacher_terms_weights=REACH,PAIRS` (2026-11-04, merged
 2026-11-06: the teacher's finer evaluation — a threat term in its search, the positional terms
 sharing its ties, `thud/az/teacher_terms.h`; off by default; R8 from step 606 at `captures`
-0.25,0 and 0.104,-0.197; kickstarting's teacher only, the training opponent plain; the probes
-that rebuild the trainer's targets share its ties through `TeacherTies`), `--kickstart_root_margin` (2026-10-27: the teacher's root window — moves
+0.25,0 and 0.104,-0.197; kickstarting's teacher only; the probes that rebuild the trainer's
+targets share its ties through `TeacherTies`), `--alphabeta_finer` (2026-11-07: the training
+opponent with the same finer evaluation, `MakeOpponent`; needs `--alphabeta_player=teacher`;
+off by default; R8 from step 646 if the 645 stop's conditions hold; the opponent's choices
+logged a game — the moves tied for its best, its draw's effective number), `--kickstart_root_margin` (2026-10-27: the teacher's root window — moves
 that many points below the best get a bound; 0, the default, every score exact; measured too
 small a gain at 3 to use; the teacher as a player, the training opponent and `az_match
 b=teacher:N`, uses 1, which is exact for its choice: 1.3-1.5x at depth 5), `--policy_target=visits|completed_q`
@@ -395,7 +400,7 @@ extra arguments, as its header says), `untried_move_test`, `conv_policy_test`,
 `b=hexparrot:N`, through `hexparrot_player.py`, `b=alphabeta:N`, `b=mcts:N`, since 2026-10-25
 `b=teacher:N` — kickstarting's teacher as a player, a move drawn among its best-scored; since
 2026-10-13 self-play's root noise per side and sampled plies, `noise=`, `sample_plies=`,
-and the teacher in one network's prior, `teacher_mix_a=`; since 2026-10-28 `side_sims=D,T`, every search by the side it plays, as the trainer's player_simulations; since 2026-10-29 `gumbel_a=M`, `gumbel_b=M`, a network searching as `--gumbel_search` does over M sampled actions, `gumbel_scale_a=`, `gumbel_scale_b=` its noise; since 2026-10-30 `side_sims_a=D,T`, `side_sims_b=D,T`, each network its own budgets by side; since 2026-11-04 `teacher_threat=`, `teacher_threat_weights=`, `teacher_terms=`, `teacher_terms_temperature=`: b=teacher:N's finer evaluation), `az_threat_probe` (2026-11-04: the teacher's milliseconds and its KL against a deeper search per threat setting, on a run's games), `az_forgetting`, `az_merge_buffers`, `az_target_quality`, `az_head_probe`,
+and the teacher in one network's prior, `teacher_mix_a=`; since 2026-10-28 `side_sims=D,T`, every search by the side it plays, as the trainer's player_simulations; since 2026-10-29 `gumbel_a=M`, `gumbel_b=M`, a network searching as `--gumbel_search` does over M sampled actions, `gumbel_scale_a=`, `gumbel_scale_b=` its noise; since 2026-10-30 `side_sims_a=D,T`, `side_sims_b=D,T`, each network its own budgets by side; since 2026-11-04 `teacher_threat=`, `teacher_threat_weights=`, `teacher_terms=`, `teacher_terms_temperature=`: b=teacher:N's finer evaluation), `az_opponent_probe` (2026-11-07: the training opponent plain against finer on a run's games against it — the moves it chooses among, its time a move), `az_threat_probe` (2026-11-04: the teacher's milliseconds and its KL against a deeper search per threat setting, on a run's games), `az_forgetting`, `az_merge_buffers`, `az_target_quality`, `az_head_probe`,
 `az_reference_pilot`, `az_noise_probe`, `az_search_cost`, `az_blunder_probe`,
 `az_capture_targets`, `az_teacher_vs_search` (2026-10-25: the trainer's search's visits at
 several budgets, the teacher's policy and the recorded target, each against the network's own
