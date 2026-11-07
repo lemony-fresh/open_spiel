@@ -14,8 +14,10 @@ since; from 03:11 on 11-04; stopped at
 step 586 from 21:12 on 11-04 to 04:51 on 11-06 — the learning-rate sweep, the user's Windows
 reboot and gates 3 and 4 of the finer evaluation; **running again since 04:51 on 11-06**, the
 segment to 605 with the seeding fix; **the teacher's finer evaluation on from step 606**,
-switched at 21:13 on 11-06 by `~/thud-runs/switch_605_2026-11-06.sh`; the segment to 625 since
-21:54, at step 623 by 11:19 on 11-07), from **F565** — a fresh network trained offline on R7's 400/200 positions (steps 526-565), level
+switched at 21:13 on 11-06 by `~/thud-runs/switch_605_2026-11-06.sh`; the segment to 625
+21:54-12:52, its stop to 14:19 on 11-07; **the segment to 645 since 14:19**, with the trainer
+rebuilt from the merged opponent code — off, the opponent plain, its choices logged; R8 held at
+the 645 stop by `~/thud-runs/switch_645_2026-11-07.sh`), from **F565** — a fresh network trained offline on R7's 400/200 positions (steps 526-565), level
 with R7_565 (+0.19 over 80 pairs, −1.67 to +2.04), teacher:5 +21.57 (R7_565 +23.18; paired by
 opening −1.60, −4.55 to +1.52), hexparrot:3 +47.15 (R7_565 +46.40; paired +0.75, −1.98 to
 +3.42), its plasticity much restored (random targets' loss after 700 batches 1.07; R7_565 3.61,
@@ -38,6 +40,14 @@ trainer's 0.0001 by the sweep's rule** — 0.00003 policy −0.0017 and value �
 R8_585 +1.98 (−1.14 to +5.09), R7_565 −1.38, R6_366 −3.58, plain teacher:5 +20.40 (R8_585
 +23.48), hexparrot:3 +47.05 (+48.17), plasticity 1.06 (0.92); against the finer teacher:5 +14.95
 (R8_585 +17.60, gate 4's figure again exactly: the merged code plays the gated teacher).
+**R8_625** (steps 606-625, the first segment on the finer teacher; its stop 12:52-14:19 on 11-07):
+against R8_605 +0.07 (−3.45 to +3.60), R6_366 +0.10 (−1.99 to +2.19; R8_605 −3.58, the first R8
+network level with it), R7_565 −0.85 (−2.77 to +1.07; R8_605 −1.38), the finer teacher:5 +17.60
+(15.03 to 20.17; R8_605 +14.95), hexparrot:3 +47.88 (+47.05); the gates passed (blunders 0.028
+against 0.059); dead channels 12 (11). Nothing worse; against R6_366 and the finer teacher a
+little better, within the noise. The finer teacher against R8_625's long search: the dwarfs'
+target no longer closer to it than the visits (+0.017, −0.007 to +0.040; at 605 −0.066) — the
+taper's second signal (`PLAN.md`), to read with the user; the trolls' +0.018.
 
 **The teacher's finer evaluation: merged, on R8 from step 606** (`PLAN.md`, *The teacher's
 finer evaluation*, item 5; the user, 2026-11-06): a threat term at the teacher's search frontier
@@ -47,8 +57,16 @@ kickstarting's teacher only. Gates 1 (the fit), 2 (closer to the deeper search),
 visible) and 4 (a stronger teacher) passed. Merged into `thud` on 11-06 with `TeacherTies`, which
 makes `az_teacher_vs_search` and `az_relabel` rebuild the trainer's targets with the run's own
 teacher (they had used the plain one with even ties whatever the config said; no run had used
-other ties, so no result is affected). **The training opponent stays plain — to switch soon**
-(the user: in the plan; code first, then on at 625 or 645). From 605 the stop's teacher:5 match
+other ties, so no result is affected). **The training opponent's finer evaluation: built and
+merged 2026-11-07** (`--alphabeta_finer`, off by default; `PLAN.md`, item 5), **to switch after
+the 645 stop** if its conditions hold (`~/thud-runs/switch_645_2026-11-07.sh`, detached since
+14:10: R8_625 and R8_645 not worse beyond the noise, R8_645's gates passed, the tripwire quiet,
+the dwarfs' prior settled; else R8 goes on with the opponent plain and we decide together);
+either way `r8_run_2026-11-07.sh` goes on (segments to 705). The opponent plain against finer at
+the 625 stop (`az_opponent_probe`, 300 positions a side): as the dwarfs its draw about halves
+(47.2 tied moves → 21.3 effective; a single move 1.3% → 8.3%), as the trolls not (16.8 → 17.9);
+a move 2.66x and 3.05x as long (~1,000 core-seconds more a step, about half of what the
+teacher's switch added, which did not show). From 605 the stop's teacher:5 match
 is against the finer teacher (the user: it replaces the plain one; R8_605 against both).
 **Since the switch** (steps 606-623): no cost in the step at equal CPU limits (scaled to full
 power 1,875 s a step against 1,887 in 592-605; the network sets self-play's pace — the inference
@@ -82,7 +100,7 @@ collapse tripwire, **since 11:31 on 11-07 with a new baseline** (steps 616-623, 
 targets settled: the dwarfs' prior 78 effective moves, margin −5.3, games 195 plies; the user
 agreed; `PLAN.md`, item 5's watch list). **After a WSL end, r8_run's start would start it with
 R7's old baseline: replace that one (by PID) with `python3 ~/thud-runs/collapse_tripwire.py watch
-~/thud-runs/runR8 624 --baseline 8`, detached.** **Upstream:** PRs #1637 (the replay
+~/thud-runs/runR8 624 --baseline 8`, detached** (`r8_run_2026-11-07.sh` starts it so). **Upstream:** PRs #1637 (the replay
 buffer's memory) and #1646 (the batch norms' lock) waiting; their CI never ran — as a
 first-time contributor's, it waits for a maintainer's approval, and #1637's runs expired after
 30 days (11-05, mailed as failed; #1646's expire ~11-17); ping ~2026-11-07, asking for the
@@ -4892,12 +4910,45 @@ the push's and the rename's tests ran (memory beside the trainer), to resume.
   step 615 (`collapse_tripwire.py replay` with 616-623: 78 effective moves, −5.3, 195 plies; the
   old process ended by its PID, the new one started detached).
 
-**Next step:** R8's segment to 625 with the finer teacher (running; ~43 minutes a step at a CPU
-limit of ~71%, so step 625 ~12:45 on 11-07), its evaluation (~1.5 hours): R8_625 against R8_605
-— the switch's first result — against the finer teacher:5 (R8_605 +14.95), and the finer teacher
-against the search. Watch: the dwarfs' prior settling near its targets (~65 effective moves),
-the tripwire. Then the training opponent's switch (code, a test and its cost — not started; on
-at a stop after R8_625's evaluation). With the user: the sweep's reading (keep 0.0001). F565 and R8_585 seen with the user: R8 stays the main
+  **11-07, 11:45-14:30: the training opponent's finer evaluation built; the switch at 645
+  prepared.** The user's questions and decisions: indicators of training too narrowly (the
+  dwarfs' prior breadth and the tripwire, the targets' entropy, the matches against networks and
+  engines R8 does not train against; for the opponent now also R8's margin against it and its
+  choices) — and the remedy, more randomness in the opponent's draw, if needed (the user: yes);
+  a stronger opponent is wanted (R8 wins 39 of 40 pairs against it); tests (yes); no path of the
+  training uses 2 plies any more (the opponent at depth 5 both sides, the teacher 5/4); the
+  switch after 645 (the user), on the conditions Claude proposed; single-core probes in parallel
+  (yes: the probe one process a side); and "bro" a lot more (CLAUDE.md, *Between us*). Built in
+  the worktree (`~/thud-dev`, branch `opponent-finer`): `--alphabeta_finer` (`MakeOpponent`,
+  checked in the trainer's `main`, for a config.json too), the opponent's choices logged a game
+  (`AlphaBetaPlayer::Choice`), `az_opponent_probe`; tests `alphabeta_training_test` 10 and
+  `trainer_test.sh` 18 (part 18's two fatal-error controls failed at first: the check was in the
+  actors, after their logs existed — moved into `main`). `run_tests.sh --full`: 44 of 45 at first
+  — `trainer_test` part 9's Gumbel controls found all 6 positions alike (the run's games drawn
+  afresh each time since the seeding fix; it had passed alone just before; unrelated to the
+  change) — widened to 6 positions a side, then passed; merged into `thud` at 14:10 (2029f5ca),
+  before the segment's build at 14:19, so that steps 626-645 log the plain opponent's choices (the
+  baseline). The probe at the 625 stop (`~/thud-runs/opponent_probe_2026-11-07.sh`; results in
+  the status block) corrected Claude's earlier "it would choose among a few moves" (read from the
+  prior's mass on the teacher's best move, which a tie-shared policy has one of). Its first
+  smoke test showed the trolls' depth-5 search 3.9x as long (10 positions; 3.05x on 300).
+  `~/thud-runs/r8_run_2026-11-07.sh` (made by a script from the running copy, untouched): the
+  segment summary with R8's margin against the opponent per side and the opponent's choices, the
+  opponent probe at each stop from 645, the tripwire's new baseline if it must start it, the
+  segments on to 705. `~/thud-runs/switch_645_2026-11-07.sh` (started 14:10; R8 held at 14:19,
+  once the segment to 645 had started — a stop file made earlier would have ended R8 before it):
+  tested in a sandbox (the switch; a worse network, an alert, an unsettled prior: R8 goes on not
+  switched; another step, the code not merged: R8 stays stopped). Two of Claude's edit commands
+  broke on a heredoc nested in a heredoc (the outer one ended early; the stray lines failed
+  harmlessly, nothing written; checked) — such blocks now go through a file.
+
+**Next step:** R8's segment to 645 (running since 14:19; ~44 minutes a step, so step 645 ~05:00
+on 11-08, its evaluation to ~06:30), then `switch645:` in `progress.log` — the conditions, and
+if they hold the opponent's finer evaluation from step 646 (the actors' report). Watch then: the
+opponent's choices and R8's margin against it in the segment summary, the step time at equal CPU
+limits, the value loss, the opponent probe at each stop. With the user: the taper's signal (the
+dwarfs' target no longer closer to the long search than the visits at 625), the sweep's reading
+(keep 0.0001). With the user: the sweep's reading (keep 0.0001). F565 and R8_585 seen with the user: R8 stays the main
 line (back to R7 only if it goes badly). Later: 800/400 (the
 GPU, or when 400/200 plateaus), tree reuse. Push the unpushed commits at a gap; ping upstream
 ~2026-11-07, asking for the CI's approval on both PRs.
