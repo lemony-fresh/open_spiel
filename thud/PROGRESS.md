@@ -116,7 +116,7 @@ R7's old baseline: replace that one (by PID) with `python3 ~/thud-runs/collapse_
 buffer's memory) and #1646 (the batch norms' lock) waiting; their CI never ran — as a
 first-time contributor's, it waits for a maintainer's approval, and #1637's runs expired after
 30 days (11-05, mailed as failed; #1646's expire ~11-17); ping on 2026-12-07 (the user,
-2026-11-07: wait another month), asking for the approval too. Many commits on `thud` unpushed (the pre-push hook runs every test: at a gap).
+2026-11-07: wait another month), asking for the approval too. `thud` pushed on 2026-11-07 (121 commits since 10-20; the pre-push hook's 45 tests passed).
 The machine's facts and the settings by use: `CLAUDE.md`, Environment.
 
 ## Earlier status (archived 2026-11-04; superseded by the block above)
@@ -4979,6 +4979,7 @@ the push's and the rename's tests ran (memory beside the trainer), to resume.
   found by testing the function alone, fixed with a plain variable, tested on a stand-in program
   (the arguments with and without the depths, the two files, both skipped once done), and every
   function of the script parsed alone.
+  Pushed at ~23:20 (`c9185a03..0079d3ed`; the pre-push hook ran all 45 tests, 850 s: passed).
 
 **Next step:** R8's segment to 645 (since 14:19; paused at 22:34 after step 637, until after
 02:00 on 11-08 — 8 steps of ~44 minutes left, so with a resume at 02:00 step 645 ~07:35, its
