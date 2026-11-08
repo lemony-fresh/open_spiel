@@ -15,8 +15,9 @@ step 586 from 21:12 on 11-04 to 04:51 on 11-06 — the learning-rate sweep, the 
 reboot and gates 3 and 4 of the finer evaluation; **running again since 04:51 on 11-06**, the
 segment to 605 with the seeding fix; **the teacher's finer evaluation on from step 606**,
 switched at 21:13 on 11-06 by `~/thud-runs/switch_605_2026-11-06.sh`; the segment to 625
-21:54-12:52, its stop to 14:19 on 11-07; **the segment to 645 since 14:19**, with the trainer
-rebuilt from the merged opponent code — off, the opponent plain, its choices logged; R8 held at
+21:54-12:52, its stop to 14:19 on 11-07; **the segment to 645 since 14:19** (**paused at 22:34
+after step 637**, the user: until 15 minutes without input after 02:00 on 11-08;
+`~/thud-runs/pause_r8_2026-11-07.sh`), with the trainer rebuilt from the merged opponent code — off, the opponent plain, its choices logged; R8 held at
 the 645 stop by `~/thud-runs/switch_645_2026-11-07.sh`), from **F565** — a fresh network trained offline on R7's 400/200 positions (steps 526-565), level
 with R7_565 (+0.19 over 80 pairs, −1.67 to +2.04), teacher:5 +21.57 (R7_565 +23.18; paired by
 opening −1.60, −4.55 to +1.52), hexparrot:3 +47.15 (R7_565 +46.40; paired +0.75, −1.98 to
@@ -4942,13 +4943,25 @@ the push's and the rename's tests ran (memory beside the trainer), to resume.
   broke on a heredoc nested in a heredoc (the outer one ended early; the stray lines failed
   harmlessly, nothing written; checked) — such blocks now go through a file.
 
-**Next step:** R8's segment to 645 (running since 14:19; ~44 minutes a step, so step 645 ~05:00
-on 11-08, its evaluation to ~06:30), then `switch645:` in `progress.log` — the conditions, and
+  **11-07, 22:33: R8 paused for the night.** The user: pause all computations until there has
+  been no input for 15 minutes after 02:00. `~/thud-runs/pause_r8_2026-11-07.sh` (11-02's script
+  for R7, set to R8) stopped the trainer at 22:34:45 (SIGSTOP) and continues it once it is past
+  02:00, Windows has seen 15 minutes without input and the laptop is on mains (it was on battery
+  at 22:34); an hour of failed idle readings after 02:00 resumes it anyway. Step 638 had begun at
+  22:17, so its time in `learner.jsonl` includes the pause: leave it out of step-time
+  comparisons. The segment's timeout (40 h from 14:19) needs a resume by ~00:00 on 11-09, the
+  tripwire (ends after 24 h without a step) by ~22:00 on 11-08. Nothing else was computing; the
+  switch script and the run script only wait on the trainer, and their waits with limits come
+  after the 645 stop.
+
+**Next step:** R8's segment to 645 (since 14:19; paused at 22:34 after step 637, until after
+02:00 on 11-08 — 8 steps of ~44 minutes left, so with a resume at 02:00 step 645 ~07:35, its
+evaluation to ~09:00), then `switch645:` in `progress.log` — the conditions, and
 if they hold the opponent's finer evaluation from step 646 (the actors' report). Watch then: the
 opponent's choices and R8's margin against it in the segment summary, the step time at equal CPU
 limits, the value loss, the opponent probe at each stop. With the user: the taper's signal (the
 dwarfs' target no longer closer to the long search than the visits at 625), the sweep's reading
-(keep 0.0001). With the user: the sweep's reading (keep 0.0001). F565 and R8_585 seen with the user: R8 stays the main
+(keep 0.0001). F565 and R8_585 seen with the user: R8 stays the main
 line (back to R7 only if it goes badly). Later: 800/400 (the
 GPU, or when 400/200 plateaus), tree reuse. Push the unpushed commits at a gap; ping upstream
 ~2026-11-07, asking for the CI's approval on both PRs.
