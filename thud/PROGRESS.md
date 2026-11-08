@@ -36,7 +36,8 @@ laptop asleep 03:20-11:14; F565 trained 640 batches on R7's 565 buffer at each r
 scored on steps 566-585's 435,825 distinct positions, which none learnt): **no rate beats the
 trainer's 0.0001 by the sweep's rule** — 0.00003 policy −0.0017 and value −0.0004 against it
 (both seeds alike; the seeds' largest spread 0.0081 and 0.0047), 0.0003 +0.0151 and +0.0009,
-0.001 +0.0392 and +0.0037 (worse than F565 untrained); to be read with the user. **R8_605**
+0.001 +0.0392 and +0.0037 (worse than F565 untrained); **0.0001 kept** (read with the user,
+2026-11-07). **R8_605**
 (steps 586-605, the actors' seeding fixed from 587; its stop 20:00-21:13 on 11-06): against
 R8_585 +1.98 (−1.14 to +5.09), R7_565 −1.38, R6_366 −3.58, plain teacher:5 +20.40 (R8_585
 +23.48), hexparrot:3 +47.05 (+48.17), plasticity 1.06 (0.92); against the finer teacher:5 +14.95
@@ -48,7 +49,17 @@ network level with it), R7_565 −0.85 (−2.77 to +1.07; R8_605 −1.38), the f
 against 0.059); dead channels 12 (11). Nothing worse; against R6_366 and the finer teacher a
 little better, within the noise. The finer teacher against R8_625's long search: the dwarfs'
 target no longer closer to it than the visits (+0.017, −0.007 to +0.040; at 605 −0.066) — the
-taper's second signal (`PLAN.md`), to read with the user; the trolls' +0.018.
+taper's second signal (`PLAN.md`); the trolls' +0.018. Read with the user (2026-11-07): **no
+taper step yet** — one reading, its interval across 0, and the opponent switching at 646; 645's
+reading decides (a step at 665 at the earliest). And **the trolls' teacher at depth 5 probed at
+the 645 stop** (the user: `az_teacher_vs_search depths=5,5`, in `r8_run_2026-11-07.sh`): at depth
+4 their target is no closer to the long search than the visits (+0.018), while at depth 5 with the
+capture lines exact the teacher came near a depth-6 search (KL 0.263 → 0.056, the threat probe) —
+so the trolls' teacher is either tapered or deepened. Depth 5's cost, estimated: ~16 → ~300-450 ms
+a troll position (from 847 ms in the threat probe and 257 ms in the opponent probe with its root
+window, both on a loaded machine), ~11,000 troll positions a step, so ~3,000-5,000 core-seconds a
+step, ~15-20% of a step's compute — more than the teacher's switch (~2,000, which did not show) and
+the opponent's (~1,000).
 
 **The teacher's finer evaluation: merged, on R8 from step 606** (`PLAN.md`, *The teacher's
 finer evaluation*, item 5; the user, 2026-11-06): a threat term at the teacher's search frontier
@@ -104,8 +115,8 @@ R7's old baseline: replace that one (by PID) with `python3 ~/thud-runs/collapse_
 ~/thud-runs/runR8 624 --baseline 8`, detached** (`r8_run_2026-11-07.sh` starts it so). **Upstream:** PRs #1637 (the replay
 buffer's memory) and #1646 (the batch norms' lock) waiting; their CI never ran — as a
 first-time contributor's, it waits for a maintainer's approval, and #1637's runs expired after
-30 days (11-05, mailed as failed; #1646's expire ~11-17); ping ~2026-11-07, asking for the
-approval too. Many commits on `thud` unpushed (the pre-push hook runs every test: at a gap).
+30 days (11-05, mailed as failed; #1646's expire ~11-17); ping on 2026-12-07 (the user,
+2026-11-07: wait another month), asking for the approval too. Many commits on `thud` unpushed (the pre-push hook runs every test: at a gap).
 The machine's facts and the settings by use: `CLAUDE.md`, Environment.
 
 ## Earlier status (archived 2026-11-04; superseded by the block above)
@@ -4954,14 +4965,34 @@ the push's and the rename's tests ran (memory beside the trainer), to resume.
   switch script and the run script only wait on the trainer, and their waits with limits come
   after the 645 stop.
 
+  **11-07, 22:40-23:20: decisions; the trolls' depth-5 probe.** The user asked what the trolls'
+  teacher at depth 5 would cost (the estimate in the status block: ~15-20% of a step's compute)
+  and what else needs deciding. Decided (the user): the trolls' teacher at depth 5 probed at the
+  645 stop; the dwarfs' taper waits for 645's reading; the learning rate stays 0.0001; upstream
+  pinged in a month, on 2026-12-07 (the status block's next step: Claude's timers last only a
+  session); the 120 commits since 10-20 pushed (all as lemony-fresh with the noreply address, the
+  personal one in none of them). `~/thud-runs/r8_run_2026-11-07.sh` (not yet running; the switch
+  script starts it): `teacher_vs_search END [DEPTHS]`, at 645 again with `depths=5,5` (~12
+  minutes; the 625 run took 10), its output `..._finer_depths55`. A bug in Claude's first edit:
+  an apostrophe inside `"${2:+ (the teacher's ...)}"` opens a quote in bash, and `bash -n`
+  passed the whole script only because a later quote closed it — the meaning silently changed;
+  found by testing the function alone, fixed with a plain variable, tested on a stand-in program
+  (the arguments with and without the depths, the two files, both skipped once done), and every
+  function of the script parsed alone.
+
 **Next step:** R8's segment to 645 (since 14:19; paused at 22:34 after step 637, until after
 02:00 on 11-08 — 8 steps of ~44 minutes left, so with a resume at 02:00 step 645 ~07:35, its
 evaluation to ~09:00), then `switch645:` in `progress.log` — the conditions, and
 if they hold the opponent's finer evaluation from step 646 (the actors' report). Watch then: the
 opponent's choices and R8's margin against it in the segment summary, the step time at equal CPU
-limits, the value loss, the opponent probe at each stop. With the user: the taper's signal (the
-dwarfs' target no longer closer to the long search than the visits at 625), the sweep's reading
-(keep 0.0001). F565 and R8_585 seen with the user: R8 stays the main
+limits, the value loss, the opponent probe at each stop. At the 645 stop also the trolls' teacher
+at depth 5 against the search (`runR8_eval/teacher_vs_search_R8_645_finer_depths55.jsonl`; its
+dwarfs' rows repeat the 5,4 run's, a control) — with 645's own reading of the taper's signal, to
+decide with the user: the dwarfs' taper step, and the trolls' teacher tapered or deepened (at 665
+at the earliest, one change a segment). **On 2026-12-07** (the user, 2026-11-07: wait another
+month): ping upstream on #1637 and #1646, asking for their CI runs' approval too (#1637's
+expired unapproved on 11-05, #1646's expire ~11-17) — Claude raises it at the first session from
+that date. F565 and R8_585 seen with the user: R8 stays the main
 line (back to R7 only if it goes badly). Later: 800/400 (the
 GPU, or when 400/200 plateaus), tree reuse. Push the unpushed commits at a gap; ping upstream
 ~2026-11-07, asking for the CI's approval on both PRs.
